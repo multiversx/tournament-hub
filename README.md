@@ -5,7 +5,7 @@ This project implements a modular smart contract for managing tournaments, games
 ## Project Structure
 
 ```
-contracts/tournament-hub/
+tournament-hub-sc/
 ├── src/
 │   ├── helpers.rs              # Private helper functions used across modules
 │   ├── models.rs               # Data structures and enums (GameConfig, Tournament, etc.)

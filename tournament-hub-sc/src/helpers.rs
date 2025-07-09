@@ -7,7 +7,7 @@ use crate::models::{GameConfig, Tournament};
 pub trait HelperModule: crate::storage::StorageModule {
     fn verify_result_signature(
         &self,
-        _tournament_id: &ManagedBuffer,
+        _tournament_id: &u64,
         _winner_podium: &ManagedVec<ManagedAddress>,
         _signed_result: &ManagedBuffer,
         _game_config: &GameConfig<Self::Api>,
@@ -43,15 +43,12 @@ pub trait HelperModule: crate::storage::StorageModule {
         }
     }
 
-    fn get_claim_key(
-        &self,
-        tournament_id: &ManagedBuffer,
-        caller: &ManagedAddress,
-    ) -> ManagedBuffer {
+    fn get_claim_key(&self, tournament_id: &u64, caller: &ManagedAddress) -> ManagedBuffer {
         let mut key = ManagedBuffer::new();
-        key.append(tournament_id);
+        let tournament_id_buf = ManagedBuffer::from(&tournament_id.to_be_bytes()[..]);
+        key.append(&tournament_id_buf);
         key.append(&ManagedBuffer::from(b"_"));
-        key.append(caller.as_managed_buffer());
+        key.append(&caller.as_managed_buffer());
         key
     }
 
