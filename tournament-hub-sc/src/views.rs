@@ -35,4 +35,9 @@ pub trait ViewsModule: crate::storage::StorageModule {
     fn get_spectator_pool_total(&self, tournament_id: &u64) -> BigUint {
         self.spectator_pool_total(tournament_id).get()
     }
+
+    #[view(getAccumulatedHouseFees)]
+    fn get_accumulated_house_fees(&self) -> BigUint {
+        self.accumulated_house_fees().get()
+    }
 }

@@ -26,10 +26,11 @@ pub trait HelperModule: crate::storage::StorageModule {
         let house_fee = &tournament.prize_pool * game_config.house_fee_percentage / 10_000u32;
         let remaining_pool = &tournament.prize_pool - &house_fee;
 
-        // Send house fee to owner
+        // Accumulate house fee in contract storage
         if house_fee > 0 {
-            let owner = self.owner().get();
-            self.send().direct_egld(&owner, &house_fee);
+            let mut accumulated_fees = self.accumulated_house_fees().get();
+            accumulated_fees += &house_fee;
+            self.accumulated_house_fees().set(&accumulated_fees);
         }
 
         // Distribute prizes to winners
@@ -48,13 +49,7 @@ pub trait HelperModule: crate::storage::StorageModule {
         let tournament_id_buf = ManagedBuffer::from(&tournament_id.to_be_bytes()[..]);
         key.append(&tournament_id_buf);
         key.append(&ManagedBuffer::from(b"_"));
-        key.append(&caller.as_managed_buffer());
+        key.append(caller.as_managed_buffer());
         key
-    }
-
-    fn require_owner(&self) {
-        let caller = self.blockchain().get_caller();
-        let owner = self.owner().get();
-        require!(caller == owner, "Only owner can call this function");
     }
 }

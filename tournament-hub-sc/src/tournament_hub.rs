@@ -22,6 +22,7 @@ pub trait TournamentHub:
     + tournament_logic::results_management::ResultsManagementModule
     + tournament_logic::spectator_betting::SpectatorBettingModule
     + tournament_logic::tournament_management::TournamentManagementModule
+    + views::ViewsModule
 {
     #[init]
     fn init(&self) {}
