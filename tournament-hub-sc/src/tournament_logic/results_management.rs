@@ -10,7 +10,7 @@ pub trait ResultsManagementModule:
     #[endpoint(submitResults)]
     fn submit_results(
         &self,
-        tournament_id: ManagedBuffer,
+        tournament_id: u64,
         winner_podium: ManagedVec<ManagedAddress>,
         signed_result: ManagedBuffer,
     ) {

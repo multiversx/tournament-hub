@@ -9,8 +9,8 @@ pub trait TournamentManagementModule: crate::storage::StorageModule {
     #[endpoint(createTournament)]
     fn create_tournament(
         &self,
-        tournament_id: ManagedBuffer,
-        game_id: ManagedBuffer,
+        tournament_id: u64,
+        game_id: u64,
         entry_fee: BigUint,
         join_deadline: u64,
         play_deadline: u64,
@@ -49,7 +49,7 @@ pub trait TournamentManagementModule: crate::storage::StorageModule {
 
     #[endpoint(joinTournament)]
     #[payable("EGLD")]
-    fn join_tournament(&self, tournament_id: ManagedBuffer) {
+    fn join_tournament(&self, tournament_id: u64) {
         let payment = self.call_value().egld().clone_value();
         let caller = self.blockchain().get_caller();
         let current_time = self.blockchain().get_block_timestamp();
@@ -101,7 +101,7 @@ pub trait TournamentManagementModule: crate::storage::StorageModule {
     }
 
     #[endpoint(startTournament)]
-    fn start_tournament(&self, tournament_id: ManagedBuffer) {
+    fn start_tournament(&self, tournament_id: u64) {
         require!(
             self.active_tournaments().contains_key(&tournament_id),
             "Tournament does not exist"
