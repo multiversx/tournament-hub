@@ -205,4 +205,108 @@ where
             .argument(&tournament_id)
             .original_result()
     }
+
+    pub fn get_game_config<
+        Arg0: ProxyArg<u64>,
+    >(
+        self,
+        game_id: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, Option<GameConfig<Env::Api>>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getGameConfig")
+            .argument(&game_id)
+            .original_result()
+    }
+
+    pub fn get_tournament<
+        Arg0: ProxyArg<u64>,
+    >(
+        self,
+        tournament_id: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, Option<Tournament<Env::Api>>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTournament")
+            .argument(&tournament_id)
+            .original_result()
+    }
+
+    pub fn get_spectator_bets<
+        Arg0: ProxyArg<u64>,
+        Arg1: ProxyArg<ManagedAddress<Env::Api>>,
+    >(
+        self,
+        tournament_id: Arg0,
+        player: Arg1,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, SpectatorBet<Env::Api>>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getSpectatorBets")
+            .argument(&tournament_id)
+            .argument(&player)
+            .original_result()
+    }
+
+    pub fn get_spectator_pool_total<
+        Arg0: ProxyArg<u64>,
+    >(
+        self,
+        tournament_id: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getSpectatorPoolTotal")
+            .argument(&tournament_id)
+            .original_result()
+    }
+}
+
+#[type_abi]
+#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
+pub struct GameConfig<Api>
+where
+    Api: ManagedTypeApi,
+{
+    pub signing_server_address: ManagedAddress<Api>,
+    pub podium_size: u32,
+    pub prize_distribution_percentages: ManagedVec<Api, u32>,
+    pub house_fee_percentage: u32,
+    pub allow_late_join: bool,
+}
+
+#[type_abi]
+#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
+pub struct Tournament<Api>
+where
+    Api: ManagedTypeApi,
+{
+    pub game_id: u64,
+    pub status: TournamentStatus,
+    pub entry_fee: BigUint<Api>,
+    pub participants: ManagedVec<Api, ManagedAddress<Api>>,
+    pub prize_pool: BigUint<Api>,
+    pub join_deadline: u64,
+    pub play_deadline: u64,
+    pub final_podium: ManagedVec<Api, ManagedAddress<Api>>,
+    pub creator: ManagedAddress<Api>,
+}
+
+#[type_abi]
+#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
+pub enum TournamentStatus {
+    Joining,
+    Playing,
+    ProcessingResults,
+    Completed,
+}
+
+#[type_abi]
+#[derive(TopEncode, TopDecode, ManagedVecItem, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
+pub struct SpectatorBet<Api>
+where
+    Api: ManagedTypeApi,
+{
+    pub bettor_address: ManagedAddress<Api>,
+    pub amount: BigUint<Api>,
 }

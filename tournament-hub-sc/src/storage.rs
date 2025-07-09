@@ -3,9 +3,6 @@ use multiversx_sc::imports::*;
 
 #[multiversx_sc::module]
 pub trait StorageModule {
-    #[storage_mapper("owner")]
-    fn owner(&self) -> SingleValueMapper<ManagedAddress>;
-
     #[storage_mapper("registered_games")]
     fn registered_games(&self) -> MapMapper<u64, GameConfig<Self::Api>>;
 
@@ -24,4 +21,7 @@ pub trait StorageModule {
 
     #[storage_mapper("spectator_claims")]
     fn spectator_claims(&self) -> MapMapper<ManagedBuffer, bool>;
+
+    #[storage_mapper("accumulated_house_fees")]
+    fn accumulated_house_fees(&self) -> SingleValueMapper<BigUint>;
 }
