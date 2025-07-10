@@ -2,7 +2,7 @@
 
 This project implements a modular smart contract for managing tournaments, games, and spectator betting on the MultiversX blockchain. The contract is designed for clarity, maintainability, and extensibility, with logic split into focused modules.
 
-## Project Structure
+## SC Project Structure
 
 ```
 tournament-hub-sc/
@@ -41,6 +41,43 @@ tournament-hub-sc/
 - **Result Submission**: Secure result submission and prize distribution, including house fees and podium splits.
 - **Spectator Betting**: Spectators can bet on players, with winnings distributed based on final results.
 - **View Endpoints**: Query all relevant contract state for games, tournaments, and bets.
+
+## Game Server / Signing Server Architecture
+
+The Game Server (or Signing Server) is a critical off-chain component that manages multiplayer game sessions and securely submits results to the TournamentHub smart contract.
+
+### Responsibilities
+- **Session Management:** Hosts and manages multiplayer game sessions, tracks participants, and enforces game rules.
+- **Result Determination:** At the end of a session, determines the final podium (ordered list of winners).
+- **Result Signing:** Signs the result data (e.g., tournament ID and podium) with its private key, acting as a trusted attestor.
+- **Result Submission:** Submits the signed result to the TournamentHub smart contract via the `submitResults` endpoint.
+
+### Communication Flow
+1. **Game Session:** Players join and play a game session managed by the Game Server.
+2. **Result Generation:** When the session ends, the server determines the winners and creates a message (e.g., `{tournament_id, podium}`).
+3. **Signing:** The server signs the message with its private key. The public key/address is registered in the smart contract as the trusted signer for that game.
+4. **Submission:** The server (or a relayer) calls the smart contract's `submitResults` endpoint, providing the tournament ID, podium, and signature.
+5. **Verification:** The smart contract verifies the signature and processes payouts if valid.
+
+### Security Considerations
+- The server's private key must be kept secure; compromise could allow fraudulent result submissions.
+- The public key/address is stored on-chain in the game config, so only results from the trusted server are accepted.
+- For advanced setups, the signing server could be a multi-sig or decentralized oracle.
+
+### High-Level Flow Diagram
+
+```mermaid
+sequenceDiagram
+    participant Player
+    participant GameServer as Game Server / Signing Server
+    participant SmartContract as TournamentHub Smart Contract
+
+    Player->>GameServer: Join & play game session
+    GameServer->>GameServer: Track session, determine winners
+    GameServer->>GameServer: Sign result (tournament_id, podium)
+    GameServer->>SmartContract: submitResults(tournament_id, podium, signature)
+    SmartContract->>SmartContract: Verify signature, distribute prizes
+```
 
 ## How to Extend
 
