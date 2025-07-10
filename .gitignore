@@ -11,3 +11,6 @@
 # The mxpy output
 **/output/**
 **/*.interaction.json
+
+__pycache__/
+*.py[cod]
