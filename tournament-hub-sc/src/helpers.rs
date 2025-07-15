@@ -7,7 +7,7 @@ use crate::models::{GameConfig, Tournament};
 pub trait HelperModule: crate::storage::StorageModule {
     fn verify_result_signature(
         &self,
-        _tournament_id: &ManagedBuffer,
+        _tournament_id: &u64,
         _winner_podium: &ManagedVec<ManagedAddress>,
         _signed_result: &ManagedBuffer,
         _game_config: &GameConfig<Self::Api>,
@@ -26,10 +26,11 @@ pub trait HelperModule: crate::storage::StorageModule {
         let house_fee = &tournament.prize_pool * game_config.house_fee_percentage / 10_000u32;
         let remaining_pool = &tournament.prize_pool - &house_fee;
 
-        // Send house fee to owner
+        // Accumulate house fee in contract storage
         if house_fee > 0 {
-            let owner = self.owner().get();
-            self.send().direct_egld(&owner, &house_fee);
+            let mut accumulated_fees = self.accumulated_house_fees().get();
+            accumulated_fees += &house_fee;
+            self.accumulated_house_fees().set(&accumulated_fees);
         }
 
         // Distribute prizes to winners
@@ -43,21 +44,12 @@ pub trait HelperModule: crate::storage::StorageModule {
         }
     }
 
-    fn get_claim_key(
-        &self,
-        tournament_id: &ManagedBuffer,
-        caller: &ManagedAddress,
-    ) -> ManagedBuffer {
+    fn get_claim_key(&self, tournament_id: &u64, caller: &ManagedAddress) -> ManagedBuffer {
         let mut key = ManagedBuffer::new();
-        key.append(tournament_id);
+        let tournament_id_buf = ManagedBuffer::from(&tournament_id.to_be_bytes()[..]);
+        key.append(&tournament_id_buf);
         key.append(&ManagedBuffer::from(b"_"));
         key.append(caller.as_managed_buffer());
         key
-    }
-
-    fn require_owner(&self) {
-        let caller = self.blockchain().get_caller();
-        let owner = self.owner().get();
-        require!(caller == owner, "Only owner can call this function");
     }
 }

@@ -9,7 +9,7 @@ pub trait SpectatorBettingModule:
 {
     #[endpoint(placeSpectatorBet)]
     #[payable("EGLD")]
-    fn place_spectator_bet(&self, tournament_id: ManagedBuffer, betting_on_player: ManagedAddress) {
+    fn place_spectator_bet(&self, tournament_id: u64, betting_on_player: ManagedAddress) {
         let payment = self.call_value().egld().clone_value();
         let caller = self.blockchain().get_caller();
         let current_time = self.blockchain().get_block_timestamp();
@@ -58,7 +58,7 @@ pub trait SpectatorBettingModule:
     }
 
     #[endpoint(claimSpectatorWinnings)]
-    fn claim_spectator_winnings(&self, tournament_id: ManagedBuffer) {
+    fn claim_spectator_winnings(&self, tournament_id: u64) {
         let caller = self.blockchain().get_caller();
 
         require!(

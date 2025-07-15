@@ -5,6 +5,7 @@ multiversx_sc::imports!();
 mod helpers;
 mod models;
 mod storage;
+pub mod tournament_hub_proxy;
 mod views;
 mod tournament_logic {
     pub mod game_registration;
@@ -13,14 +14,16 @@ mod tournament_logic {
     pub mod tournament_management;
 }
 
-// use tournament_logic::game_registration::GameRegistrationModule;
-// use tournament_logic::results_management::ResultsManagementModule;
-// use tournament_logic::spectator_betting::SpectatorBettingModule;
-// use tournament_logic::tournament_management::TournamentManagementModule;
-// use tournament_logic::views::ViewsModule;
-
 #[multiversx_sc::contract]
-pub trait TournamentHub: storage::StorageModule + helpers::HelperModule {
+pub trait TournamentHub:
+    storage::StorageModule
+    + helpers::HelperModule
+    + tournament_logic::game_registration::GameRegistrationModule
+    + tournament_logic::results_management::ResultsManagementModule
+    + tournament_logic::spectator_betting::SpectatorBettingModule
+    + tournament_logic::tournament_management::TournamentManagementModule
+    + views::ViewsModule
+{
     #[init]
     fn init(&self) {}
 

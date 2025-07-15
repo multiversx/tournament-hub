@@ -9,7 +9,7 @@ pub trait GameRegistrationModule: crate::storage::StorageModule {
     #[endpoint(registerGame)]
     fn register_game(
         &self,
-        game_id: ManagedBuffer,
+        game_id: u64,
         signing_server_address: ManagedAddress,
         podium_size: u32,
         prize_distribution_percentages: ManagedVec<u32>,
