@@ -1,58 +1,77 @@
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature, decode_dss_signature
-from cryptography.hazmat.backends import default_backend
-from cryptography.exceptions import InvalidSignature
+import nacl.signing
+import nacl.encoding
+import nacl.exceptions
+import base64
+from cryptography.hazmat.primitives import serialization
 import os
 
 # --- Key Generation ---
 def generate_private_key():
-    """Generate a new ECDSA private key (secp256k1)."""
-    return ec.generate_private_key(ec.SECP256K1(), default_backend())
+    """Generate a new Ed25519 private key."""
+    return nacl.signing.SigningKey.generate()
 
 # --- Key Serialization ---
 def save_private_key_to_pem(private_key, filepath, password=None):
-    pem = private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.BestAvailableEncryption(password.encode()) if password else serialization.NoEncryption()
-    )
+    """Save Ed25519 private key to PEM file."""
+    # Export as raw bytes
+    raw = private_key.encode()
+    # Wrap in PEM format
+    pem = b"-----BEGIN ED25519 PRIVATE KEY-----\n" + base64.encodebytes(raw) + b"-----END ED25519 PRIVATE KEY-----\n"
     with open(filepath, "wb") as f:
         f.write(pem)
 
 def load_private_key_from_pem(filepath, password=None):
+    """Load Ed25519 private key from PEM file."""
     with open(filepath, "rb") as f:
         pem_data = f.read()
-    return serialization.load_pem_private_key(pem_data, password=password.encode() if password else None, backend=default_backend())
+    # Extract base64 part
+    lines = pem_data.split(b"\n")
+    b64 = b"".join([line for line in lines if b"-----" not in line and line.strip()])
+    raw = base64.b64decode(b64)
+    return nacl.signing.SigningKey(raw)
 
 # --- Signing ---
 def sign_message(private_key, message: bytes) -> bytes:
-    signature = private_key.sign(message, ec.ECDSA(hashes.SHA256()))
-    # Optionally, encode as r,s tuple
-    r, s = decode_dss_signature(signature)
-    return r.to_bytes(32, 'big') + s.to_bytes(32, 'big')
+    """Sign a message with Ed25519 private key. Returns raw signature bytes."""
+    signed = private_key.sign(message)
+    return signed.signature
 
 # --- Verification ---
 def verify_signature(public_key, message: bytes, signature: bytes) -> bool:
+    """Verify Ed25519 signature. public_key can be nacl.signing.VerifyKey or raw bytes."""
     try:
-        # Decode r,s from signature
-        r = int.from_bytes(signature[:32], 'big')
-        s = int.from_bytes(signature[32:], 'big')
-        der_sig = encode_dss_signature(r, s)
-        public_key.verify(der_sig, message, ec.ECDSA(hashes.SHA256()))
+        if not isinstance(public_key, nacl.signing.VerifyKey):
+            public_key = nacl.signing.VerifyKey(public_key)
+        public_key.verify(message, signature)
         return True
-    except InvalidSignature:
+    except nacl.exceptions.BadSignatureError:
         return False
+
+# --- Public Key Export/Import ---
+def get_public_key_pem(private_key):
+    """Export Ed25519 public key as PEM."""
+    pubkey = private_key.verify_key.encode()
+    pem = b"-----BEGIN ED25519 PUBLIC KEY-----\n" + base64.encodebytes(pubkey) + b"-----END ED25519 PUBLIC KEY-----\n"
+    return pem
+
+def load_public_key_from_pem(pem_data: bytes):
+    lines = pem_data.split(b"\n")
+    b64 = b"".join([line for line in lines if b"-----" not in line and line.strip()])
+    raw = base64.b64decode(b64)
+    return nacl.signing.VerifyKey(raw)
 
 # --- Example Usage ---
 if __name__ == "__main__":
     # Generate and save a key
     priv = generate_private_key()
-    save_private_key_to_pem(priv, "ecdsa_private.pem", password=None)
+    save_private_key_to_pem(priv, "ed25519_private.pem", password=None)
     # Load the key
-    priv2 = load_private_key_from_pem("ecdsa_private.pem")
-    pub = priv2.public_key()
+    priv2 = load_private_key_from_pem("ed25519_private.pem")
+    pub = priv2.verify_key
     # Sign and verify
     msg = b"test message"
     sig = sign_message(priv2, msg)
-    print("Signature valid:", verify_signature(pub, msg, sig)) 
+    print("Signature valid:", verify_signature(pub, msg, sig))
+    # Export public key PEM
+    pub_pem = get_public_key_pem(priv2)
+    print(pub_pem.decode()) 
