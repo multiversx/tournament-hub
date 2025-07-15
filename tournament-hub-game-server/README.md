@@ -40,6 +40,47 @@ sequenceDiagram
     SmartContract->>SmartContract: Verify signature, distribute prizes
 ```
 
+## End-to-End Solution Flow
+
+The following diagram illustrates the full flow of the tournament hub solution, including all stakeholders and their interactions:
+
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant Server as FastAPI Server
+    participant Contract as TournamentHub SC
+    participant Player
+    participant Spectator
+
+    Admin->>Server: /public_key_pem (get bech32 address)
+    Admin->>Contract: registerGame (with bech32 address)
+    Admin->>Contract: createTournament
+    Player->>Contract: joinTournament
+    Admin->>Server: /start_session (tournament_id, players)
+    Player->>Server: play game (off-chain)
+    Admin->>Server: /submit_results (tournament_id, podium)
+    Admin->>Server: /send_to_contract (tournament_id, podium, signature)
+    Server->>Contract: submitResults (on-chain)
+    Contract->>Player: distribute prizes
+    Spectator->>Contract: (optional) placeSpectatorBet, claimSpectatorWinnings
+```
+
+## Smart Contract Testing Flow
+
+The following table summarizes the main steps for testing the tournament smart contract on the blockchain:
+
+| Step                | Action/Endpoint         | Who Calls It         | Notes                        |
+|---------------------|------------------------|----------------------|------------------------------|
+| 1. Register Game    | `registerGame`         | Admin                | One-time per game            |
+| 2. Create Tournament| `createTournament`     | Admin/Player         |                              |
+| 3. Join Tournament  | `joinTournament`       | Each Player          | Before join_deadline         |
+| 4. Start Tournament | `startTournament`      | Admin/Anyone         | After join_deadline          |
+| 5. Play Game        | Off-chain              | Players/Server       |                              |
+| 6. Get Signature    | `/submit_results`      | Server               | Returns signature            |
+| 7. Submit Results   | `submitResults`        | Server/Admin         | With signature               |
+| 8. Spectator Bets   | `placeSpectatorBet`    | Spectators           | (Optional)                   |
+| 9. Claim Winnings   | `claimSpectatorWinnings`| Spectators          | (Optional)                   |
+
 ## Next Steps
 - Implement a minimal REST API for session management and result submission.
 - Add cryptographic signing of results.
