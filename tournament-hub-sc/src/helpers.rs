@@ -4,17 +4,43 @@ multiversx_sc::derive_imports!();
 use crate::models::{GameConfig, Tournament};
 
 #[multiversx_sc::module]
-pub trait HelperModule: crate::storage::StorageModule {
+pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsModule {
     fn verify_result_signature(
         &self,
-        _tournament_id: &u64,
-        _winner_podium: &ManagedVec<ManagedAddress>,
-        _signed_result: &ManagedBuffer,
-        _game_config: &GameConfig<Self::Api>,
+        tournament_id: &u64,
+        winner_podium: &ManagedVec<ManagedAddress>,
+        signed_result: &ManagedBuffer,
+        game_config: &GameConfig<Self::Api>,
     ) {
-        // Placeholder for signature verification logic
-        // In production, this would verify the signed_result against the signing_server_address
-        // For now, we'll assume the signature is valid
+        // Debug: Log the tournament_id value
+        self.debug_tournament_id_event(tournament_id);
+
+        // Construct message exactly as the server does:
+        // tournament_id (8 bytes big-endian) + raw address bytes for each podium address
+        let mut message = ManagedBuffer::new();
+        message.append(&ManagedBuffer::from(&tournament_id.to_be_bytes()[..]));
+        for addr in winner_podium.iter() {
+            // ManagedAddress has as_managed_buffer() to get the buffer representation
+            message.append(&addr.as_managed_buffer());
+        }
+
+        // Debug: Log the constructed message
+        self.debug_message_event(&message);
+        sc_print!("Verifying result signature...{}", message);
+
+        // The public key should be stored in game_config.signing_server_address
+        let pubkey = game_config.signing_server_address.as_managed_buffer();
+
+        // Debug: Log the signing server address (public key) as hex
+        self.debug_message_event(&pubkey);
+
+        self.debug_message_length_event(message.len());
+
+        self.debug_message_event(&signed_result);
+
+        // Verify the signature
+        self.crypto()
+            .verify_ed25519(&pubkey, &message, signed_result);
     }
 
     fn distribute_player_prizes(
