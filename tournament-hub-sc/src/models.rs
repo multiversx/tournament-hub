@@ -24,7 +24,7 @@ pub enum TournamentStatus {
 #[type_abi]
 #[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
 pub struct Tournament<M: ManagedTypeApi> {
-    pub game_id: ManagedBuffer<M>,
+    pub game_id: u64,
     pub status: TournamentStatus,
     pub entry_fee: BigUint<M>,
     pub participants: ManagedVec<M, ManagedAddress<M>>,
@@ -47,7 +47,7 @@ pub struct SpectatorBet<M: ManagedTypeApi> {
 #[type_abi]
 #[derive(TopEncode, TopDecode, Clone, Debug, PartialEq)]
 pub struct SpectatorClaim<M: ManagedTypeApi> {
-    pub tournament_id: ManagedBuffer<M>,
+    pub tournament_id: u64,
     pub bettor_address: ManagedAddress<M>,
     pub has_claimed: bool,
 }
