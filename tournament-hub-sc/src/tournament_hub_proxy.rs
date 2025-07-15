@@ -260,6 +260,15 @@ where
             .argument(&tournament_id)
             .original_result()
     }
+
+    pub fn get_accumulated_house_fees(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getAccumulatedHouseFees")
+            .original_result()
+    }
 }
 
 #[type_abi]

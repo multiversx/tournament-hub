@@ -2,6 +2,7 @@
 
 multiversx_sc::imports!();
 
+mod events;
 mod helpers;
 mod models;
 mod storage;
@@ -23,6 +24,7 @@ pub trait TournamentHub:
     + tournament_logic::spectator_betting::SpectatorBettingModule
     + tournament_logic::tournament_management::TournamentManagementModule
     + views::ViewsModule
+    + events::EventsModule
 {
     #[init]
     fn init(&self) {}
