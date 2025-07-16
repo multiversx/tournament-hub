@@ -1,4 +1,5 @@
 import logging
+import time
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -13,12 +14,22 @@ sys.path.insert(0, os.path.dirname(__file__))
 from signing import ecdsa_signer
 from multiversx_sdk import Address
 from contract.submit_results import submit_results_to_contract
+from fastapi.middleware.cors import CORSMiddleware
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Or specify ["http://localhost:3000"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Path to the private key file
 PRIVATE_KEY_PATH = os.path.join(os.path.dirname(__file__), "signing", "ed25519_private.pem")
@@ -31,6 +42,10 @@ private_key = ecdsa_signer.load_private_key_from_pem(PRIVATE_KEY_PATH)
 
 # In-memory session store (for demo)
 sessions = {}
+
+# In-memory tournament store (for demo - in production, use a database)
+tournaments = {}
+next_tournament_id = 1
 
 # --- Error Response Model ---
 def error_response(error: str, details: str = "", code: str = "", status_code: int = 400):
@@ -111,6 +126,20 @@ class VerifySignatureRequest(BaseModel):
         for addr in self.podium:
             validate_bech32_address(addr)
         validate_hex_signature(self.signature)
+
+class CreateTournamentRequest(BaseModel):
+    game_id: int
+    entry_fee: str  # EGLD amount in wei
+    prize_pool: str  # EGLD amount in wei
+    join_deadline: int  # Unix timestamp
+    start_time: int  # Unix timestamp
+    end_time: int  # Unix timestamp
+
+class JoinTournamentRequest(BaseModel):
+    player_address: str
+
+    def validate(self):
+        validate_bech32_address(self.player_address)
 
 @app.post("/start_session")
 def start_session(req: StartSessionRequest):
@@ -220,6 +249,130 @@ def send_to_contract(req: SubmitResultsRequest):
 def get_public_key_pem():
     pem = ecdsa_signer.get_public_key_pem(private_key)
     return {"public_key_pem": pem.decode()}
+
+# Frontend API endpoints
+@app.get("/tournaments")
+def get_tournaments():
+    """Get all tournaments"""
+    global tournaments
+    return list(tournaments.values())
+
+@app.get("/tournaments/{tournament_id}")
+def get_tournament(tournament_id: int):
+    """Get a specific tournament"""
+    global tournaments
+    if tournament_id not in tournaments:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    return tournaments[tournament_id]
+
+@app.post("/create_tournament")
+def create_tournament(request: CreateTournamentRequest):
+    """Create a new tournament"""
+    global tournaments, next_tournament_id
+    
+    tournament = {
+        "id": next_tournament_id,
+        "game_id": request.game_id,
+        "entry_fee": request.entry_fee,
+        "prize_pool": request.prize_pool,
+        "status": "created",
+        "join_deadline": request.join_deadline,
+        "start_time": request.start_time,
+        "end_time": request.end_time,
+        "players": [],
+        "created_at": int(time.time())
+    }
+    
+    tournaments[next_tournament_id] = tournament
+    next_tournament_id += 1
+    
+    logger.info(f"Created tournament {tournament['id']}: {tournament}")
+    return {"status": "created", "tournament_id": tournament['id'], "tournament": tournament}
+
+@app.post("/join_tournament/{tournament_id}")
+def join_tournament(tournament_id: int, request: JoinTournamentRequest):
+    """Join a tournament"""
+    global tournaments
+    
+    if tournament_id not in tournaments:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    
+    tournament = tournaments[tournament_id]
+    
+    if tournament["status"] != "created":
+        raise HTTPException(status_code=400, detail="Tournament is not accepting players")
+    
+    if int(time.time()) > tournament["join_deadline"]:
+        raise HTTPException(status_code=400, detail="Join deadline has passed")
+    
+    if request.player_address in tournament["players"]:
+        raise HTTPException(status_code=400, detail="Player already joined")
+    
+    try:
+        request.validate()
+    except HTTPException as e:
+        return error_response("Invalid player address", e.detail, code="INVALID_ADDRESS", status_code=400)
+    
+    tournament["players"].append(request.player_address)
+    tournaments[tournament_id] = tournament
+    
+    logger.info(f"Player {request.player_address} joined tournament {tournament_id}")
+    return {"status": "joined", "tournament_id": tournament_id, "player": request.player_address}
+
+@app.post("/start_tournament/{tournament_id}")
+def start_tournament(tournament_id: int):
+    """Start a tournament"""
+    global tournaments
+    
+    if tournament_id not in tournaments:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    
+    tournament = tournaments[tournament_id]
+    
+    if tournament["status"] != "created":
+        raise HTTPException(status_code=400, detail="Tournament cannot be started")
+    
+    if int(time.time()) < tournament["start_time"]:
+        raise HTTPException(status_code=400, detail="Tournament start time has not been reached")
+    
+    if len(tournament["players"]) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 players to start tournament")
+    
+    tournament["status"] = "active"
+    tournaments[tournament_id] = tournament
+    
+    logger.info(f"Tournament {tournament_id} started with {len(tournament['players'])} players")
+    return {"status": "started", "tournament_id": tournament_id, "players": tournament["players"]}
+
+@app.post("/finish_tournament/{tournament_id}")
+def finish_tournament(tournament_id: int, podium: List[str]):
+    """Finish a tournament with results"""
+    global tournaments
+    
+    if tournament_id not in tournaments:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    
+    tournament = tournaments[tournament_id]
+    
+    if tournament["status"] != "active":
+        raise HTTPException(status_code=400, detail="Tournament is not active")
+    
+    if int(time.time()) < tournament["end_time"]:
+        raise HTTPException(status_code=400, detail="Tournament end time has not been reached")
+    
+    # Validate podium addresses
+    for addr in podium:
+        try:
+            validate_bech32_address(addr)
+        except HTTPException as e:
+            return error_response("Invalid podium address", e.detail, code="INVALID_ADDRESS", status_code=400)
+    
+    tournament["status"] = "finished"
+    tournament["final_podium"] = podium
+    tournaments[tournament_id] = tournament
+    
+    logger.info(f"Tournament {tournament_id} finished with podium: {podium}")
+    return {"status": "finished", "tournament_id": tournament_id, "podium": podium}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000) 
