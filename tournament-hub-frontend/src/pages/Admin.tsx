@@ -7,7 +7,7 @@ import { Trophy, Plus, Settings, Users, ExternalLink } from 'lucide-react'
 
 const Admin = () => {
     const { createTournament, loading, error } = useTournaments()
-    const { isConnected, address } = useWallet()
+    const { isConnected, address, signTransactions } = useWallet()
     const { currentNetwork } = useNetwork()
 
     const [showCreateForm, setShowCreateForm] = useState(false)
@@ -44,28 +44,30 @@ const Admin = () => {
                 entryFee: formData.entry_fee,
                 joinDeadline: formData.join_deadline,
                 playDeadline: formData.end_time
-            }, address, async (transactions: any[]) => {
-                // For now, we'll simulate transaction signing
-                // In a real implementation, this would use the dApp SDK
-                console.log('Signing transactions:', transactions)
-                // Simulate signing delay
-                await new Promise(resolve => setTimeout(resolve, 1000))
-            })
+            }, address, signTransactions)
 
             if (result.success) {
                 setLastTxHash(result.txHash || 'pending')
+                console.log('Tournament creation successful:', result)
+
                 // Also create in backend for UI management
-                await createTournament(formData)
-                setShowCreateForm(false)
-                setFormData({
-                    game_id: 1,
-                    entry_fee: '1000000000000000000', // 1 EGLD in wei
-                    prize_pool: '5000000000000000000', // 5 EGLD in wei
-                    join_deadline: Math.floor(Date.now() / 1000) + 300,
-                    start_time: Math.floor(Date.now() / 1000) + 300,
-                    end_time: Math.floor(Date.now() / 1000) + 3600,
-                })
+                try {
+                    await createTournament(formData)
+                    setShowCreateForm(false)
+                    setFormData({
+                        game_id: 1,
+                        entry_fee: '1000000000000000000', // 1 EGLD in wei
+                        prize_pool: '5000000000000000000', // 5 EGLD in wei
+                        join_deadline: Math.floor(Date.now() / 1000) + 300,
+                        start_time: Math.floor(Date.now() / 1000) + 300,
+                        end_time: Math.floor(Date.now() / 1000) + 3600,
+                    })
+                } catch (backendError) {
+                    console.error('Backend creation failed:', backendError)
+                    // Don't fail the whole operation if backend fails
+                }
             } else {
+                console.error('Blockchain operation failed:', result)
                 setBlockchainError(result.error || 'Failed to create tournament on blockchain')
             }
         } catch (error) {

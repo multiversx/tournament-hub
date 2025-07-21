@@ -37,12 +37,20 @@ class BlockchainService {
             const smartContractService = getSmartContractService(this.networkId)
             const { contractAddress } = await smartContractService.createTournament(params, senderAddress)
 
+            // Fetch current nonce for the sender
+            const nonceResponse = await fetch(`https://devnet-api.multiversx.com/accounts/${senderAddress}`);
+            const account = await nonceResponse.json();
+            const currentNonce = account.nonce;
+
             // Create the transaction for the dApp SDK
             const transaction = {
+                sender: senderAddress,
                 receiver: contractAddress,
                 value: '0',
                 data: this.encodeCreateTournamentData(params),
-                gasLimit: 60000000
+                gasLimit: 60000000,
+                chainID: 'D', // Devnet
+                nonce: currentNonce + 1 // <-- Set correct nonce
             }
 
             // Sign and send the transaction
@@ -75,12 +83,20 @@ class BlockchainService {
             const smartContractService = getSmartContractService(this.networkId)
             const { contractAddress } = await smartContractService.joinTournament(params, senderAddress)
 
+            // Fetch current nonce for the sender
+            const nonceResponse = await fetch(`https://devnet-api.multiversx.com/accounts/${senderAddress}`);
+            const account = await nonceResponse.json();
+            const currentNonce = account.nonce;
+
             // Create the transaction for the dApp SDK
             const transaction = {
+                sender: senderAddress,
                 receiver: contractAddress,
                 value: params.entryFee,
                 data: this.encodeJoinTournamentData(params),
-                gasLimit: 60000000
+                gasLimit: 60000000,
+                chainID: 'D', // Devnet
+                nonce: currentNonce + 1 // <-- Set correct nonce
             }
 
             // Sign and send the transaction
@@ -113,12 +129,20 @@ class BlockchainService {
             const smartContractService = getSmartContractService(this.networkId)
             const { contractAddress } = await smartContractService.startTournament(params, senderAddress)
 
+            // Fetch current nonce for the sender
+            const nonceResponse = await fetch(`https://devnet-api.multiversx.com/accounts/${senderAddress}`);
+            const account = await nonceResponse.json();
+            const currentNonce = account.nonce;
+
             // Create the transaction for the dApp SDK
             const transaction = {
+                sender: senderAddress,
                 receiver: contractAddress,
                 value: '0',
                 data: this.encodeStartTournamentData(params),
-                gasLimit: 60000000
+                gasLimit: 60000000,
+                chainID: 'D', // Devnet
+                nonce: currentNonce + 1 // <-- Set correct nonce
             }
 
             // Sign and send the transaction
@@ -152,24 +176,30 @@ class BlockchainService {
 
     // Helper methods to encode contract calls
     private encodeCreateTournamentData(params: CreateTournamentParams): string {
-        // This is a simplified encoding - in production, use proper ABI encoding
+        // MultiversX uses hex encoding for function calls
         const tournamentIdHex = params.tournamentId.toString(16).padStart(16, '0')
         const gameIdHex = params.gameId.toString(16).padStart(16, '0')
         const entryFeeHex = BigInt(params.entryFee).toString(16).padStart(16, '0')
         const joinDeadlineHex = params.joinDeadline.toString(16).padStart(16, '0')
         const playDeadlineHex = params.playDeadline.toString(16).padStart(16, '0')
 
-        return `createTournament@${tournamentIdHex}@${gameIdHex}@${entryFeeHex}@${joinDeadlineHex}@${playDeadlineHex}`
+        const encodedData = `createTournament@${tournamentIdHex}@${gameIdHex}@${entryFeeHex}@${joinDeadlineHex}@${playDeadlineHex}`
+        console.log('Encoded createTournament data:', encodedData)
+        return encodedData
     }
 
     private encodeJoinTournamentData(params: JoinTournamentParams): string {
         const tournamentIdHex = params.tournamentId.toString(16).padStart(16, '0')
-        return `joinTournament@${tournamentIdHex}`
+        const encodedData = `joinTournament@${tournamentIdHex}`
+        console.log('Encoded joinTournament data:', encodedData)
+        return encodedData
     }
 
     private encodeStartTournamentData(params: StartTournamentParams): string {
         const tournamentIdHex = params.tournamentId.toString(16).padStart(16, '0')
-        return `startTournament@${tournamentIdHex}`
+        const encodedData = `startTournament@${tournamentIdHex}`
+        console.log('Encoded startTournament data:', encodedData)
+        return encodedData
     }
 }
 
