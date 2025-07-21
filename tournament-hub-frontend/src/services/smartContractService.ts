@@ -50,22 +50,13 @@ class SmartContractService {
         return this.networkConfig
     }
 
-    public async createTournament(params: CreateTournamentParams, _senderAddress: string): Promise<ContractInteraction> {
+    public async createTournament(params: CreateTournamentParams, _senderAddress: string): Promise<{ contractAddress: string }> {
         try {
             console.log('Creating tournament with params:', params)
             console.log('Network:', this.networkConfig.name)
             console.log('Contract address:', this.networkConfig.contractAddress)
 
-            // For now, return a mock interaction
-            // In a real implementation, this would create an actual contract interaction
             return {
-                interaction: {
-                    method: 'createTournament',
-                    args: [params.tournamentId, params.gameId, params.entryFee, params.joinDeadline, params.playDeadline],
-                    value: '0',
-                    gasLimit: 60000000
-                },
-                network: this.networkConfig.name,
                 contractAddress: this.networkConfig.contractAddress
             }
         } catch (error) {
@@ -74,20 +65,13 @@ class SmartContractService {
         }
     }
 
-    public async joinTournament(params: JoinTournamentParams, _senderAddress: string): Promise<ContractInteraction> {
+    public async joinTournament(params: JoinTournamentParams, _senderAddress: string): Promise<{ contractAddress: string }> {
         try {
             console.log('Joining tournament with params:', params)
             console.log('Network:', this.networkConfig.name)
             console.log('Contract address:', this.networkConfig.contractAddress)
 
             return {
-                interaction: {
-                    method: 'joinTournament',
-                    args: [params.tournamentId],
-                    value: params.entryFee,
-                    gasLimit: 60000000
-                },
-                network: this.networkConfig.name,
                 contractAddress: this.networkConfig.contractAddress
             }
         } catch (error) {
@@ -96,20 +80,13 @@ class SmartContractService {
         }
     }
 
-    public async startTournament(params: StartTournamentParams, _senderAddress: string): Promise<ContractInteraction> {
+    public async startTournament(params: StartTournamentParams, _senderAddress: string): Promise<{ contractAddress: string }> {
         try {
             console.log('Starting tournament with params:', params)
             console.log('Network:', this.networkConfig.name)
             console.log('Contract address:', this.networkConfig.contractAddress)
 
             return {
-                interaction: {
-                    method: 'startTournament',
-                    args: [params.tournamentId],
-                    value: '0',
-                    gasLimit: 60000000
-                },
-                network: this.networkConfig.name,
                 contractAddress: this.networkConfig.contractAddress
             }
         } catch (error) {

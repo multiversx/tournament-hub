@@ -1,11 +1,11 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useWallet } from '../contexts/WalletContext'
 import { useNetwork } from '../contexts/NetworkContext'
-import { Trophy, Wallet, Home, Settings, ChevronDown, Globe, Loader2 } from 'lucide-react'
+import { Trophy, Wallet, Home, Settings, ChevronDown, Globe } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 
 const Navbar = () => {
-    const { isConnected, address, connect, disconnect, walletType, error, clearError, isLoading } = useWallet()
+    const { isConnected, address, login, logout, providerType } = useWallet()
     const { currentNetwork, availableNetworks, setNetwork, isLoading: networkLoading, error: networkError, clearError: clearNetworkError } = useNetwork()
     const location = useLocation()
     const [showWalletMenu, setShowWalletMenu] = useState(false)
@@ -38,19 +38,6 @@ const Navbar = () => {
 
     const formatAddress = (addr: string) => {
         return `${addr.slice(0, 6)}...${addr.slice(-4)}`
-    }
-
-    const handleWalletConnect = async (walletType: 'xportal' | 'defi' | 'web' | 'development') => {
-        try {
-            console.log('🎯 Wallet connect button clicked for type:', walletType)
-            console.log('📞 Calling connect function...')
-            await connect(walletType)
-            console.log('✅ Connect function completed successfully')
-            setShowWalletMenu(false)
-        } catch (error) {
-            // Error is handled by the wallet context
-            console.error('❌ Wallet connection failed:', error)
-        }
     }
 
     return (
@@ -102,21 +89,6 @@ const Navbar = () => {
                             </div>
                         )}
 
-                        {/* Wallet Error Message */}
-                        {error && (
-                            <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded text-sm max-w-xs">
-                                <div className="flex justify-between items-center">
-                                    <span>{error}</span>
-                                    <button
-                                        onClick={clearError}
-                                        className="ml-2 text-red-500 hover:text-red-700"
-                                    >
-                                        ×
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
                         {/* Network Selector */}
                         <div className="relative" ref={networkMenuRef}>
                             <button
@@ -156,12 +128,11 @@ const Navbar = () => {
                         {isConnected ? (
                             <div className="flex items-center space-x-3">
                                 <div className="text-sm text-gray-600">
-                                    {formatAddress(address!)} ({walletType})
+                                    {formatAddress(address!)} ({providerType})
                                 </div>
                                 <button
-                                    onClick={disconnect}
+                                    onClick={logout}
                                     className="btn-secondary text-sm"
-                                    disabled={isLoading}
                                 >
                                     Disconnect
                                 </button>
@@ -169,51 +140,41 @@ const Navbar = () => {
                         ) : (
                             <div className="relative" ref={walletMenuRef}>
                                 <button
-                                    onClick={() => {
-                                        console.log('🔘 Main Connect Wallet button clicked!')
-                                        setShowWalletMenu(!showWalletMenu)
-                                    }}
+                                    onClick={() => setShowWalletMenu(!showWalletMenu)}
                                     className="btn-primary flex items-center space-x-2"
-                                    disabled={isLoading}
                                 >
-                                    {isLoading ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                        <Wallet className="h-4 w-4" />
-                                    )}
-                                    <span>{isLoading ? 'Connecting...' : 'Connect Wallet'}</span>
-                                    {!isLoading && <ChevronDown className="h-4 w-4" />}
+                                    <Wallet className="h-4 w-4" />
+                                    <span>Connect Wallet</span>
+                                    <ChevronDown className="h-4 w-4" />
                                 </button>
 
-                                {showWalletMenu && !isLoading && (
-                                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-50">
+                                {showWalletMenu && (
+                                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-md shadow-lg border border-gray-200 z-50">
                                         <div className="py-1">
                                             <button
-                                                onClick={() => handleWalletConnect('development')}
+                                                onClick={() => { login('web'); setShowWalletMenu(false); }}
                                                 className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                                             >
-                                                Development Mode
+                                                <div className="flex flex-col">
+                                                    <span className="font-medium">Web Wallet (Keystore)</span>
+                                                    <span className="text-xs text-gray-500">Recommended - Use keystore file</span>
+                                                </div>
+                                            </button>
+                                            <div className="px-4 py-2 text-xs text-gray-500 border-t border-gray-100">
+                                                <div className="mb-1">⚠️ PEM method has known issues</div>
+                                                <div>Use keystore instead for best compatibility</div>
+                                            </div>
+                                            <button
+                                                onClick={() => { login('extension'); setShowWalletMenu(false); }}
+                                                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                            >
+                                                Extension Wallet
                                             </button>
                                             <button
-                                                onClick={() => {
-                                                    console.log('🔘 Web Wallet button clicked!')
-                                                    handleWalletConnect('web')
-                                                }}
+                                                onClick={() => { login('walletconnect'); setShowWalletMenu(false); }}
                                                 className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                                             >
-                                                Web Wallet
-                                            </button>
-                                            <button
-                                                onClick={() => handleWalletConnect('defi')}
-                                                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                            >
-                                                DeFi Wallet
-                                            </button>
-                                            <button
-                                                onClick={() => handleWalletConnect('xportal')}
-                                                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                            >
-                                                xPortal Wallet
+                                                xPortal (WalletConnect)
                                             </button>
                                         </div>
                                     </div>
