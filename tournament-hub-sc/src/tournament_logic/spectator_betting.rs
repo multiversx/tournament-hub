@@ -5,7 +5,7 @@ multiversx_sc::derive_imports!();
 
 #[multiversx_sc::module]
 pub trait SpectatorBettingModule:
-    crate::storage::StorageModule + crate::helpers::HelperModule
+    crate::storage::StorageModule + crate::helpers::HelperModule + crate::events::EventsModule
 {
     #[endpoint(placeSpectatorBet)]
     #[payable("EGLD")]

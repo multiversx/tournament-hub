@@ -436,6 +436,178 @@ fn test_result_submission_and_prize_distribution() {
 }
 
 #[test]
+fn test_debug_message_construction() {
+    let mut state = TournamentHubTestState::new();
+    state.deploy_tournament_hub_contract();
+
+    let game_id = 1u64;
+    let tournament_id = 8u64; // Same as your test case
+    let entry_fee = BigUint::from(10u64).pow(18);
+    let join_deadline = 100u64;
+    let play_deadline = 200u64;
+
+    state.register_game(game_id);
+    state.create_tournament(
+        tournament_id,
+        game_id,
+        &entry_fee,
+        join_deadline,
+        play_deadline,
+    );
+    state.join_tournament(tournament_id, "user1", &entry_fee);
+
+    // Move to play_deadline
+    state.world.current_block().block_timestamp(play_deadline);
+    state.start_tournament(tournament_id);
+
+    // Test with the exact same data as your real test
+    let podium = vec![USER1.to_address()]; // Single player podium
+    let signature = vec![
+        0xea, 0xef, 0xf5, 0x5a, 0xbc, 0xb1, 0x1c, 0x1d, 0x23, 0x1d, 0x0a, 0xe2, 0x03, 0x5a, 0x44,
+        0x7c, 0xa0, 0x52, 0x56, 0x65, 0x9d, 0x16, 0x28, 0x61, 0xac, 0x21, 0xb5, 0x2a, 0x72, 0xc0,
+        0x1c, 0xc6, 0xaa, 0x65, 0x47, 0x73, 0xb6, 0x27, 0x53, 0x37, 0x64, 0x53, 0xdf, 0x2a, 0x7c,
+        0x73, 0xb0, 0x0c, 0xf3, 0xba, 0x6b, 0xd4, 0x50, 0x51, 0xb9, 0xc7, 0x9f, 0x72, 0x17, 0x65,
+        0x2b, 0x49, 0x57, 0x05,
+    ];
+
+    println!("=== DEBUG MESSAGE CONSTRUCTION ===");
+    println!("Tournament ID: {}", tournament_id);
+    println!(
+        "Tournament ID as u64 bytes: {:?}",
+        tournament_id.to_be_bytes()
+    );
+    println!("Podium addresses: {:?}", podium);
+    println!("Signature length: {}", signature.len());
+    println!("Signature: {:?}", signature);
+
+    // This should fail with ed25519 verify error, but we'll see the debug events
+    // Let's just run it and see what happens without expecting a specific error
+    state
+        .world
+        .tx()
+        .from(USER1)
+        .to(TOURNAMENT_HUB_ADDRESS)
+        .typed(tournament_hub_proxy::TournamentHubProxy)
+        .submit_results(tournament_id, podium, signature)
+        .run();
+
+    println!("=== END DEBUG ===");
+}
+
+#[test]
+fn test_debug_message_construction_success() {
+    let mut state = TournamentHubTestState::new();
+    state.deploy_tournament_hub_contract();
+
+    let game_id = 1u64;
+    let tournament_id = 8u64; // Same as your test case
+    let entry_fee = BigUint::from(10u64).pow(18);
+    let join_deadline = 100u64;
+    let play_deadline = 200u64;
+
+    state.register_game(game_id);
+    state.create_tournament(
+        tournament_id,
+        game_id,
+        &entry_fee,
+        join_deadline,
+        play_deadline,
+    );
+    state.join_tournament(tournament_id, "user1", &entry_fee);
+
+    // Move to play_deadline
+    state.world.current_block().block_timestamp(play_deadline);
+    state.start_tournament(tournament_id);
+
+    // Test with a valid signature (we'll create one that matches our expected message)
+    let podium = vec![USER1.to_address()]; // Single player podium
+
+    // Create a signature that matches our expected message format
+    // Expected message: tournament_id (8 bytes) + address bytes
+    let mut expected_message = Vec::new();
+    expected_message.extend_from_slice(&tournament_id.to_be_bytes());
+    expected_message.extend_from_slice(&USER1.to_address().to_vec());
+
+    println!("=== DEBUG MESSAGE CONSTRUCTION SUCCESS ===");
+    println!("Tournament ID: {}", tournament_id);
+    println!(
+        "Tournament ID as u64 bytes: {:?}",
+        tournament_id.to_be_bytes()
+    );
+    println!("Expected message: {:?}", expected_message);
+    println!("Expected message hex: {:02x?}", expected_message);
+    println!("Podium addresses: {:?}", podium);
+
+    // For now, use a dummy signature - we'll see if the message construction works
+    let dummy_signature = vec![0u8; 64];
+
+    // This should fail, but we'll see the debug events in the logs
+    state
+        .world
+        .tx()
+        .from(USER1)
+        .to(TOURNAMENT_HUB_ADDRESS)
+        .typed(tournament_hub_proxy::TournamentHubProxy)
+        .submit_results(tournament_id, podium, dummy_signature)
+        .returns(ExpectError(4u64, "ed25519 verify error"))
+        .run();
+
+    println!("=== END DEBUG SUCCESS ===");
+}
+
+#[test]
+fn test_debug_message_construction_with_real_addresses() {
+    let mut state = TournamentHubTestState::new();
+    state.deploy_tournament_hub_contract();
+
+    let game_id = 1u64;
+    let tournament_id = 8u64; // Same as your test case
+    let entry_fee = BigUint::from(10u64).pow(18);
+    let join_deadline = 100u64;
+    let play_deadline = 200u64;
+
+    state.register_game(game_id);
+    state.create_tournament(
+        tournament_id,
+        game_id,
+        &entry_fee,
+        join_deadline,
+        play_deadline,
+    );
+    state.join_tournament(tournament_id, "user1", &entry_fee);
+
+    // Move to play_deadline
+    state.world.current_block().block_timestamp(play_deadline);
+    state.start_tournament(tournament_id);
+
+    // Use the test address directly - this will show us what the test environment produces
+    let podium = vec![USER1.to_address()]; // Use test address
+    let dummy_signature = vec![0u8; 64];
+
+    println!("=== DEBUG MESSAGE CONSTRUCTION WITH TEST ADDRESSES ===");
+    println!("Tournament ID: {}", tournament_id);
+    println!(
+        "Tournament ID as u64 bytes: {:?}",
+        tournament_id.to_be_bytes()
+    );
+    println!("Test address: {:?}", USER1.to_address());
+    println!("Podium addresses: {:?}", podium);
+
+    // This should fail, but we'll see the debug events in the logs
+    state
+        .world
+        .tx()
+        .from(USER1)
+        .to(TOURNAMENT_HUB_ADDRESS)
+        .typed(tournament_hub_proxy::TournamentHubProxy)
+        .submit_results(tournament_id, podium, dummy_signature)
+        .returns(ExpectError(4u64, "ed25519 verify error"))
+        .run();
+
+    println!("=== END DEBUG WITH TEST ADDRESSES ===");
+}
+
+#[test]
 fn test_spectator_betting_and_claims() {
     let mut state = TournamentHubTestState::new();
     state.deploy_tournament_hub_contract();
