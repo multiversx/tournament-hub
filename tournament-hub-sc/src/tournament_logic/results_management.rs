@@ -5,7 +5,7 @@ multiversx_sc::derive_imports!();
 
 #[multiversx_sc::module]
 pub trait ResultsManagementModule:
-    crate::storage::StorageModule + crate::helpers::HelperModule
+    crate::storage::StorageModule + crate::helpers::HelperModule + crate::events::EventsModule
 {
     #[endpoint(submitResults)]
     fn submit_results(
@@ -36,6 +36,7 @@ pub trait ResultsManagementModule:
         // Verify signature (simplified - in production, implement proper signature verification)
         // This would involve verifying the signed_result against the game's signing_server_address
         self.verify_result_signature(&tournament_id, &winner_podium, &signed_result, &game_config);
+        self.results_submitted_event(&tournament_id, &self.blockchain().get_caller());
 
         // Validate winner podium
         require!(
@@ -60,6 +61,7 @@ pub trait ResultsManagementModule:
 
         // Calculate and distribute prizes
         self.distribute_player_prizes(&tournament, &game_config);
+        <Self as crate::events::EventsModule>::prizes_distributed_event(self, &tournament_id);
 
         tournament.status = TournamentStatus::Completed;
         self.active_tournaments().insert(tournament_id, tournament);

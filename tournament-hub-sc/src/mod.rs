@@ -1,3 +1,4 @@
+pub mod events;
 pub mod helpers;
 pub mod models;
 pub mod storage;

@@ -5,7 +5,9 @@ multiversx_sc::derive_imports!();
 
 #[multiversx_sc::module]
 // Specify the supertrait with its full path as required by the linter
-pub trait TournamentManagementModule: crate::storage::StorageModule {
+pub trait TournamentManagementModule:
+    crate::storage::StorageModule + crate::events::EventsModule
+{
     #[endpoint(createTournament)]
     fn create_tournament(
         &self,
@@ -45,6 +47,7 @@ pub trait TournamentManagementModule: crate::storage::StorageModule {
         };
 
         self.active_tournaments().insert(tournament_id, tournament);
+        self.tournament_created_event(&tournament_id, &game_id, &self.blockchain().get_caller());
     }
 
     #[endpoint(joinTournament)]
@@ -68,6 +71,9 @@ pub trait TournamentManagementModule: crate::storage::StorageModule {
         // Check if player can join based on status and timing
         match tournament.status {
             TournamentStatus::Joining => {
+                self.debug_current_time_event(&current_time);
+                self.debug_join_deadline_event(&tournament.join_deadline);
+
                 require!(
                     current_time <= tournament.join_deadline,
                     "Join deadline has passed"
@@ -90,14 +96,18 @@ pub trait TournamentManagementModule: crate::storage::StorageModule {
 
         // Check if player is already participating
         for participant in tournament.participants.iter() {
-            require!(participant.clone_value() != caller, "Player already joined");
+            require!(
+                participant.clone_value() != caller.clone(),
+                "Player already joined"
+            );
         }
 
         // Add player and update prize pool
-        tournament.participants.push(caller);
+        tournament.participants.push(caller.clone());
         tournament.prize_pool += &payment;
 
         self.active_tournaments().insert(tournament_id, tournament);
+        self.player_joined_event(&tournament_id, &caller);
     }
 
     #[endpoint(startTournament)]
@@ -115,6 +125,13 @@ pub trait TournamentManagementModule: crate::storage::StorageModule {
         );
 
         let current_time = self.blockchain().get_block_timestamp();
+        let join_deadline_for_event = tournament.join_deadline;
+        let status_for_event = tournament.status.clone();
+
+        self.debug_current_time_event(&current_time);
+        self.debug_join_deadline_event(&join_deadline_for_event);
+        self.debug_tournament_status_event(&(status_for_event as u32));
+
         require!(
             current_time >= tournament.join_deadline,
             "Join deadline has not passed yet"
@@ -122,5 +139,6 @@ pub trait TournamentManagementModule: crate::storage::StorageModule {
 
         tournament.status = TournamentStatus::Playing;
         self.active_tournaments().insert(tournament_id, tournament);
+        self.tournament_started_event(&tournament_id);
     }
 }
