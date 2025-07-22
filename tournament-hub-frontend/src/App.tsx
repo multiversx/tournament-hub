@@ -1,33 +1,36 @@
-import { Routes, Route } from 'react-router-dom'
-import { WalletProvider } from './contexts/WalletContext'
-import { NetworkProvider } from './contexts/NetworkContext'
-import { TournamentProvider } from './contexts/TournamentContext'
-import Navbar from './components/Navbar'
-import Home from './pages/Home'
-import Tournaments from './pages/Tournaments'
-import TournamentDetails from './pages/TournamentDetails'
-import Admin from './pages/Admin'
+import { Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+import { PageNotFound } from 'pages/PageNotFound/PageNotFound';
+import { routes } from 'routes';
+import { AxiosInterceptors, BatchTransactionsContextProvider } from 'wrappers';
+import { Layout } from './components';
 
-function App() {
-    return (
-        <WalletProvider>
-            <NetworkProvider>
-                <TournamentProvider>
-                    <div className="min-h-screen bg-gray-50">
-                        <Navbar />
-                        <main className="container mx-auto px-4 py-8">
-                            <Routes>
-                                <Route path="/" element={<Home />} />
-                                <Route path="/tournaments" element={<Tournaments />} />
-                                <Route path="/tournaments/:id" element={<TournamentDetails />} />
-                                <Route path="/admin" element={<Admin />} />
-                            </Routes>
-                        </main>
-                    </div>
-                </TournamentProvider>
-            </NetworkProvider>
-        </WalletProvider>
-    )
-}
-
-export default App 
+export const App = () => {
+  return (
+    <Router>
+      <AxiosInterceptors>
+        <BatchTransactionsContextProvider>
+          <Layout>
+            <Routes>
+              {routes.map((route) => (
+                <Route
+                  key={`route-key-${route.path}`}
+                  path={route.path}
+                  element={<route.component />}
+                >
+                  {route.children?.map((child) => (
+                    <Route
+                      key={`route-key-${route.path}-${child.path}`}
+                      path={child.path}
+                      element={<child.component />}
+                    />
+                  ))}
+                </Route>
+              ))}
+              <Route path='*' element={<PageNotFound />} />
+            </Routes>
+          </Layout>
+        </BatchTransactionsContextProvider>
+      </AxiosInterceptors>
+    </Router>
+  );
+};
