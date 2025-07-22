@@ -22,6 +22,20 @@ pub trait ViewsModule: crate::storage::StorageModule {
         }
     }
 
+    #[view(getNumberOfTournaments)]
+    fn get_number_of_tournaments(&self) -> usize {
+        self.active_tournaments().len()
+    }
+
+    #[view(getActiveTournamentIds)]
+    fn get_active_tournament_ids(&self) -> ManagedVec<u64> {
+        let mut ids = ManagedVec::new();
+        for id in self.active_tournaments().keys() {
+            ids.push(id);
+        }
+        ids
+    }
+
     #[view(getSpectatorBets)]
     fn get_spectator_bets(
         &self,

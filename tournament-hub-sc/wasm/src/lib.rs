@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           11
+// Endpoints:                           14
 // Async Callback (empty):               1
-// Total number of exported functions:  14
+// Total number of exported functions:  17
 
 #![no_std]
 
@@ -29,8 +29,11 @@ multiversx_sc_wasm_adapter::endpoints! {
         startTournament => start_tournament
         getGameConfig => get_game_config
         getTournament => get_tournament
+        getNumberOfTournaments => get_number_of_tournaments
+        getActiveTournamentIds => get_active_tournament_ids
         getSpectatorBets => get_spectator_bets
         getSpectatorPoolTotal => get_spectator_pool_total
+        getAccumulatedHouseFees => get_accumulated_house_fees
     )
 }
 
