@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { Box, Text, HStack, VStack } from '@chakra-ui/react';
 import { Button, MxLink } from 'components';
 import { environment } from 'config';
 import { getAccountProvider, useGetIsLoggedIn, useGetAccountInfo, useGetNetworkConfig, DECIMALS, DIGITS, FormatAmountController } from 'lib';
@@ -26,31 +27,53 @@ export const Header = () => {
     });
 
   return (
-    <header className='flex flex-row align-center justify-between pl-6 pr-6 pt-6'>
+    <Box as="header" display="flex" flexDirection="row" alignItems="center" justifyContent="space-between" pl={6} pr={6} pt={6}>
       <MxLink
         className='flex items-center justify-between'
         to={RouteNamesEnum.home}
       >
-        <span className='text-2xl font-bold text-blue-700'>Tournament Hub</span>
+        <Text fontSize="2xl" fontWeight="bold" color="blue.400">Tournament Hub</Text>
       </MxLink>
 
-      <nav className='h-full w-full text-sm sm:relative sm:left-auto sm:top-auto sm:flex sm:w-auto sm:flex-row sm:justify-end sm:bg-transparent'>
-        <div className='flex justify-end container mx-auto items-center gap-2'>
-          <div className='flex gap-1 items-center'>
-            <div className='w-2 h-2 rounded-full bg-green-500' />
-            <p className='text-gray-600'>{environment}</p>
-          </div>
+      <Box as="nav" h="full" w={{ base: 'full', sm: 'auto' }} fontSize="sm" position={{ base: 'static', sm: 'relative' }} left={{ sm: 'auto' }} top={{ sm: 'auto' }} display={{ base: 'block', sm: 'flex' }} flexDirection={{ sm: 'row' }} justifyContent={{ sm: 'end' }} bg={{ sm: 'transparent' }}>
+        <HStack justify="end" spacing={2} alignItems="center">
+          <HStack spacing={1} alignItems="center">
+            <Box w={2} h={2} borderRadius="full" bg="green.500" />
+            <Text color="gray.400">{environment}</Text>
+          </HStack>
 
           {isLoggedIn && (
             <>
-              <span className='text-gray-700 font-mono text-xs bg-gray-100 rounded px-2 py-1'>{address}</span>
-              <span className='text-gray-700 font-mono text-xs bg-gray-100 rounded px-2 py-1'>
+              <Text
+                fontFamily="mono"
+                fontSize="xs"
+                bg="gray.800"
+                color="gray.300"
+                borderRadius="md"
+                px={2}
+                py={1}
+                border="1px solid"
+                borderColor="gray.700"
+              >
+                {address}
+              </Text>
+              <Text
+                fontFamily="mono"
+                fontSize="xs"
+                bg="gray.800"
+                color="gray.300"
+                borderRadius="md"
+                px={2}
+                py={1}
+                border="1px solid"
+                borderColor="gray.700"
+              >
                 Balance: {isValid ? `${valueInteger}.${valueDecimal} ${label}` : '...'}
-              </span>
+              </Text>
               <NotificationsButton />
               <Button
                 onClick={handleLogout}
-                className='inline-block rounded-lg px-3 py-2 text-center hover:no-underline my-0 text-gray-600 hover:bg-slate-100 mx-0'
+                className="inline-block rounded-lg px-3 py-2 text-center hover:no-underline my-0 text-gray-400 hover:bg-gray-800 mx-0"
               >
                 Logout
               </Button>
@@ -66,8 +89,8 @@ export const Header = () => {
               Connect
             </Button>
           )}
-        </div>
-      </nav>
-    </header>
+        </HStack>
+      </Box>
+    </Box>
   );
 };

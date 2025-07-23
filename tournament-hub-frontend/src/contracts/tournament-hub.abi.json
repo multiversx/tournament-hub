@@ -1,0 +1,360 @@
+{
+    "buildInfo": {
+        "rustc": {
+            "version": "1.86.0",
+            "commitHash": "05f9846f893b09a1be1fc8560e33fc3c815cfecb",
+            "commitDate": "2025-03-31",
+            "channel": "Stable",
+            "short": "rustc 1.86.0 (05f9846f8 2025-03-31)"
+        },
+        "contractCrate": {
+            "name": "tournament-hub",
+            "version": "0.0.0"
+        },
+        "framework": {
+            "name": "multiversx-sc",
+            "version": "0.57.1"
+        }
+    },
+    "name": "TournamentHub",
+    "constructor": {
+        "inputs": [],
+        "outputs": []
+    },
+    "upgradeConstructor": {
+        "inputs": [],
+        "outputs": []
+    },
+    "endpoints": [
+        {
+            "name": "registerGame",
+            "onlyOwner": true,
+            "mutability": "mutable",
+            "inputs": [
+                {
+                    "name": "game_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "signing_server_address",
+                    "type": "Address"
+                },
+                {
+                    "name": "podium_size",
+                    "type": "u32"
+                },
+                {
+                    "name": "prize_distribution_percentages",
+                    "type": "List<u32>"
+                },
+                {
+                    "name": "house_fee_percentage",
+                    "type": "u32"
+                },
+                {
+                    "name": "allow_late_join",
+                    "type": "bool"
+                }
+            ],
+            "outputs": []
+        },
+        {
+            "name": "submitResults",
+            "mutability": "mutable",
+            "inputs": [
+                {
+                    "name": "tournament_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "winner_podium",
+                    "type": "List<Address>"
+                },
+                {
+                    "name": "signed_result",
+                    "type": "bytes"
+                }
+            ],
+            "outputs": []
+        },
+        {
+            "name": "placeSpectatorBet",
+            "mutability": "mutable",
+            "payableInTokens": [
+                "EGLD"
+            ],
+            "inputs": [
+                {
+                    "name": "tournament_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "betting_on_player",
+                    "type": "Address"
+                }
+            ],
+            "outputs": []
+        },
+        {
+            "name": "claimSpectatorWinnings",
+            "mutability": "mutable",
+            "inputs": [
+                {
+                    "name": "tournament_id",
+                    "type": "u64"
+                }
+            ],
+            "outputs": []
+        },
+        {
+            "name": "createTournament",
+            "mutability": "mutable",
+            "inputs": [
+                {
+                    "name": "tournament_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "game_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "entry_fee",
+                    "type": "BigUint"
+                },
+                {
+                    "name": "join_deadline",
+                    "type": "u64"
+                },
+                {
+                    "name": "play_deadline",
+                    "type": "u64"
+                }
+            ],
+            "outputs": []
+        },
+        {
+            "name": "joinTournament",
+            "mutability": "mutable",
+            "payableInTokens": [
+                "EGLD"
+            ],
+            "inputs": [
+                {
+                    "name": "tournament_id",
+                    "type": "u64"
+                }
+            ],
+            "outputs": []
+        },
+        {
+            "name": "startTournament",
+            "mutability": "mutable",
+            "inputs": [
+                {
+                    "name": "tournament_id",
+                    "type": "u64"
+                }
+            ],
+            "outputs": []
+        },
+        {
+            "name": "getGameConfig",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "game_id",
+                    "type": "u64"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "Option<GameConfig>"
+                }
+            ]
+        },
+        {
+            "name": "getTournament",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "tournament_id",
+                    "type": "u64"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "Option<Tournament>"
+                }
+            ]
+        },
+        {
+            "name": "getNumberOfTournaments",
+            "mutability": "readonly",
+            "inputs": [],
+            "outputs": [
+                {
+                    "type": "u32"
+                }
+            ]
+        },
+        {
+            "name": "getActiveTournamentIds",
+            "mutability": "readonly",
+            "inputs": [],
+            "outputs": [
+                {
+                    "type": "List<u64>"
+                }
+            ]
+        },
+        {
+            "name": "getSpectatorBets",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "tournament_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "player",
+                    "type": "Address"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "List<SpectatorBet>"
+                }
+            ]
+        },
+        {
+            "name": "getSpectatorPoolTotal",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "tournament_id",
+                    "type": "u64"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "BigUint"
+                }
+            ]
+        },
+        {
+            "name": "getAccumulatedHouseFees",
+            "mutability": "readonly",
+            "inputs": [],
+            "outputs": [
+                {
+                    "type": "BigUint"
+                }
+            ]
+        }
+    ],
+    "esdtAttributes": [],
+    "hasCallback": false,
+    "types": {
+        "GameConfig": {
+            "type": "struct",
+            "fields": [
+                {
+                    "name": "signing_server_address",
+                    "type": "Address"
+                },
+                {
+                    "name": "podium_size",
+                    "type": "u32"
+                },
+                {
+                    "name": "prize_distribution_percentages",
+                    "type": "List<u32>"
+                },
+                {
+                    "name": "house_fee_percentage",
+                    "type": "u32"
+                },
+                {
+                    "name": "allow_late_join",
+                    "type": "bool"
+                }
+            ]
+        },
+        "SpectatorBet": {
+            "type": "struct",
+            "fields": [
+                {
+                    "name": "bettor_address",
+                    "type": "Address"
+                },
+                {
+                    "name": "amount",
+                    "type": "BigUint"
+                }
+            ]
+        },
+        "Tournament": {
+            "type": "struct",
+            "fields": [
+                {
+                    "name": "game_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "status",
+                    "type": "TournamentStatus"
+                },
+                {
+                    "name": "entry_fee",
+                    "type": "BigUint"
+                },
+                {
+                    "name": "participants",
+                    "type": "List<Address>"
+                },
+                {
+                    "name": "prize_pool",
+                    "type": "BigUint"
+                },
+                {
+                    "name": "join_deadline",
+                    "type": "u64"
+                },
+                {
+                    "name": "play_deadline",
+                    "type": "u64"
+                },
+                {
+                    "name": "final_podium",
+                    "type": "List<Address>"
+                },
+                {
+                    "name": "creator",
+                    "type": "Address"
+                }
+            ]
+        },
+        "TournamentStatus": {
+            "type": "enum",
+            "variants": [
+                {
+                    "name": "Joining",
+                    "discriminant": 0
+                },
+                {
+                    "name": "Playing",
+                    "discriminant": 1
+                },
+                {
+                    "name": "ProcessingResults",
+                    "discriminant": 2
+                },
+                {
+                    "name": "Completed",
+                    "discriminant": 3
+                }
+            ]
+        }
+    }
+}
