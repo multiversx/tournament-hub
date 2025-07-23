@@ -86,21 +86,24 @@ export async function getTournamentDetailsFromContract(tournamentId: number) {
     console.log('  argBase64:', argBase64);
 
     try {
+        console.log('Fetching tournament details from contract...');
         const response = await fetch('https://devnet-api.multiversx.com/vm-values/query', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 scAddress: contractAddress,
                 funcName: 'getTournament',
-                args: [argHex]
+                args: [argBase64]
             })
         });
         console.log('  response.status:', response.status);
         const data = await response.json();
         console.log('  response.data:', data);
+        console.log('Raw returnData:', data.data.returnData);
         const [base64Result] = data.data.returnData || [];
-        if (!base64Result) return null;
-        const hex = Buffer.from(base64Result, 'base64').toString('hex');
+        console.log('base64Result:', base64Result);
+        if (!base64Result) return []; const hex = Buffer.from(base64Result, 'base64').toString('hex');
+        console.log('Decoded hex for tournament IDs:', hex);
         return parseTournamentHex(hex);
     } catch (err) {
         console.error('[getTournamentDetailsFromContract] Error for tournamentId', tournamentId, err);
@@ -119,9 +122,13 @@ export async function getActiveTournamentIds() {
         })
     });
     const data = await response.json();
-    const [base64Result] = data.data.returnData || [];
-    if (!base64Result) return [];
-    const hex = Buffer.from(base64Result, 'base64').toString('hex');
+    console.log('getActiveTournamentIds API response:', data);
+    const returnData = data.data.data?.returnData;
+    console.log('Raw returnData:', returnData);
+    const [base64Result] = returnData || [];
+    console.log('base64Result:', base64Result);
+    if (!base64Result) return []; const hex = Buffer.from(base64Result, 'base64').toString('hex');
+    console.log('Decoded hex for tournament IDs:', hex);
     // Each u64 is 16 hex chars
     const ids = [];
     for (let i = 0; i < hex.length; i += 16) {

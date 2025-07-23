@@ -253,6 +253,137 @@
             ]
         }
     ],
+    "events": [
+        {
+            "identifier": "tournamentCreated",
+            "inputs": [
+                {
+                    "name": "tournament_id",
+                    "type": "u64",
+                    "indexed": true
+                },
+                {
+                    "name": "game_id",
+                    "type": "u64",
+                    "indexed": true
+                },
+                {
+                    "name": "creator",
+                    "type": "Address"
+                }
+            ]
+        },
+        {
+            "identifier": "playerJoined",
+            "inputs": [
+                {
+                    "name": "tournament_id",
+                    "type": "u64",
+                    "indexed": true
+                },
+                {
+                    "name": "player",
+                    "type": "Address",
+                    "indexed": true
+                }
+            ]
+        },
+        {
+            "identifier": "tournamentStarted",
+            "inputs": [
+                {
+                    "name": "tournament_id",
+                    "type": "u64",
+                    "indexed": true
+                }
+            ]
+        },
+        {
+            "identifier": "resultsSubmitted",
+            "inputs": [
+                {
+                    "name": "tournament_id",
+                    "type": "u64",
+                    "indexed": true
+                },
+                {
+                    "name": "submitter",
+                    "type": "Address",
+                    "indexed": true
+                }
+            ]
+        },
+        {
+            "identifier": "prizesDistributed",
+            "inputs": [
+                {
+                    "name": "tournament_id",
+                    "type": "u64",
+                    "indexed": true
+                }
+            ]
+        },
+        {
+            "identifier": "debugCurrentTime",
+            "inputs": [
+                {
+                    "name": "current_time",
+                    "type": "u64",
+                    "indexed": true
+                }
+            ]
+        },
+        {
+            "identifier": "debugJoinDeadline",
+            "inputs": [
+                {
+                    "name": "join_deadline",
+                    "type": "u64",
+                    "indexed": true
+                }
+            ]
+        },
+        {
+            "identifier": "debugTournamentStatus",
+            "inputs": [
+                {
+                    "name": "status",
+                    "type": "u32",
+                    "indexed": true
+                }
+            ]
+        },
+        {
+            "identifier": "debugTournamentId",
+            "inputs": [
+                {
+                    "name": "tournament_id",
+                    "type": "u64",
+                    "indexed": true
+                }
+            ]
+        },
+        {
+            "identifier": "debugMessage",
+            "inputs": [
+                {
+                    "name": "message",
+                    "type": "bytes",
+                    "indexed": true
+                }
+            ]
+        },
+        {
+            "identifier": "debugMessageLength",
+            "inputs": [
+                {
+                    "name": "message_length",
+                    "type": "u32",
+                    "indexed": true
+                }
+            ]
+        }
+    ],
     "esdtAttributes": [],
     "hasCallback": false,
     "types": {

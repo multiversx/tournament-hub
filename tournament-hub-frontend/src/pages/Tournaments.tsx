@@ -47,6 +47,7 @@ export const Tournaments = () => {
             try {
                 // Get active tournament IDs from smart contract
                 const tournamentIds = await getActiveTournamentIds();
+                console.log('Fetched tournamentIds:', tournamentIds);
                 if (tournamentIds.length === 0) {
                     setTournaments([]);
                     setLoading(false);
@@ -56,7 +57,9 @@ export const Tournaments = () => {
                 // Fetch details for each tournament
                 const tournamentPromises = tournamentIds.map(async (id) => {
                     try {
+                        console.log('Fetching tournament details for ID:', id);
                         const details = await getTournamentDetailsFromContract(id);
+                        console.log('Tournament ID:', id, 'Details:', details);
                         if (details) {
                             return {
                                 id,
