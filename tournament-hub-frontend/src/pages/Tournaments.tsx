@@ -1,16 +1,36 @@
 import React, { useEffect, useState } from 'react';
-import { TransactionsTable } from 'components/TransactionsTable/TransactionsTable';
-import { getActiveTournamentIds, getTournamentDetailsFromContract } from 'helpers';
+import {
+    Box,
+    Heading,
+    Text,
+    Badge,
+    Button,
+    Spinner,
+    VStack,
+    HStack,
+    SimpleGrid,
+    Skeleton,
+    useBreakpointValue,
+    useToast,
+} from '@chakra-ui/react';
+import { Users, Award, Calendar, Plus } from 'lucide-react';
+import { getActiveTournamentIds, getTournamentDetailsFromContract } from '../helpers';
 
-const statusLabels = [
-    'Joining',
-    'Playing',
-    'ProcessingResults',
-    'Completed'
-];
+const statusColors: Record<string, string> = {
+    0: 'yellow', // Joining
+    1: 'green',  // Playing
+    2: 'blue',   // ProcessingResults
+    3: 'gray',   // Completed
+};
 
-function formatAmount(amount: bigint) {
-    return (amount / 10n ** 18n).toString() + ' EGLD';
+function formatEgld(biguint: bigint) {
+    return (Number(biguint) / 1e18).toFixed(2);
+}
+
+function formatDate(timestamp: number) {
+    if (!timestamp) return '-';
+    const date = new Date(timestamp * 1000);
+    return date.toLocaleString();
 }
 
 export const Tournaments = () => {
@@ -18,61 +38,191 @@ export const Tournaments = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    const toast = useToast();
+
     useEffect(() => {
         const fetchTournaments = async () => {
             setLoading(true);
             setError(null);
             try {
-                const ids = await getActiveTournamentIds();
-                const details = await Promise.all(
-                    ids.map(async (id: number) => {
-                        try {
-                            const parsed = await getTournamentDetailsFromContract(id);
-                            if (!parsed) return null;
+                // Get active tournament IDs from smart contract
+                const tournamentIds = await getActiveTournamentIds();
+                if (tournamentIds.length === 0) {
+                    setTournaments([]);
+                    setLoading(false);
+                    return;
+                }
+
+                // Fetch details for each tournament
+                const tournamentPromises = tournamentIds.map(async (id) => {
+                    try {
+                        const details = await getTournamentDetailsFromContract(id);
+                        if (details) {
                             return {
                                 id,
-                                ...parsed
+                                name: `Tournament #${id}`,
+                                status: details.status,
+                                players: details.participants || [],
+                                description: `Game ID: ${details.game_id}`,
+                                prize_pool: formatEgld(details.prize_pool) + ' EGLD',
+                                join_deadline: details.join_deadline,
+                                play_deadline: details.play_deadline,
+                                entry_fee: formatEgld(details.entry_fee),
+                                creator: details.creator,
                             };
-                        } catch (e) {
-                            return null;
                         }
-                    })
-                );
-                setTournaments(details.filter(Boolean));
+                        return null;
+                    } catch (err) {
+                        console.error(`Error fetching tournament ${id}:`, err);
+                        return null;
+                    }
+                });
+
+                const tournamentResults = await Promise.all(tournamentPromises);
+                const validTournaments = tournamentResults.filter(t => t !== null);
+
+                setTournaments(validTournaments);
             } catch (err) {
-                setError('Failed to fetch tournaments');
-                setTournaments([]);
+                console.error('Error fetching tournaments:', err);
+                setError('Failed to fetch tournaments from blockchain');
+                toast({
+                    title: 'Error',
+                    description: 'Failed to fetch tournaments from blockchain',
+                    status: 'error',
+                    duration: 5000,
+                    isClosable: true,
+                });
             } finally {
                 setLoading(false);
             }
         };
+
         fetchTournaments();
-    }, []);
+    }, [toast]);
+
+    const columns = useBreakpointValue({ base: 1, md: 2, lg: 3 });
+
+    if (loading) {
+        return (
+            <Box display="flex" justifyContent="center" alignItems="center" h="96">
+                <SimpleGrid columns={columns} spacing={8} w="full">
+                    {[...Array(3)].map((_, i) => (
+                        <Skeleton key={i} h="220px" borderRadius="xl" />
+                    ))}
+                </SimpleGrid>
+                <Spinner size="xl" color="blue.500" position="absolute" />
+            </Box>
+        );
+    }
+
+    if (error) {
+        return (
+            <VStack justify="center" align="center" h="96" spacing={4}>
+                <Heading size="md">Error</Heading>
+                <Text color="gray.600">{error}</Text>
+                <Button variant="outline" onClick={() => window.location.reload()}>
+                    Retry
+                </Button>
+            </VStack>
+        );
+    }
 
     return (
-        <div className="container mx-auto py-8">
-            <h2 className="text-2xl font-bold mb-6">Tournaments</h2>
-            {loading && <div>Loading tournaments...</div>}
-            {error && <div className="text-red-500">{error}</div>}
-            {!loading && !error && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {tournaments.length === 0 && <div>No tournaments found.</div>}
+        <Box maxW="7xl" mx="auto" py={10} px={4}>
+            <HStack justify="space-between" align="center" mb={8}>
+                <Heading size="xl">Tournaments</Heading>
+                <Button
+                    as="a"
+                    href="/tournaments/create"
+                    leftIcon={<Plus size={20} />}
+                    colorScheme="green"
+                    size="md"
+                    borderRadius="xl"
+                    _hover={{ transform: 'translateY(-2px)', boxShadow: 'lg' }}
+                >
+                    Create Tournament
+                </Button>
+            </HStack>
+            {tournaments.length === 0 ? (
+                <VStack justify="center" align="center" h="96" spacing={4}>
+                    <Award size={48} color="#CBD5E1" />
+                    <Heading size="md">No tournaments found</Heading>
+                    <Text color="gray.400">
+                        No tournaments have been created yet. Be the first to create one!
+                    </Text>
+                </VStack>
+            ) : (
+                <SimpleGrid columns={columns} spacing={8}>
                     {tournaments.map((tournament) => (
-                        <div key={tournament.id} className="bg-white rounded shadow p-6 flex flex-col gap-2">
-                            <h3 className="text-xl font-semibold">Tournament #{tournament.id}</h3>
-                            <div className="text-gray-700">Game ID: {tournament.game_id}</div>
-                            <div className="text-gray-700">Status: {statusLabels[tournament.status] ?? tournament.status}</div>
-                            <div className="text-gray-700">Entry Fee: {formatAmount(tournament.entry_fee)}</div>
-                            <div className="text-gray-700">Participants: {tournament.participants?.length ?? 0}</div>
-                            <div className="text-gray-700">Creator: {tournament.creator}</div>
-                        </div>
+                        <Box
+                            key={tournament.id}
+                            bg="gray.800"
+                            border="1px solid"
+                            borderColor="gray.700"
+                            boxShadow="lg"
+                            borderRadius="2xl"
+                            p={6}
+                            transition="all 0.2s"
+                            _hover={{ boxShadow: '2xl', transform: 'translateY(-2px)' }}
+                            display="flex"
+                            flexDirection="column"
+                            justifyContent="space-between"
+                        >
+                            <HStack justify="space-between" mb={4}>
+                                <Heading size="md">{tournament.name}</Heading>
+                                <Badge colorScheme={statusColors[tournament.status] || 'gray'} fontSize="sm" px={3} py={1} borderRadius="md">
+                                    {['Joining', 'Playing', 'Processing', 'Completed'][tournament.status] || 'Unknown'}
+                                </Badge>
+                            </HStack>
+                            <Text color="gray.300" mb={2} noOfLines={2}>
+                                {tournament.description}
+                            </Text>
+                            <VStack align="start" spacing={2} mb={4}>
+                                <HStack color="gray.400" fontSize="sm">
+                                    <Users size={16} />
+                                    <Text>{tournament.players.length} players</Text>
+                                </HStack>
+                                <HStack color="gray.400" fontSize="sm">
+                                    <Award size={16} />
+                                    <Text>Prize Pool: {tournament.prize_pool}</Text>
+                                </HStack>
+                                <HStack color="gray.400" fontSize="sm">
+                                    <Calendar size={16} />
+                                    <Text>
+                                        Join Deadline: {formatDate(tournament.join_deadline)}
+                                    </Text>
+                                </HStack>
+                                <HStack color="gray.400" fontSize="sm">
+                                    <Calendar size={16} />
+                                    <Text>
+                                        Play Deadline: {formatDate(tournament.play_deadline)}
+                                    </Text>
+                                </HStack>
+                                <HStack color="gray.400" fontSize="sm">
+                                    <Text>Entry Fee: {tournament.entry_fee} EGLD</Text>
+                                </HStack>
+                                <HStack color="gray.400" fontSize="sm">
+                                    <Text>Creator: {tournament.creator}</Text>
+                                </HStack>
+                            </VStack>
+                            <Button
+                                as="a"
+                                href={`/tournaments/${tournament.id}`}
+                                colorScheme="blue"
+                                w="full"
+                                mt={2}
+                                borderRadius="xl"
+                                fontWeight="bold"
+                                fontSize="md"
+                                _hover={{ boxShadow: 'md' }}
+                            >
+                                View Details
+                            </Button>
+                        </Box>
                     ))}
-                </div>
+                </SimpleGrid>
             )}
-            <div className="mt-12">
-                <TransactionsTable />
-            </div>
-        </div>
+        </Box>
     );
 };
 
