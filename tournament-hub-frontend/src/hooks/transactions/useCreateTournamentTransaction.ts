@@ -1,3 +1,4 @@
+import { contractAddress } from 'config';
 import { signAndSendTransactions } from 'helpers';
 import {
     Address,
@@ -9,23 +10,26 @@ import {
 import { egldToWei } from '../../utils/contractUtils';
 import { tournamentHubContract } from '../../contracts';
 
-const JOIN_TRANSACTION_INFO = {
-    processingMessage: 'Joining tournament... Please confirm in your wallet.',
-    errorMessage: 'An error occurred while joining the tournament.',
-    successMessage: 'Successfully joined the tournament!'
+const CREATE_TOURNAMENT_TRANSACTION_INFO = {
+    processingMessage: 'Creating tournament... Please confirm in your wallet.',
+    errorMessage: 'An error occurred while creating the tournament.',
+    successMessage: 'Tournament created successfully!'
 };
 
 function padEven(hex: string) {
     return hex.length % 2 === 0 ? hex : '0' + hex;
 }
 
-export const useJoinTournamentTransaction = () => {
+export const useCreateTournamentTransaction = () => {
     const { network } = useGetNetworkConfig();
     const { address } = useGetAccount();
 
-    const joinTournament = async (params: {
+    const createTournament = async (params: {
         tournamentId: number;
+        gameId: number;
         entryFee: string;
+        joinDeadline: number;
+        playDeadline: number;
     }) => {
         if (!address) {
             throw new Error('Please connect your wallet first');
@@ -33,15 +37,17 @@ export const useJoinTournamentTransaction = () => {
 
         // Convert parameters to hex strings and pad to even length
         const tournamentIdHex = padEven(params.tournamentId.toString(16));
+        const gameIdHex = padEven(params.gameId.toString(16));
+        const entryFeeWei = egldToWei(params.entryFee);
+        const entryFeeHex = padEven(BigInt(entryFeeWei).toString(16));
+        const joinDeadlineHex = padEven(params.joinDeadline.toString(16));
+        const playDeadlineHex = padEven(params.playDeadline.toString(16));
 
         // Build the transaction data string
-        const dataString = `joinTournament@${tournamentIdHex}`;
-
-        const entryFeeWei = egldToWei(params.entryFee);
-        const value = entryFeeWei !== '0' ? BigInt(entryFeeWei) : undefined;
+        const dataString = `createTournament@${tournamentIdHex}@${gameIdHex}@${entryFeeHex}@${joinDeadlineHex}@${playDeadlineHex}`;
 
         const transaction = new Transaction({
-            ...(value ? { value } : {}),
+            // Do not send value for non-payable endpoint
             data: Buffer.from(dataString),
             receiver: new Address(tournamentHubContract.address),
             gasLimit: BigInt(60000000), // 60M gas for contract interaction
@@ -53,11 +59,11 @@ export const useJoinTournamentTransaction = () => {
 
         const sessionId = await signAndSendTransactions({
             transactions: [transaction],
-            transactionsDisplayInfo: JOIN_TRANSACTION_INFO
+            transactionsDisplayInfo: CREATE_TOURNAMENT_TRANSACTION_INFO
         });
 
         return sessionId;
     };
 
-    return { joinTournament };
+    return { createTournament };
 }; 

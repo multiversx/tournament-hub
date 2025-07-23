@@ -1,71 +1,238 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import {
+    Box,
+    Heading,
+    Text,
+    Badge,
+    Button,
+    Spinner,
+    VStack,
+    HStack,
+    SimpleGrid,
+    Skeleton,
+    useBreakpointValue,
+    Card,
+    CardBody,
+    CardHeader,
+    Divider,
+    useToast,
+} from '@chakra-ui/react';
+import { Users, Award, Calendar, Play, Trophy } from 'lucide-react';
 import { useParams } from 'react-router-dom';
-import { useJoinTournamentTransaction } from '../hooks/transactions/useJoinTournamentTransaction';
-import { useState } from 'react';
-import { useGetIsLoggedIn, useGetAccountInfo } from 'lib';
+import { tournamentService } from '../services/tournamentService';
 
-const mockTournament = {
+// TODO: Replace with real fetch logic
+const mockTournamentDetails = {
     id: 1,
     name: 'Summer Showdown',
-    status: 'Active',
-    players: ['Alice', 'Bob', 'Charlie', 'Dave'],
-    description: 'A summer tournament for all skill levels.',
+    status: 'active',
+    players: ['Alice', 'Bob', 'Charlie', 'Dave', 'Eve', 'Frank'],
+    description: 'A summer tournament for all skill levels. Join the competition and prove your skills!',
+    prize_pool: '5 EGLD',
+    entry_fee: '0.1 EGLD',
+    join_deadline: 1731801600,
+    play_deadline: 1732406400,
+    creator: 'erd1...abc123',
+    max_players: 8,
+    current_players: 6,
+};
+
+const statusColors: Record<string, string> = {
+    created: 'yellow',
+    active: 'green',
+    finished: 'gray',
 };
 
 export const TournamentDetails = () => {
     const { id } = useParams();
-    // In a real app, fetch tournament by id
-    const tournament = mockTournament;
-    const { joinTournament } = useJoinTournamentTransaction();
-    const [loading, setLoading] = useState(false);
+    const [tournament, setTournament] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+    const [joining, setJoining] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [success, setSuccess] = useState<string | null>(null);
-    const isLoggedIn = useGetIsLoggedIn();
-    const { address } = useGetAccountInfo();
-    const alreadyJoined = isLoggedIn && address && tournament.players.includes(address);
+    const toast = useToast();
 
-    const handleJoin = async () => {
+    useEffect(() => {
         setLoading(true);
         setError(null);
-        setSuccess(null);
-        try {
-            await joinTournament(tournament.id);
-            setSuccess('Successfully joined the tournament!');
-        } catch (err) {
-            setError('Failed to join tournament.');
-        } finally {
+        // Simulate API call
+        setTimeout(() => {
+            setTournament(mockTournamentDetails);
             setLoading(false);
+        }, 800);
+    }, [id]);
+
+    const handleJoinTournament = async () => {
+        setJoining(true);
+        try {
+            console.log('Joining tournament:', id);
+
+            // Call the blockchain service to join tournament
+            const result = await tournamentService.joinTournament(
+                parseInt(id || '0'),
+                tournament?.entry_fee || '0'
+            );
+
+            if (result.success) {
+                toast({
+                    title: 'Success!',
+                    description: `You have joined the tournament successfully! Transaction: ${result.transactionHash}`,
+                    status: 'success',
+                    duration: 5000,
+                    isClosable: true,
+                });
+
+                // TODO: Refetch tournament details to show updated participant list
+                // This would update the tournament state with the new participant
+            } else {
+                throw new Error('Failed to join tournament');
+            }
+
+        } catch (err) {
+            console.error('Error joining tournament:', err);
+            toast({
+                title: 'Error',
+                description: 'Failed to join tournament. Please try again.',
+                status: 'error',
+                duration: 5000,
+                isClosable: true,
+            });
+        } finally {
+            setJoining(false);
         }
     };
 
-    const joinButtonDisabled = loading || !isLoggedIn || alreadyJoined;
-    let joinButtonText = 'Join Tournament';
-    if (!isLoggedIn) joinButtonText = 'Connect wallet to join';
-    else if (alreadyJoined) joinButtonText = 'Already joined';
-    else if (loading) joinButtonText = 'Joining...';
+    const columns = useBreakpointValue({ base: 1, md: 2 });
+
+    if (loading) {
+        return (
+            <Box display="flex" justifyContent="center" alignItems="center" h="96">
+                <VStack spacing={4}>
+                    <Spinner size="xl" color="blue.500" />
+                    <Text>Loading tournament details...</Text>
+                </VStack>
+            </Box>
+        );
+    }
+
+    if (error) {
+        return (
+            <VStack justify="center" align="center" h="96" spacing={4}>
+                <Heading size="md">Error</Heading>
+                <Text color="gray.400">{error}</Text>
+                <Button variant="outline" onClick={() => window.location.reload()}>
+                    Retry
+                </Button>
+            </VStack>
+        );
+    }
+
+    if (!tournament) {
+        return (
+            <VStack justify="center" align="center" h="96" spacing={4}>
+                <Heading size="md">Tournament not found</Heading>
+                <Text color="gray.400">The tournament you're looking for doesn't exist.</Text>
+            </VStack>
+        );
+    }
 
     return (
-        <div className="container mx-auto py-8">
-            <h2 className="text-2xl font-bold mb-4">{tournament.name}</h2>
-            <div className="mb-2 text-gray-500">Status: {tournament.status}</div>
-            <div className="mb-2">{tournament.description}</div>
-            <div className="mb-4">Players: {tournament.players.length}</div>
-            <ul className="list-disc ml-6 mb-6">
-                {tournament.players.map((player) => (
-                    <li key={player}>{player}</li>
-                ))}
-            </ul>
-            <button
-                className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
-                onClick={handleJoin}
-                disabled={joinButtonDisabled}
-                title={!isLoggedIn ? 'Please connect your wallet to join.' : alreadyJoined ? 'You have already joined this tournament.' : ''}
-            >
-                {joinButtonText}
-            </button>
-            {error && <div className="text-red-500 mt-2">{error}</div>}
-            {success && <div className="text-green-600 mt-2">{success}</div>}
-        </div>
+        <Box maxW="7xl" mx="auto" py={10} px={4}>
+            <VStack spacing={8} align="stretch">
+                {/* Header */}
+                <Box>
+                    <HStack justify="space-between" align="start" mb={4}>
+                        <VStack align="start" spacing={2}>
+                            <Heading size="xl">{tournament.name}</Heading>
+                            <Badge colorScheme={statusColors[tournament.status] || 'gray'} fontSize="md" px={3} py={1} borderRadius="md">
+                                {tournament.status}
+                            </Badge>
+                        </VStack>
+                        <Button
+                            leftIcon={<Play size={20} />}
+                            colorScheme="blue"
+                            size="lg"
+                            onClick={handleJoinTournament}
+                            isLoading={joining}
+                            loadingText="Joining..."
+                            isDisabled={tournament.status !== 'created' || tournament.current_players >= tournament.max_players}
+                        >
+                            Join Tournament
+                        </Button>
+                    </HStack>
+                    <Text color="gray.300" fontSize="lg" lineHeight="tall">
+                        {tournament.description}
+                    </Text>
+                </Box>
+
+                <SimpleGrid columns={columns} spacing={8}>
+                    {/* Tournament Info */}
+                    <Card bg="gray.800" border="1px solid" borderColor="gray.700">
+                        <CardHeader>
+                            <Heading size="md">Tournament Information</Heading>
+                        </CardHeader>
+                        <CardBody>
+                            <VStack spacing={4} align="stretch">
+                                <HStack justify="space-between">
+                                    <Text color="gray.400">Prize Pool:</Text>
+                                    <Text fontWeight="bold" color="yellow.400">{tournament.prize_pool}</Text>
+                                </HStack>
+                                <HStack justify="space-between">
+                                    <Text color="gray.400">Entry Fee:</Text>
+                                    <Text fontWeight="bold">{tournament.entry_fee}</Text>
+                                </HStack>
+                                <HStack justify="space-between">
+                                    <Text color="gray.400">Players:</Text>
+                                    <Text fontWeight="bold">{tournament.current_players}/{tournament.max_players}</Text>
+                                </HStack>
+                                <HStack justify="space-between">
+                                    <Text color="gray.400">Creator:</Text>
+                                    <Text fontWeight="bold" fontSize="sm" color="blue.400">{tournament.creator}</Text>
+                                </HStack>
+                            </VStack>
+                        </CardBody>
+                    </Card>
+
+                    {/* Deadlines */}
+                    <Card bg="gray.800" border="1px solid" borderColor="gray.700">
+                        <CardHeader>
+                            <Heading size="md">Important Dates</Heading>
+                        </CardHeader>
+                        <CardBody>
+                            <VStack spacing={4} align="stretch">
+                                <HStack justify="space-between">
+                                    <Text color="gray.400">Join Deadline:</Text>
+                                    <Text fontWeight="bold">{new Date(tournament.join_deadline * 1000).toLocaleDateString()}</Text>
+                                </HStack>
+                                <HStack justify="space-between">
+                                    <Text color="gray.400">Play Deadline:</Text>
+                                    <Text fontWeight="bold">{new Date(tournament.play_deadline * 1000).toLocaleDateString()}</Text>
+                                </HStack>
+                            </VStack>
+                        </CardBody>
+                    </Card>
+                </SimpleGrid>
+
+                {/* Players List */}
+                <Card bg="gray.800" border="1px solid" borderColor="gray.700">
+                    <CardHeader>
+                        <HStack>
+                            <Users size={20} />
+                            <Heading size="md">Participants ({tournament.players.length})</Heading>
+                        </HStack>
+                    </CardHeader>
+                    <CardBody>
+                        <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+                            {tournament.players.map((player: string, index: number) => (
+                                <HStack key={index} p={3} bg="gray.700" borderRadius="md">
+                                    <Trophy size={16} color="#FFD700" />
+                                    <Text fontWeight="medium">{player}</Text>
+                                </HStack>
+                            ))}
+                        </SimpleGrid>
+                    </CardBody>
+                </Card>
+            </VStack>
+        </Box>
     );
 };
 

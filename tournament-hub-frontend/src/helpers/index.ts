@@ -53,20 +53,27 @@ export function parseTournamentHex(hex: string) {
     const status = readU8();
     const entry_fee = readBigUint();
     const participants = readVecAddress();
-    // skip prize_pool, join_deadline, play_deadline, final_podium for now
     // prize_pool (BigUint)
-    const prize_pool_len = parseInt(readHex(2), 16) * 2;
-    offset += prize_pool_len;
+    const prize_pool = (() => {
+        const len = parseInt(readHex(2), 16) * 2;
+        return BigInt('0x' + readHex(len));
+    })();
     // join_deadline (u64)
-    offset += 16;
+    const join_deadline = readU64();
     // play_deadline (u64)
-    offset += 16;
+    const play_deadline = readU64();
     // final_podium (Vec<ManagedAddress>)
-    const podium_len = parseInt(readHex(2), 16);
-    offset += podium_len * 62;
+    const final_podium = (() => {
+        const len = parseInt(readHex(2), 16);
+        const addrs = [];
+        for (let i = 0; i < len; i++) {
+            addrs.push('erd1' + readHex(62));
+        }
+        return addrs;
+    })();
     const creator = readAddress();
 
-    return { game_id, status, entry_fee, participants, creator };
+    return { game_id, status, entry_fee, participants, prize_pool, join_deadline, play_deadline, final_podium, creator };
 }
 
 // Update getTournamentDetailsFromContract to use the parser
