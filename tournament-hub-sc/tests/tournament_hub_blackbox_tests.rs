@@ -63,53 +63,58 @@ impl TournamentHubTestState {
         self
     }
 
-    fn register_game(&mut self, game_id: u64) -> &mut Self {
+    fn register_game(&mut self) {
         self.world
             .tx()
             .from(OWNER_ADDRESS)
             .to(TOURNAMENT_HUB_ADDRESS)
             .typed(tournament_hub_proxy::TournamentHubProxy)
             .register_game(
-                game_id,
-                OWNER_ADDRESS.to_address(), // signing_server_address
-                3u32,                       // podium_size
-                vec![5_000u32, 3_000u32, 2_000u32], // prize_distribution_percentages
-                500u32,                     // house_fee_percentage (5%)
-                false,                      // allow_late_join
+                OWNER_ADDRESS.to_address(),
+                3u32,
+                vec![5_000u32, 3_000u32, 2_000u32],
+                false,
             )
             .run();
-        self
+    }
+
+    fn set_house_fee_percentage(&mut self, new_fee: u32) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(TOURNAMENT_HUB_ADDRESS)
+            .typed(tournament_hub_proxy::TournamentHubProxy)
+            .set_house_fee_percentage(new_fee)
+            .run();
     }
 
     fn create_tournament(
         &mut self,
-        tournament_id: u64,
-        game_id: u64,
+        game_index: usize,
         entry_fee: &BigUint<StaticApi>,
         join_deadline: u64,
         play_deadline: u64,
-    ) -> &mut Self {
-        let user1 = TestAddress::new("user1");
-
+    ) -> usize {
         self.world
             .tx()
-            .from(user1)
+            .from(USER1)
             .to(TOURNAMENT_HUB_ADDRESS)
             .typed(tournament_hub_proxy::TournamentHubProxy)
-            .create_tournament(
-                tournament_id,
-                game_id,
-                entry_fee.clone(),
-                join_deadline,
-                play_deadline,
-            )
+            .create_tournament(game_index, entry_fee.clone(), join_deadline, play_deadline)
             .run();
-        self
+        // The new tournament's index is the current length of the vector
+        self.world
+            .query()
+            .to(TOURNAMENT_HUB_ADDRESS)
+            .typed(tournament_hub_proxy::TournamentHubProxy)
+            .get_number_of_tournaments()
+            .returns(ReturnsResult)
+            .run()
     }
 
     fn join_tournament(
         &mut self,
-        tournament_id: u64,
+        tournament_id: usize,
         user: &str,
         entry_fee: &BigUint<StaticApi>,
     ) -> &mut Self {
@@ -128,7 +133,7 @@ impl TournamentHubTestState {
 
     fn join_tournament_expect_error(
         &mut self,
-        tournament_id: u64,
+        tournament_id: usize,
         user: &str,
         entry_fee: &BigUint<StaticApi>,
         return_error_message: &str,
@@ -147,7 +152,7 @@ impl TournamentHubTestState {
         self
     }
 
-    fn start_tournament(&mut self, tournament_id: u64) -> &mut Self {
+    fn start_tournament(&mut self, tournament_id: usize) -> &mut Self {
         self.world
             .tx()
             .from(USER1)
@@ -160,7 +165,7 @@ impl TournamentHubTestState {
 
     fn start_tournament_expect_error(
         &mut self,
-        tournament_id: u64,
+        tournament_id: usize,
         return_error_message: &str,
     ) -> &mut Self {
         self.world
@@ -176,7 +181,7 @@ impl TournamentHubTestState {
 
     fn place_spectator_bet(
         &mut self,
-        tournament_id: u64,
+        tournament_id: usize,
         betting_on: &TestAddress,
         amount: &BigUint<StaticApi>,
     ) -> &mut Self {
@@ -193,7 +198,7 @@ impl TournamentHubTestState {
 
     fn place_spectator_bet_expect_error(
         &mut self,
-        tournament_id: u64,
+        tournament_id: usize,
         betting_on: &TestAddress,
         amount: &BigUint<StaticApi>,
         return_error_message: &str,
@@ -223,12 +228,11 @@ fn test_full_tournament_flow() {
     state.deploy_tournament_hub_contract();
 
     // Register a game
-    let game_id = 1u64;
-    state.register_game(game_id);
+    state.register_game();
 
     // Edge case: create_tournament with non-existent game_id
-    let bad_game_id = 999u64;
-    let tournament_id = 1u64;
+    let bad_game_id = 999usize;
+    let tournament_id = 1usize;
     let entry_fee = BigUint::from(10u64).pow(18);
     let join_deadline_timestamp = 100u64;
     let play_deadline_timestamp = 200u64;
@@ -240,7 +244,6 @@ fn test_full_tournament_flow() {
         .to(TOURNAMENT_HUB_ADDRESS)
         .typed(tournament_hub_proxy::TournamentHubProxy)
         .create_tournament(
-            2u64, // new tournament_id
             bad_game_id,
             entry_fee.clone(),
             join_deadline_timestamp,
@@ -257,8 +260,7 @@ fn test_full_tournament_flow() {
         .to(TOURNAMENT_HUB_ADDRESS)
         .typed(tournament_hub_proxy::TournamentHubProxy)
         .create_tournament(
-            3u64,
-            game_id,
+            bad_game_id,
             entry_fee.clone(),
             5u64, // join_deadline in the past
             play_deadline_timestamp,
@@ -274,8 +276,7 @@ fn test_full_tournament_flow() {
         .to(TOURNAMENT_HUB_ADDRESS)
         .typed(tournament_hub_proxy::TournamentHubProxy)
         .create_tournament(
-            4u64,
-            game_id,
+            bad_game_id,
             entry_fee.clone(),
             join_deadline_timestamp,
             50u64, // play_deadline before join_deadline
@@ -289,7 +290,6 @@ fn test_full_tournament_flow() {
     // Edge case: create_tournament with duplicate tournament_id
     state.create_tournament(
         tournament_id,
-        game_id,
         &entry_fee,
         join_deadline_timestamp,
         play_deadline_timestamp,
@@ -302,7 +302,6 @@ fn test_full_tournament_flow() {
         .typed(tournament_hub_proxy::TournamentHubProxy)
         .create_tournament(
             tournament_id,
-            game_id,
             entry_fee.clone(),
             join_deadline_timestamp,
             play_deadline_timestamp,
@@ -322,7 +321,7 @@ fn test_full_tournament_flow() {
     state.join_tournament_expect_error(tournament_id, "user1", &wrong_fee, "Incorrect entry fee");
 
     // Edge case: join_tournament for non-existent tournament
-    state.join_tournament_expect_error(999u64, "user1", &entry_fee, "Tournament does not exist");
+    state.join_tournament_expect_error(999usize, "user1", &entry_fee, "Tournament does not exist");
 
     // User1 joins
     state.join_tournament(tournament_id, "user1", &entry_fee);
@@ -349,7 +348,7 @@ fn test_full_tournament_flow() {
         .block_timestamp(play_deadline_timestamp);
 
     // Edge case: start_tournament for non-existent tournament
-    state.start_tournament_expect_error(999u64, "Tournament does not exist");
+    state.start_tournament_expect_error(999usize, "Tournament does not exist");
 
     // Edge case: start_tournament when not in joining phase (simulate by starting twice)
     state.start_tournament(tournament_id);
@@ -367,20 +366,13 @@ fn test_result_submission_and_prize_distribution() {
     let mut state = TournamentHubTestState::new();
     state.deploy_tournament_hub_contract();
 
-    let game_id = 1u64;
-    let tournament_id = 1u64;
+    let tournament_id = 1usize;
     let entry_fee = BigUint::from(10u64).pow(18);
     let join_deadline = 100u64;
     let play_deadline = 200u64;
 
-    state.register_game(game_id);
-    state.create_tournament(
-        tournament_id,
-        game_id,
-        &entry_fee,
-        join_deadline,
-        play_deadline,
-    );
+    state.register_game();
+    state.create_tournament(tournament_id, &entry_fee, join_deadline, play_deadline);
     state.join_tournament(tournament_id, "user1", &entry_fee);
     state.join_tournament(tournament_id, "user2", &entry_fee);
 
@@ -419,18 +411,18 @@ fn test_result_submission_and_prize_distribution() {
 
     // Edge: submit results with wrong podium size
     let bad_podium = vec![USER1.to_address()];
-    state.create_tournament(2, game_id, &entry_fee, join_deadline, play_deadline);
-    state.join_tournament(2, "user1", &entry_fee);
-    state.join_tournament(2, "user2", &entry_fee);
+    state.create_tournament(2usize, &entry_fee, join_deadline, play_deadline);
+    state.join_tournament(2usize, "user1", &entry_fee);
+    state.join_tournament(2usize, "user2", &entry_fee);
     state.world.current_block().block_timestamp(play_deadline);
-    state.start_tournament(2);
+    state.start_tournament(2usize);
     state
         .world
         .tx()
         .from(USER1)
         .to(TOURNAMENT_HUB_ADDRESS)
         .typed(tournament_hub_proxy::TournamentHubProxy)
-        .submit_results(2u64, bad_podium, fake_signature.clone())
+        .submit_results(2usize, bad_podium, fake_signature.clone())
         .returns(ExpectError(4u64, "Winner podium size mismatch"))
         .run();
 }
@@ -440,20 +432,13 @@ fn test_debug_message_construction() {
     let mut state = TournamentHubTestState::new();
     state.deploy_tournament_hub_contract();
 
-    let game_id = 1u64;
-    let tournament_id = 8u64; // Same as your test case
+    let tournament_id = 1usize; // Same as your test case
     let entry_fee = BigUint::from(10u64).pow(18);
     let join_deadline = 100u64;
     let play_deadline = 200u64;
 
-    state.register_game(game_id);
-    state.create_tournament(
-        tournament_id,
-        game_id,
-        &entry_fee,
-        join_deadline,
-        play_deadline,
-    );
+    state.register_game();
+    state.create_tournament(tournament_id, &entry_fee, join_deadline, play_deadline);
     state.join_tournament(tournament_id, "user1", &entry_fee);
 
     // Move to play_deadline
@@ -473,7 +458,7 @@ fn test_debug_message_construction() {
     println!("=== DEBUG MESSAGE CONSTRUCTION ===");
     println!("Tournament ID: {}", tournament_id);
     println!(
-        "Tournament ID as u64 bytes: {:?}",
+        "Tournament ID as usize bytes: {:?}",
         tournament_id.to_be_bytes()
     );
     println!("Podium addresses: {:?}", podium);
@@ -499,20 +484,13 @@ fn test_debug_message_construction_success() {
     let mut state = TournamentHubTestState::new();
     state.deploy_tournament_hub_contract();
 
-    let game_id = 1u64;
-    let tournament_id = 8u64; // Same as your test case
+    let tournament_id = 1usize; // Same as your test case
     let entry_fee = BigUint::from(10u64).pow(18);
     let join_deadline = 100u64;
     let play_deadline = 200u64;
 
-    state.register_game(game_id);
-    state.create_tournament(
-        tournament_id,
-        game_id,
-        &entry_fee,
-        join_deadline,
-        play_deadline,
-    );
+    state.register_game();
+    state.create_tournament(tournament_id, &entry_fee, join_deadline, play_deadline);
     state.join_tournament(tournament_id, "user1", &entry_fee);
 
     // Move to play_deadline
@@ -560,20 +538,13 @@ fn test_debug_message_construction_with_real_addresses() {
     let mut state = TournamentHubTestState::new();
     state.deploy_tournament_hub_contract();
 
-    let game_id = 1u64;
-    let tournament_id = 8u64; // Same as your test case
+    let tournament_id = 1usize;
     let entry_fee = BigUint::from(10u64).pow(18);
     let join_deadline = 100u64;
     let play_deadline = 200u64;
 
-    state.register_game(game_id);
-    state.create_tournament(
-        tournament_id,
-        game_id,
-        &entry_fee,
-        join_deadline,
-        play_deadline,
-    );
+    state.register_game();
+    state.create_tournament(tournament_id, &entry_fee, join_deadline, play_deadline);
     state.join_tournament(tournament_id, "user1", &entry_fee);
 
     // Move to play_deadline
@@ -583,15 +554,6 @@ fn test_debug_message_construction_with_real_addresses() {
     // Use the test address directly - this will show us what the test environment produces
     let podium = vec![USER1.to_address()]; // Use test address
     let dummy_signature = vec![0u8; 64];
-
-    println!("=== DEBUG MESSAGE CONSTRUCTION WITH TEST ADDRESSES ===");
-    println!("Tournament ID: {}", tournament_id);
-    println!(
-        "Tournament ID as u64 bytes: {:?}",
-        tournament_id.to_be_bytes()
-    );
-    println!("Test address: {:?}", USER1.to_address());
-    println!("Podium addresses: {:?}", podium);
 
     // This should fail, but we'll see the debug events in the logs
     state
@@ -612,20 +574,13 @@ fn test_spectator_betting_and_claims() {
     let mut state = TournamentHubTestState::new();
     state.deploy_tournament_hub_contract();
 
-    let game_id = 1u64;
-    let tournament_id = 1u64;
+    let tournament_id = 1usize;
     let entry_fee = BigUint::from(10u64).pow(18);
     let join_deadline = 100u64;
     let play_deadline = 200u64;
 
-    state.register_game(game_id);
-    state.create_tournament(
-        tournament_id,
-        game_id,
-        &entry_fee,
-        join_deadline,
-        play_deadline,
-    );
+    state.register_game();
+    state.create_tournament(tournament_id, &entry_fee, join_deadline, play_deadline);
     state.join_tournament(tournament_id, "user1", &entry_fee);
     state.join_tournament(tournament_id, "user2", &entry_fee);
 
@@ -708,20 +663,14 @@ fn test_views_and_state_consistency() {
     let mut state = TournamentHubTestState::new();
     state.deploy_tournament_hub_contract();
 
-    let game_id = 1u64;
-    let tournament_id = 1u64;
+    let game_id = 1usize;
+    let tournament_id = 1usize;
     let entry_fee = BigUint::from(10u64).pow(18);
     let join_deadline = 100u64;
     let play_deadline = 200u64;
 
-    state.register_game(game_id);
-    state.create_tournament(
-        tournament_id,
-        game_id,
-        &entry_fee,
-        join_deadline,
-        play_deadline,
-    );
+    state.register_game();
+    state.create_tournament(tournament_id, &entry_fee, join_deadline, play_deadline);
 
     // Query game config
     let game_config = state
@@ -764,19 +713,16 @@ fn test_permission_and_access_control() {
     state.deploy_tournament_hub_contract();
 
     // Only owner can register game
-    let game_id = 1u64;
     state
         .world
         .tx()
-        .from(USER1)
+        .from(OWNER_ADDRESS)
         .to(TOURNAMENT_HUB_ADDRESS)
         .typed(tournament_hub_proxy::TournamentHubProxy)
         .register_game(
-            game_id,
-            USER1.to_address(),
+            OWNER_ADDRESS.to_address(),
             3u32,
             vec![5_000u32, 3_000u32, 2_000u32],
-            500u32,
             false,
         )
         .returns(ExpectError(4u64, "Endpoint can only be called by owner"))
@@ -790,10 +736,10 @@ fn test_invalid_flows() {
 
     // Try to join non-existent tournament
     let entry_fee = BigUint::from(10u64).pow(18);
-    state.join_tournament_expect_error(999u64, "user1", &entry_fee, "Tournament does not exist");
+    state.join_tournament_expect_error(999usize, "user1", &entry_fee, "Tournament does not exist");
 
     // Try to start non-existent tournament
-    state.start_tournament_expect_error(999u64, "Tournament does not exist");
+    state.start_tournament_expect_error(999usize, "Tournament does not exist");
 }
 
 #[test]
@@ -801,17 +747,15 @@ fn test_multiple_tournaments_and_games() {
     let mut state = TournamentHubTestState::new();
     state.deploy_tournament_hub_contract();
 
-    let game1 = 1u64;
-    let game2 = 2u64;
-    let t1 = 1u64;
-    let t2 = 2u64;
+    let t1 = 1usize;
+    let t2 = 2usize;
     let entry_fee = BigUint::from(10u64).pow(18);
 
-    state.register_game(game1);
-    state.register_game(game2);
+    state.register_game();
+    state.register_game();
 
-    state.create_tournament(t1, game1, &entry_fee, 100, 200);
-    state.create_tournament(t2, game2, &entry_fee, 100, 200);
+    state.create_tournament(t1, &entry_fee, 100, 200);
+    state.create_tournament(t2, &entry_fee, 100, 200);
 
     state.join_tournament(t1, "user1", &entry_fee);
     state.join_tournament(t2, "user2", &entry_fee);
@@ -838,43 +782,53 @@ fn test_multiple_tournaments_and_games() {
 }
 
 #[test]
-fn test_house_fee_and_distribution() {
+fn test_house_fee_is_taken_on_gains() {
     let mut state = TournamentHubTestState::new();
     state.deploy_tournament_hub_contract();
 
-    // Register a game with 0% house fee
-    let game_id = 1u64;
+    // Set the house fee to 1000 (10%)
+    let house_fee_percentage = 1_000u32;
+    state.set_house_fee_percentage(house_fee_percentage);
+
+    // Register a game and run a full tournament flow...
+    state.register_game();
+    let game_index = 1;
+    let entry_fee = BigUint::from(10u64).pow(18);
+    let join_deadline = 100u64;
+    let play_deadline = 200u64;
+
+    let tournament_id =
+        state.create_tournament(game_index, &entry_fee, join_deadline, play_deadline);
+    state.join_tournament(tournament_id, "user1", &entry_fee);
+    state.join_tournament(tournament_id, "user2", &entry_fee);
+
+    // Move to play_deadline and start tournament
+    state.world.current_block().block_timestamp(play_deadline);
+    state.start_tournament(tournament_id);
+
+    // Submit results to trigger prize distribution and fee accumulation
+    let podium = vec![USER1.to_address(), USER2.to_address(), USER1.to_address()];
+    let dummy_signature = vec![0u8; 64];
     state
         .world
         .tx()
-        .from(OWNER_ADDRESS)
+        .from(USER1)
         .to(TOURNAMENT_HUB_ADDRESS)
         .typed(tournament_hub_proxy::TournamentHubProxy)
-        .register_game(
-            game_id,
-            OWNER_ADDRESS.to_address(),
-            3u32,
-            vec![5_000u32, 3_000u32, 2_000u32],
-            0u32, // 0% house fee
-            false,
-        )
+        .submit_results(tournament_id, podium, dummy_signature)
         .run();
 
-    // Register a game with 100% house fee
-    let game_id2 = 2u64;
-    state
+    // Query the accumulated house fees and assert the correct amount was taken
+    let accumulated_fees = state
         .world
-        .tx()
-        .from(OWNER_ADDRESS)
+        .query()
         .to(TOURNAMENT_HUB_ADDRESS)
         .typed(tournament_hub_proxy::TournamentHubProxy)
-        .register_game(
-            game_id2,
-            OWNER_ADDRESS.to_address(),
-            3u32,
-            vec![5_000u32, 3_000u32, 2_000u32],
-            10_000u32, // 100% house fee
-            false,
-        )
+        .get_accumulated_house_fees()
+        .returns(ReturnsResult)
         .run();
+
+    // Calculate expected fee and assert
+    let expected_fee = BigUint::from(10u64).pow(18) * 2u64 * house_fee_percentage / 10_000u32;
+    assert_eq!(accumulated_fees, expected_fee);
 }

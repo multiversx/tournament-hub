@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           14
+// Endpoints:                           15
 // Async Callback (empty):               1
-// Total number of exported functions:  17
+// Total number of exported functions:  18
 
 #![no_std]
 
@@ -21,6 +21,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         init => init
         upgrade => upgrade
         registerGame => register_game
+        setHouseFeePercentage => set_house_fee_percentage
         submitResults => submit_results
         placeSpectatorBet => place_spectator_bet
         claimSpectatorWinnings => claim_spectator_winnings

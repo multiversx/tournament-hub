@@ -39,8 +39,15 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
         self.debug_message_event(&signed_result);
 
         // Verify the signature
+        // Use a feature flag to allow bypassing signature verification in scenario tests
+        #[cfg(not(feature = "no-sig-check"))]
         self.crypto()
             .verify_ed25519(&pubkey, &message, signed_result);
+
+        #[cfg(feature = "no-sig-check")]
+        {
+            // skip signature verification
+        }
     }
 
     fn distribute_player_prizes(
