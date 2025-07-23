@@ -4,4 +4,5 @@ export * from './Home';
 export * from './PageNotFound';
 export * from './Unlock';
 export * from './Tournaments';
-export * from './TournamentDetails';
+export { default as TournamentDetails } from './TournamentDetails';
+export { default as CreateTournament } from './CreateTournament';

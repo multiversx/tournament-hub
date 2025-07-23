@@ -1,47 +1,131 @@
-import { Outlet, Link } from 'react-router-dom';
+import { Outlet, Link as RouterLink } from 'react-router-dom';
+import {
+  Box,
+  Heading,
+  Text,
+  Button,
+  VStack,
+  HStack,
+  SimpleGrid,
+  useBreakpointValue,
+  Stat,
+  StatLabel,
+  StatNumber,
+  StatGroup,
+  Container,
+} from '@chakra-ui/react';
+import { Trophy, Users, Calendar, Plus } from 'lucide-react';
 import { PageWrapper } from 'wrappers';
-import { TransactionsTable } from 'components/TransactionsTable/TransactionsTable';
-// import { Transaction } from './Transaction'; // Remove for now, or replace with stats
 
 export const Home = () => {
+  const isMobile = useBreakpointValue({ base: true, md: false });
+
   return (
     <PageWrapper>
-      <div className='flex flex-col-reverse sm:flex-row items-center h-full w-full'>
-        <div className='flex items-start sm:items-center h-full sm:w-1/2 sm:bg-center'>
-          <div className='flex flex-col gap-2 max-w-[70sch] text-center sm:text-left text-xl font-medium md:text-2xl lg:text-3xl'>
-            <div>
-              <h1>Tournament Hub</h1>
-              <p className='text-gray-400'>
-                Join competitive tournaments, compete with players worldwide, and win prizes on the MultiversX blockchain.<br />
-                <span className='text-base text-gray-500'>Connect your wallet to get started.</span>
-              </p>
-            </div>
-            <div className='flex flex-row gap-6 justify-center sm:justify-start mt-6'>
-              <div className='flex flex-col items-center'>
-                <span className='text-3xl font-bold'>6</span>
-                <span className='text-base text-gray-500'>Total Tournaments</span>
-              </div>
-              <div className='flex flex-col items-center'>
-                <span className='text-3xl font-bold'>1</span>
-                <span className='text-base text-gray-500'>Active Tournaments</span>
-              </div>
-              <div className='flex flex-col items-center'>
-                <span className='text-3xl font-bold'>5</span>
-                <span className='text-base text-gray-500'>Upcoming Tournaments</span>
-              </div>
-            </div>
-            <div className='flex flex-row gap-4 justify-center sm:justify-start mt-8'>
-              <Link to='/tournaments' className='px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600'>View Tournaments</Link>
-              <Link to='/tournaments/create' className='px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600'>Create Tournament</Link>
-            </div>
-          </div>
-        </div>
-        <div className='h-4/6 bg-mvx-white bg-contain bg-no-repeat w-1/2 bg-center' />
-        <Outlet />
-      </div>
-      <div className='mt-12'>
-        <TransactionsTable />
-      </div>
+      <Container maxW="7xl" py={10}>
+        <VStack spacing={12} align="stretch">
+          {/* Hero Section */}
+          <Box textAlign={{ base: 'center', md: 'left' }}>
+            <VStack spacing={6} align={{ base: 'center', md: 'start' }}>
+              <Heading size="2xl" bgGradient="linear(to-r, blue.400, purple.400)" bgClip="text">
+                Tournament Hub
+              </Heading>
+              <Text fontSize="xl" color="gray.300" maxW="2xl">
+                Join competitive tournaments, compete with players worldwide, and win prizes on the MultiversX blockchain.
+                <br />
+                <Text as="span" fontSize="md" color="gray.500">
+                  Connect your wallet to get started.
+                </Text>
+              </Text>
+
+              {/* Stats */}
+              <StatGroup maxW="md" w="full">
+                <Stat>
+                  <StatNumber color="blue.400">6</StatNumber>
+                  <StatLabel color="gray.400">Total Tournaments</StatLabel>
+                </Stat>
+                <Stat>
+                  <StatNumber color="green.400">1</StatNumber>
+                  <StatLabel color="gray.400">Active Tournaments</StatLabel>
+                </Stat>
+                <Stat>
+                  <StatNumber color="yellow.400">5</StatNumber>
+                  <StatLabel color="gray.400">Upcoming Tournaments</StatLabel>
+                </Stat>
+              </StatGroup>
+
+              {/* Action Buttons */}
+              <HStack spacing={4} flexWrap="wrap" justify={{ base: 'center', md: 'start' }}>
+                <Button
+                  as={RouterLink}
+                  to="/tournaments"
+                  leftIcon={<Trophy size={20} />}
+                  colorScheme="blue"
+                  size="lg"
+                  borderRadius="xl"
+                  _hover={{ transform: 'translateY(-2px)', boxShadow: 'lg' }}
+                >
+                  View Tournaments
+                </Button>
+                <Button
+                  as={RouterLink}
+                  to="/tournaments/create"
+                  leftIcon={<Plus size={20} />}
+                  colorScheme="green"
+                  size="lg"
+                  borderRadius="xl"
+                  _hover={{ transform: 'translateY(-2px)', boxShadow: 'lg' }}
+                >
+                  Create Tournament
+                </Button>
+              </HStack>
+            </VStack>
+          </Box>
+
+          {/* Features Grid */}
+          <SimpleGrid columns={{ base: 1, md: 3 }} spacing={8}>
+            <Box p={6} bg="gray.800" borderRadius="xl" border="1px solid" borderColor="gray.700">
+              <VStack spacing={4} align="center">
+                <Box p={3} bg="blue.500" borderRadius="full">
+                  <Trophy size={24} color="white" />
+                </Box>
+                <Heading size="md">Competitive Gaming</Heading>
+                <Text color="gray.400" textAlign="center">
+                  Join tournaments with players from around the world and compete for prizes.
+                </Text>
+              </VStack>
+            </Box>
+
+            <Box p={6} bg="gray.800" borderRadius="xl" border="1px solid" borderColor="gray.700">
+              <VStack spacing={4} align="center">
+                <Box p={3} bg="green.500" borderRadius="full">
+                  <Users size={24} color="white" />
+                </Box>
+                <Heading size="md">Community Driven</Heading>
+                <Text color="gray.400" textAlign="center">
+                  Create and manage your own tournaments or join existing ones.
+                </Text>
+              </VStack>
+            </Box>
+
+            <Box p={6} bg="gray.800" borderRadius="xl" border="1px solid" borderColor="gray.700">
+              <VStack spacing={4} align="center">
+                <Box p={3} bg="purple.500" borderRadius="full">
+                  <Calendar size={24} color="white" />
+                </Box>
+                <Heading size="md">Flexible Scheduling</Heading>
+                <Text color="gray.400" textAlign="center">
+                  Set your own deadlines and play at your own pace.
+                </Text>
+              </VStack>
+            </Box>
+          </SimpleGrid>
+
+          <Outlet />
+        </VStack>
+      </Container>
+
+
     </PageWrapper>
   );
 };
