@@ -10,7 +10,6 @@
 // Async Callback (empty):               1
 // Total number of exported functions:  17
 
-
 #![no_std]
 
 multiversx_sc_wasm_adapter::allocator!();
