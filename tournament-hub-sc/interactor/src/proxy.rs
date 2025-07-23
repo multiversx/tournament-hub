@@ -82,99 +82,103 @@ where
     Gas: TxGas<Env>,
 {
     pub fn register_game<
-        Arg0: ProxyArg<u64>,
-        Arg1: ProxyArg<ManagedAddress<Env::Api>>,
-        Arg2: ProxyArg<u32>,
-        Arg3: ProxyArg<ManagedVec<Env::Api, u32>>,
-        Arg4: ProxyArg<u32>,
-        Arg5: ProxyArg<bool>,
+        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
+        Arg1: ProxyArg<u32>,
+        Arg2: ProxyArg<ManagedVec<Env::Api, u32>>,
+        Arg3: ProxyArg<bool>,
     >(
         self,
-        game_id: Arg0,
-        signing_server_address: Arg1,
-        podium_size: Arg2,
-        prize_distribution_percentages: Arg3,
-        house_fee_percentage: Arg4,
-        allow_late_join: Arg5,
+        signing_server_address: Arg0,
+        podium_size: Arg1,
+        prize_distribution_percentages: Arg2,
+        allow_late_join: Arg3,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("registerGame")
-            .argument(&game_id)
             .argument(&signing_server_address)
             .argument(&podium_size)
             .argument(&prize_distribution_percentages)
-            .argument(&house_fee_percentage)
             .argument(&allow_late_join)
             .original_result()
     }
 
+    pub fn set_house_fee_percentage<
+        Arg0: ProxyArg<u32>,
+    >(
+        self,
+        new_fee: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("setHouseFeePercentage")
+            .argument(&new_fee)
+            .original_result()
+    }
+
     pub fn submit_results<
-        Arg0: ProxyArg<u64>,
+        Arg0: ProxyArg<usize>,
         Arg1: ProxyArg<ManagedVec<Env::Api, ManagedAddress<Env::Api>>>,
         Arg2: ProxyArg<ManagedBuffer<Env::Api>>,
     >(
         self,
-        tournament_id: Arg0,
+        tournament_index: Arg0,
         winner_podium: Arg1,
         signed_result: Arg2,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("submitResults")
-            .argument(&tournament_id)
+            .argument(&tournament_index)
             .argument(&winner_podium)
             .argument(&signed_result)
             .original_result()
     }
 
     pub fn place_spectator_bet<
-        Arg0: ProxyArg<u64>,
+        Arg0: ProxyArg<usize>,
         Arg1: ProxyArg<ManagedAddress<Env::Api>>,
     >(
         self,
-        tournament_id: Arg0,
+        tournament_index: Arg0,
         betting_on_player: Arg1,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("placeSpectatorBet")
-            .argument(&tournament_id)
+            .argument(&tournament_index)
             .argument(&betting_on_player)
             .original_result()
     }
 
     pub fn claim_spectator_winnings<
-        Arg0: ProxyArg<u64>,
+        Arg0: ProxyArg<usize>,
     >(
         self,
-        tournament_id: Arg0,
+        tournament_index: Arg0,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("claimSpectatorWinnings")
-            .argument(&tournament_id)
+            .argument(&tournament_index)
             .original_result()
     }
 
     pub fn create_tournament<
-        Arg0: ProxyArg<u64>,
-        Arg1: ProxyArg<u64>,
-        Arg2: ProxyArg<BigUint<Env::Api>>,
+        Arg0: ProxyArg<usize>,
+        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg2: ProxyArg<u64>,
         Arg3: ProxyArg<u64>,
-        Arg4: ProxyArg<u64>,
     >(
         self,
-        tournament_id: Arg0,
-        game_id: Arg1,
-        entry_fee: Arg2,
-        join_deadline: Arg3,
-        play_deadline: Arg4,
+        game_index: Arg0,
+        entry_fee: Arg1,
+        join_deadline: Arg2,
+        play_deadline: Arg3,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("createTournament")
-            .argument(&tournament_id)
-            .argument(&game_id)
+            .argument(&game_index)
             .argument(&entry_fee)
             .argument(&join_deadline)
             .argument(&play_deadline)
@@ -182,82 +186,100 @@ where
     }
 
     pub fn join_tournament<
-        Arg0: ProxyArg<u64>,
+        Arg0: ProxyArg<usize>,
     >(
         self,
-        tournament_id: Arg0,
+        tournament_index: Arg0,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("joinTournament")
-            .argument(&tournament_id)
+            .argument(&tournament_index)
             .original_result()
     }
 
     pub fn start_tournament<
-        Arg0: ProxyArg<u64>,
+        Arg0: ProxyArg<usize>,
     >(
         self,
-        tournament_id: Arg0,
+        tournament_index: Arg0,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("startTournament")
-            .argument(&tournament_id)
+            .argument(&tournament_index)
             .original_result()
     }
 
     pub fn get_game_config<
-        Arg0: ProxyArg<u64>,
+        Arg0: ProxyArg<usize>,
     >(
         self,
-        game_id: Arg0,
+        game_index: Arg0,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, Option<GameConfig<Env::Api>>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getGameConfig")
-            .argument(&game_id)
+            .argument(&game_index)
             .original_result()
     }
 
     pub fn get_tournament<
-        Arg0: ProxyArg<u64>,
+        Arg0: ProxyArg<usize>,
     >(
         self,
-        tournament_id: Arg0,
+        tournament_index: Arg0,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, Option<Tournament<Env::Api>>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getTournament")
-            .argument(&tournament_id)
+            .argument(&tournament_index)
+            .original_result()
+    }
+
+    pub fn get_number_of_tournaments(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, usize> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getNumberOfTournaments")
+            .original_result()
+    }
+
+    pub fn get_active_tournament_ids(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, u64>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getActiveTournamentIds")
             .original_result()
     }
 
     pub fn get_spectator_bets<
-        Arg0: ProxyArg<u64>,
+        Arg0: ProxyArg<usize>,
         Arg1: ProxyArg<ManagedAddress<Env::Api>>,
     >(
         self,
-        tournament_id: Arg0,
+        tournament_index: Arg0,
         player: Arg1,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, SpectatorBet<Env::Api>>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getSpectatorBets")
-            .argument(&tournament_id)
+            .argument(&tournament_index)
             .argument(&player)
             .original_result()
     }
 
     pub fn get_spectator_pool_total<
-        Arg0: ProxyArg<u64>,
+        Arg0: ProxyArg<usize>,
     >(
         self,
-        tournament_id: Arg0,
+        tournament_index: Arg0,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getSpectatorPoolTotal")
-            .argument(&tournament_id)
+            .argument(&tournament_index)
             .original_result()
     }
 

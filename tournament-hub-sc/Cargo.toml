@@ -8,6 +8,9 @@ authors = ["you"]
 [lib]
 path = "src/tournament_hub.rs"
 
+[features]
+no-sig-check = []
+
 [dependencies.multiversx-sc]
 version = "0.57.1"
 
