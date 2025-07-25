@@ -5,23 +5,23 @@ multiversx_sc::imports!();
 #[multiversx_sc::module]
 pub trait ViewsModule: crate::storage::StorageModule {
     #[view(getGameConfig)]
-    fn get_game_config(&self, game_index: usize) -> Option<GameConfig<Self::Api>> {
+    fn get_game_config(&self, game_index: usize) -> GameConfig<Self::Api> {
         let games_len = self.registered_games().len();
-        if game_index > 0 && game_index <= games_len {
-            Some(self.registered_games().get(game_index).clone())
-        } else {
-            None
-        }
+        require!(
+            game_index > 0 && game_index <= games_len,
+            "Invalid game index"
+        );
+        self.registered_games().get(game_index).clone()
     }
 
     #[view(getTournament)]
-    fn get_tournament(&self, tournament_index: usize) -> Option<Tournament<Self::Api>> {
+    fn get_tournament(&self, tournament_index: usize) -> Tournament<Self::Api> {
         let tournaments_len = self.active_tournaments().len();
-        if tournament_index > 0 && tournament_index <= tournaments_len {
-            Some(self.active_tournaments().get(tournament_index).clone())
-        } else {
-            None
-        }
+        require!(
+            tournament_index > 0 && tournament_index <= tournaments_len,
+            "Tournament does not exist"
+        );
+        self.active_tournaments().get(tournament_index).clone()
     }
 
     #[view(getNumberOfTournaments)]
@@ -57,5 +57,10 @@ pub trait ViewsModule: crate::storage::StorageModule {
     #[view(getAccumulatedHouseFees)]
     fn get_accumulated_house_fees(&self) -> BigUint {
         self.accumulated_house_fees().get()
+    }
+
+    #[view(getTournamentFee)]
+    fn get_tournament_fee(&self) -> BigUint<Self::Api> {
+        self.tournament_fee().get()
     }
 }

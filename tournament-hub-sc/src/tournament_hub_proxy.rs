@@ -117,7 +117,7 @@ where
     }
 
     pub fn submit_results<
-        Arg0: ProxyArg<usize>,
+        Arg0: ProxyArg<u64>,
         Arg1: ProxyArg<ManagedVec<Env::Api, ManagedAddress<Env::Api>>>,
         Arg2: ProxyArg<ManagedBuffer<Env::Api>>,
     >(
@@ -136,7 +136,7 @@ where
     }
 
     pub fn place_spectator_bet<
-        Arg0: ProxyArg<usize>,
+        Arg0: ProxyArg<u64>,
         Arg1: ProxyArg<ManagedAddress<Env::Api>>,
     >(
         self,
@@ -164,29 +164,26 @@ where
     }
 
     pub fn create_tournament<
-        Arg0: ProxyArg<usize>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg0: ProxyArg<u64>,
+        Arg1: ProxyArg<u64>,
         Arg2: ProxyArg<u64>,
-        Arg3: ProxyArg<u64>,
     >(
         self,
         game_index: Arg0,
-        entry_fee: Arg1,
-        join_deadline: Arg2,
-        play_deadline: Arg3,
+        join_deadline: Arg1,
+        play_deadline: Arg2,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("createTournament")
             .argument(&game_index)
-            .argument(&entry_fee)
             .argument(&join_deadline)
             .argument(&play_deadline)
             .original_result()
     }
 
     pub fn join_tournament<
-        Arg0: ProxyArg<usize>,
+        Arg0: ProxyArg<u64>,
     >(
         self,
         tournament_index: Arg0,
@@ -198,7 +195,7 @@ where
     }
 
     pub fn start_tournament<
-        Arg0: ProxyArg<usize>,
+        Arg0: ProxyArg<u64>,
     >(
         self,
         tournament_index: Arg0,
@@ -206,6 +203,32 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("startTournament")
+            .argument(&tournament_index)
+            .original_result()
+    }
+
+    pub fn set_tournament_fee<
+        Arg0: ProxyArg<BigUint<Env::Api>>,
+    >(
+        self,
+        new_fee: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("setTournamentFee")
+            .argument(&new_fee)
+            .original_result()
+    }
+
+    pub fn get_prize_pool<
+        Arg0: ProxyArg<u64>,
+    >(
+        self,
+        tournament_index: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getPrizePool")
             .argument(&tournament_index)
             .original_result()
     }
@@ -228,7 +251,7 @@ where
     >(
         self,
         tournament_index: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, Option<Tournament<Env::Api>>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, Tournament<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getTournament")
@@ -291,6 +314,15 @@ where
             .raw_call("getAccumulatedHouseFees")
             .original_result()
     }
+
+    pub fn get_tournament_fee(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTournamentFee")
+            .original_result()
+    }
 }
 
 #[type_abi]
@@ -314,9 +346,7 @@ where
 {
     pub game_id: u64,
     pub status: TournamentStatus,
-    pub entry_fee: BigUint<Api>,
     pub participants: ManagedVec<Api, ManagedAddress<Api>>,
-    pub prize_pool: BigUint<Api>,
     pub join_deadline: u64,
     pub play_deadline: u64,
     pub final_podium: ManagedVec<Api, ManagedAddress<Api>>,
