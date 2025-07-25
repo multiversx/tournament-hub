@@ -22,6 +22,12 @@ pub trait StorageModule {
     #[storage_mapper("spectator_claims")]
     fn spectator_claims(&self) -> UnorderedSetMapper<ManagedBuffer>;
 
+    #[storage_mapper("house_fee_percentage")]
+    fn house_fee_percentage(&self) -> SingleValueMapper<u32>;
+
     #[storage_mapper("accumulated_house_fees")]
     fn accumulated_house_fees(&self) -> SingleValueMapper<BigUint>;
+
+    #[storage_mapper("tournament_fee")]
+    fn tournament_fee(&self) -> SingleValueMapper<BigUint<Self::Api>>;
 }

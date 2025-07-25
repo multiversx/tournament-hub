@@ -55,9 +55,11 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
         tournament: &Tournament<Self::Api>,
         game_config: &GameConfig<Self::Api>,
     ) {
-        // Calculate house fee (basis points: 10,000 = 100.00%)
-        let house_fee = &tournament.prize_pool * game_config.house_fee_percentage / 10_000u32;
-        let remaining_pool = &tournament.prize_pool - &house_fee;
+        let num_participants = BigUint::from(tournament.participants.len());
+        let tournament_fee = self.tournament_fee().get();
+        let total_pool = &tournament_fee * &num_participants;
+        let house_fee = &total_pool * game_config.house_fee_percentage / 10_000u32;
+        let remaining_pool = &total_pool - &house_fee;
 
         // Accumulate house fee in contract storage
         if house_fee > 0 {

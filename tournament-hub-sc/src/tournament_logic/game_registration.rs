@@ -44,9 +44,6 @@ pub trait GameRegistrationModule: crate::storage::StorageModule {
         self.registered_games().push(&game_config);
     }
 
-    #[storage_mapper("house_fee_percentage")]
-    fn house_fee_percentage(&self) -> SingleValueMapper<u32>;
-
     #[only_owner]
     #[endpoint(setHouseFeePercentage)]
     fn set_house_fee_percentage(&self, new_fee: u32) {
