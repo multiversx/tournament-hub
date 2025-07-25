@@ -31,8 +31,8 @@ export const useJoinTournamentTransaction = () => {
             throw new Error('Please connect your wallet first');
         }
 
-        // Convert parameters to hex strings and pad to even length
-        const tournamentIdHex = padEven(params.tournamentId.toString(16));
+        // Always serialize tournamentId as u64 (8-byte, 16 hex chars)
+        const tournamentIdHex = BigInt(params.tournamentId).toString(16).padStart(16, '0');
 
         // Build the transaction data string
         const dataString = `joinTournament@${tournamentIdHex}`;

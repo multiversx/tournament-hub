@@ -20,22 +20,7 @@ import {
 import { Users, Award, Calendar, Play, Trophy } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { tournamentService } from '../services/tournamentService';
-
-// TODO: Replace with real fetch logic
-const mockTournamentDetails = {
-    id: 1,
-    name: 'Summer Showdown',
-    status: 'active',
-    players: ['Alice', 'Bob', 'Charlie', 'Dave', 'Eve', 'Frank'],
-    description: 'A summer tournament for all skill levels. Join the competition and prove your skills!',
-    prize_pool: '5 EGLD',
-    entry_fee: '0.1 EGLD',
-    join_deadline: 1731801600,
-    play_deadline: 1732406400,
-    creator: 'erd1...abc123',
-    max_players: 8,
-    current_players: 6,
-};
+import { getTournamentDetailsFromContract, getGameConfig, getPrizePoolFromContract } from '../helpers';
 
 const statusColors: Record<string, string> = {
     created: 'yellow',
@@ -52,13 +37,34 @@ export const TournamentDetails = () => {
     const toast = useToast();
 
     useEffect(() => {
-        setLoading(true);
-        setError(null);
-        // Simulate API call
-        setTimeout(() => {
-            setTournament(mockTournamentDetails);
-            setLoading(false);
-        }, 800);
+        async function fetchTournament() {
+            setLoading(true);
+            setError(null);
+            try {
+                if (!id) throw new Error('No tournament id');
+                const details = await getTournamentDetailsFromContract(BigInt(id));
+                if (!details) throw new Error('Tournament not found');
+                const gameConfig = await getGameConfig(details.game_id);
+                const prizePool = await getPrizePoolFromContract(BigInt(id));
+                setTournament({
+                    ...details,
+                    gameConfig,
+                    prize_pool: prizePool ? (Number(prizePool) / 1e18).toFixed(2) + ' EGLD' : '-',
+                    entry_fee: '-', // If you have entry_fee logic, fetch here
+                    name: `Tournament #${id}`,
+                    status: ['created', 'active', 'finished', 'joining', 'playing', 'processing', 'completed'][details.status] || 'unknown',
+                    current_players: details.participants.length,
+                    max_players: gameConfig?.podium_size || 0,
+                    description: `Game ID: ${details.game_id}`,
+                    players: details.participants,
+                });
+            } catch (err: any) {
+                setError(err.message || 'Failed to fetch tournament');
+            } finally {
+                setLoading(false);
+            }
+        }
+        fetchTournament();
     }, [id]);
 
     const handleJoinTournament = async () => {
@@ -165,28 +171,28 @@ export const TournamentDetails = () => {
                 </Box>
 
                 <SimpleGrid columns={columns} spacing={8}>
-                    {/* Tournament Info */}
+                    {/* Tournament Information Card */}
                     <Card bg="gray.800" border="1px solid" borderColor="gray.700">
                         <CardHeader>
-                            <Heading size="md">Tournament Information</Heading>
+                            <Heading size="md" color="white" fontWeight="bold">Tournament Information</Heading>
                         </CardHeader>
                         <CardBody>
                             <VStack spacing={4} align="stretch">
                                 <HStack justify="space-between">
-                                    <Text color="gray.400">Prize Pool:</Text>
-                                    <Text fontWeight="bold" color="yellow.400">{tournament.prize_pool}</Text>
+                                    <Text color="gray.300" fontWeight="bold">Prize Pool:</Text>
+                                    <Text color="gray.100">{tournament.prize_pool}</Text>
                                 </HStack>
                                 <HStack justify="space-between">
-                                    <Text color="gray.400">Entry Fee:</Text>
-                                    <Text fontWeight="bold">{tournament.entry_fee}</Text>
+                                    <Text color="gray.300" fontWeight="bold">Entry Fee:</Text>
+                                    <Text color="gray.100">{tournament.entry_fee}</Text>
                                 </HStack>
                                 <HStack justify="space-between">
-                                    <Text color="gray.400">Players:</Text>
-                                    <Text fontWeight="bold">{tournament.current_players}/{tournament.max_players}</Text>
+                                    <Text color="gray.300" fontWeight="bold">Players:</Text>
+                                    <Text color="gray.100">{tournament.current_players}/{tournament.max_players}</Text>
                                 </HStack>
                                 <HStack justify="space-between">
-                                    <Text color="gray.400">Creator:</Text>
-                                    <Text fontWeight="bold" fontSize="sm" color="blue.400">{tournament.creator}</Text>
+                                    <Text color="gray.300" fontWeight="bold">Creator:</Text>
+                                    <Text color="blue.400" fontWeight="bold" fontSize="sm">{tournament.creator}</Text>
                                 </HStack>
                             </VStack>
                         </CardBody>
@@ -195,17 +201,17 @@ export const TournamentDetails = () => {
                     {/* Deadlines */}
                     <Card bg="gray.800" border="1px solid" borderColor="gray.700">
                         <CardHeader>
-                            <Heading size="md">Important Dates</Heading>
+                            <Heading size="md" color="white" fontWeight="bold">Important Dates</Heading>
                         </CardHeader>
                         <CardBody>
                             <VStack spacing={4} align="stretch">
                                 <HStack justify="space-between">
-                                    <Text color="gray.400">Join Deadline:</Text>
-                                    <Text fontWeight="bold">{new Date(tournament.join_deadline * 1000).toLocaleDateString()}</Text>
+                                    <Text color="gray.300" fontWeight="bold">Join Deadline:</Text>
+                                    <Text color="gray.100">{tournament.join_deadline ? new Date(Number(tournament.join_deadline) * 1000).toLocaleDateString() : '-'}</Text>
                                 </HStack>
                                 <HStack justify="space-between">
-                                    <Text color="gray.400">Play Deadline:</Text>
-                                    <Text fontWeight="bold">{new Date(tournament.play_deadline * 1000).toLocaleDateString()}</Text>
+                                    <Text color="gray.300" fontWeight="bold">Play Deadline:</Text>
+                                    <Text color="gray.100">{tournament.play_deadline ? new Date(Number(tournament.play_deadline) * 1000).toLocaleDateString() : '-'}</Text>
                                 </HStack>
                             </VStack>
                         </CardBody>
@@ -215,17 +221,14 @@ export const TournamentDetails = () => {
                 {/* Players List */}
                 <Card bg="gray.800" border="1px solid" borderColor="gray.700">
                     <CardHeader>
-                        <HStack>
-                            <Users size={20} />
-                            <Heading size="md">Participants ({tournament.players.length})</Heading>
-                        </HStack>
+                        <Heading size="md" color="white" fontWeight="bold">Participants ({tournament.players.length})</Heading>
                     </CardHeader>
                     <CardBody>
                         <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
                             {tournament.players.map((player: string, index: number) => (
                                 <HStack key={index} p={3} bg="gray.700" borderRadius="md">
                                     <Trophy size={16} color="#FFD700" />
-                                    <Text fontWeight="medium">{player}</Text>
+                                    <Text fontWeight="medium" color="blue.400">{player}</Text>
                                 </HStack>
                             ))}
                         </SimpleGrid>
