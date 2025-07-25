@@ -154,16 +154,13 @@ impl ContractInteract {
     }
 
     pub async fn register_game(&mut self) {
-        let game_id = 1u64;
         let signing_server_address = Bech32Address::from_bech32_string(
             "erd1qyu5wthldzr8wx5c9ucg8kjagg0jfs53s8nr3zpz3hypefsdd8ssycr6th".to_string(),
         );
         let podium_size = 1u32;
         let mut prize_distribution_percentages = ManagedVec::new();
         prize_distribution_percentages.push(10_000u32);
-
-        let house_fee_percentage = 0u32;
-        let allow_late_join = false;
+        let allow_late_late_join = false;
 
         let response = self
             .interactor
@@ -173,12 +170,10 @@ impl ContractInteract {
             .gas(100_000_000u64)
             .typed(proxy::TournamentHubProxy)
             .register_game(
-                game_id,
                 signing_server_address,
                 podium_size,
                 prize_distribution_percentages,
-                house_fee_percentage,
-                allow_late_join,
+                allow_late_late_join,
             )
             .returns(ReturnsResultUnmanaged)
             .run()
@@ -188,7 +183,7 @@ impl ContractInteract {
     }
 
     pub async fn submit_results(&mut self) {
-        let tournament_id = 18u64;
+        let tournament_id = 18usize;
         let mut winner_podium = ManagedVec::new();
         let alice_address = ManagedAddress::from(self.wallet_address.clone());
         winner_podium.push(alice_address);
@@ -214,7 +209,7 @@ impl ContractInteract {
     pub async fn place_spectator_bet(&mut self) {
         let egld_amount = BigUint::<StaticApi>::from(0u128);
 
-        let tournament_id = 0u64;
+        let tournament_id = 0usize;
         let betting_on_player = bech32::decode("");
 
         let response = self
@@ -234,7 +229,7 @@ impl ContractInteract {
     }
 
     pub async fn claim_spectator_winnings(&mut self) {
-        let tournament_id = 0u64;
+        let tournament_id = 0usize;
 
         let response = self
             .interactor
@@ -252,17 +247,15 @@ impl ContractInteract {
     }
 
     pub async fn create_tournament(&mut self) {
-        let tournament_id = 18u64;
-        let game_id = 1u64;
-        let entry_fee = BigUint::from(0u128);
+        let game_index = 1u64;
 
         // Get current unix timestamp and add 100 seconds
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let join_deadline = now + 50;
-        let play_deadline = now + 105;
+        let join_deadline = now + 60 * 60 * 24;
+        let play_deadline = now + 60 * 60 * 24 * 2;
 
         println!("join_deadline: {join_deadline}");
         println!("play_deadline: {play_deadline}");
@@ -274,13 +267,7 @@ impl ContractInteract {
             .to(self.state.current_address())
             .gas(100_000_000u64)
             .typed(proxy::TournamentHubProxy)
-            .create_tournament(
-                tournament_id,
-                game_id,
-                entry_fee,
-                join_deadline,
-                play_deadline,
-            )
+            .create_tournament(game_index, join_deadline, play_deadline)
             .returns(ReturnsResultUnmanaged)
             .run()
             .await;
@@ -291,7 +278,7 @@ impl ContractInteract {
     pub async fn join_tournament(&mut self) {
         let egld_amount = BigUint::<StaticApi>::from(0u128);
 
-        let tournament_id = 18u64;
+        let tournament_id = 3usize;
 
         let response = self
             .interactor
@@ -310,7 +297,7 @@ impl ContractInteract {
     }
 
     pub async fn start_tournament(&mut self) {
-        let tournament_id = 18u64;
+        let tournament_id = 18usize;
 
         let response = self
             .interactor
@@ -328,7 +315,7 @@ impl ContractInteract {
     }
 
     pub async fn get_game_config(&mut self) {
-        let game_id = 0u64;
+        let game_id = 0usize;
 
         let result_value = self
             .interactor
@@ -344,7 +331,7 @@ impl ContractInteract {
     }
 
     pub async fn get_tournament(&mut self) {
-        let tournament_id = 0u64;
+        let tournament_id = 0usize;
 
         let result_value = self
             .interactor
@@ -360,7 +347,7 @@ impl ContractInteract {
     }
 
     pub async fn get_spectator_bets(&mut self) {
-        let tournament_id = 0u64;
+        let tournament_id = 0usize;
         let player = bech32::decode("");
 
         let result_value = self
@@ -377,7 +364,7 @@ impl ContractInteract {
     }
 
     pub async fn get_spectator_pool_total(&mut self) {
-        let tournament_id = 0u64;
+        let tournament_id = 0usize;
 
         let result_value = self
             .interactor
