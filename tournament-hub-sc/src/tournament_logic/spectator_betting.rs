@@ -12,7 +12,6 @@ pub trait SpectatorBettingModule:
     fn place_spectator_bet(&self, tournament_index: u64, betting_on_player: ManagedAddress) {
         let payment = self.call_value().egld().clone_value();
         let caller = self.blockchain().get_caller();
-        let current_time = self.blockchain().get_block_timestamp();
 
         require!(payment > 0, "Bet amount must be greater than 0");
         let tournaments_len = self.active_tournaments().len() as u64;
@@ -25,11 +24,6 @@ pub trait SpectatorBettingModule:
             .active_tournaments()
             .get(tournament_index as usize)
             .clone();
-
-        require!(
-            current_time <= tournament.play_deadline,
-            "Betting period has ended"
-        );
 
         // Verify betting_on_player is a participant
         let found = tournament

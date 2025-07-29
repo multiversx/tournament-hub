@@ -100,18 +100,13 @@ impl TournamentHubTestState {
             .run();
     }
 
-    fn create_tournament(
-        &mut self,
-        game_index: usize,
-        join_deadline: u64,
-        play_deadline: u64,
-    ) -> u64 {
+    fn create_tournament(&mut self, game_index: usize) -> u64 {
         self.world
             .tx()
             .from(USER1)
             .to(TOURNAMENT_HUB_ADDRESS)
             .typed(tournament_hub_proxy::TournamentHubProxy)
-            .create_tournament(game_index as u64, join_deadline, play_deadline)
+            .create_tournament(game_index as u64)
             .run();
         // The new tournament's index is the current length of the vector
 
@@ -157,33 +152,6 @@ impl TournamentHubTestState {
             .typed(tournament_hub_proxy::TournamentHubProxy)
             .join_tournament(tournament_id)
             .egld(entry_fee.clone())
-            .returns(ExpectError(4u64, return_error_message))
-            .run();
-        self
-    }
-
-    fn start_tournament(&mut self, tournament_id: u64) -> &mut Self {
-        self.world
-            .tx()
-            .from(USER1)
-            .to(TOURNAMENT_HUB_ADDRESS)
-            .typed(tournament_hub_proxy::TournamentHubProxy)
-            .start_tournament(tournament_id)
-            .run();
-        self
-    }
-
-    fn start_tournament_expect_error(
-        &mut self,
-        tournament_id: u64,
-        return_error_message: &str,
-    ) -> &mut Self {
-        self.world
-            .tx()
-            .from(USER1)
-            .to(TOURNAMENT_HUB_ADDRESS)
-            .typed(tournament_hub_proxy::TournamentHubProxy)
-            .start_tournament(tournament_id)
             .returns(ExpectError(4u64, return_error_message))
             .run();
         self
@@ -315,7 +283,7 @@ fn test_full_tournament_flow() {
         .run();
 
     // Edge case: create_tournament with duplicate tournament_id
-    state.create_tournament(1usize, join_deadline_timestamp, play_deadline_timestamp);
+            state.create_tournament(1usize);
     state
         .world
         .tx()
@@ -331,7 +299,7 @@ fn test_full_tournament_flow() {
         .run();
 
     // Start tournament (simulate time passing)
-    state.start_tournament_expect_error(tournament_id, "Join deadline has not passed yet");
+
     state
         .world
         .current_block()
@@ -367,13 +335,6 @@ fn test_full_tournament_flow() {
         .world
         .current_block()
         .block_timestamp(play_deadline_timestamp);
-
-    // Edge case: start_tournament for non-existent tournament
-    state.start_tournament_expect_error(999u64, "Tournament does not exist");
-
-    // Edge case: start_tournament when not in joining phase (simulate by starting twice)
-    state.start_tournament(tournament_id);
-    state.start_tournament_expect_error(tournament_id, "Tournament is not in joining phase");
 
     // Spectator bets on user1
     let bet_amount = BigUint::from(10u64).pow(17); // 0.1 EGLD
@@ -480,7 +441,6 @@ fn test_debug_message_construction() {
 
     // Move to play_deadline
     state.world.current_block().block_timestamp(play_deadline);
-    state.start_tournament(tournament_id);
 
     // Test with the exact same data as your real test
     let podium = vec![USER1.to_address()]; // Single player podium
