@@ -26,9 +26,7 @@ pub enum TournamentStatus {
 pub struct Tournament<M: ManagedTypeApi> {
     pub game_id: u64,
     pub status: TournamentStatus,
-    pub entry_fee: BigUint<M>,
     pub participants: ManagedVec<M, ManagedAddress<M>>,
-    pub prize_pool: BigUint<M>,
     pub join_deadline: u64,
     pub play_deadline: u64,
     pub final_podium: ManagedVec<M, ManagedAddress<M>>,

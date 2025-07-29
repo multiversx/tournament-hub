@@ -16,7 +16,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
         gateway: 'https://devnet-gateway.multiversx.com',
         api: 'https://devnet-api.multiversx.com',
         explorer: 'https://devnet-explorer.multiversx.com',
-        contractAddress: 'erd1qqqqqqqqqqqqqpgq0uqzyw46yc8zdcpazvwhscl2m92qpmegd8ssja5slh' // <-- Correct smart contract address for devnet
+        contractAddress: 'erd1qqqqqqqqqqqqqpgqeqv9v8fydgdh8arf6kfd5y7uvycv9kx3d8ssz87x92'
     },
     testnet: {
         id: 'testnet',
@@ -25,7 +25,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
         gateway: 'https://testnet-gateway.multiversx.com',
         api: 'https://testnet-api.multiversx.com',
         explorer: 'https://testnet-explorer.multiversx.com',
-        contractAddress: 'erd1qqqqqqqqqqqqqpgq0uqzyw46yc8zdcpazvwhscl2m92qpmegd8ssja5slh' // Replace with your deployed contract address
+        contractAddress: 'erd1qqqqqqqqqqqqqpgqeqv9v8fydgdh8arf6kfd5y7uvycv9kx3d8ssz87x92'
     },
     mainnet: {
         id: 'mainnet',
@@ -34,7 +34,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
         gateway: 'https://gateway.multiversx.com',
         api: 'https://api.multiversx.com',
         explorer: 'https://explorer.multiversx.com',
-        contractAddress: 'erd1qqqqqqqqqqqqqpgq0uqzyw46yc8zdcpazvwhscl2m92qpmegd8ssja5slh' // Replace with your deployed contract address
+        contractAddress: 'erd1qqqqqqqqqqqqqpgqeqv9v8fydgdh8arf6kfd5y7uvycv9kx3d8ssz87x92'
     }
 }
 

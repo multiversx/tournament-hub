@@ -14,7 +14,7 @@ import {
     useToast,
 } from '@chakra-ui/react';
 import { Users, Award, Calendar, Plus } from 'lucide-react';
-import { getActiveTournamentIds, getTournamentDetailsFromContract } from '../helpers';
+import { getActiveTournamentIds, getTournamentDetailsFromContract, getGameConfig, getPrizePoolFromContract } from '../helpers';
 
 const statusColors: Record<string, string> = {
     0: 'yellow', // Joining
@@ -23,14 +23,31 @@ const statusColors: Record<string, string> = {
     3: 'gray',   // Completed
 };
 
+const statusMap: { [key: number]: string } = {
+    0: 'Joining',
+    1: 'Playing',
+    2: 'ProcessingResults',
+    3: 'Completed'
+};
+
 function formatEgld(biguint: bigint) {
     return (Number(biguint) / 1e18).toFixed(2);
 }
 
-function formatDate(timestamp: number) {
-    if (!timestamp) return '-';
-    const date = new Date(timestamp * 1000);
-    return date.toLocaleString();
+function formatDate(timestamp: number | bigint | string | undefined | null): string {
+    if (timestamp === undefined || timestamp === null) return '-';
+    if (typeof timestamp === 'bigint') {
+        // Only convert to number if safe
+        if (timestamp > Number.MAX_SAFE_INTEGER) return timestamp.toString();
+        timestamp = Number(timestamp);
+    }
+    if (typeof timestamp === 'string') {
+        const n = Number(timestamp);
+        if (isNaN(n) || n === 0) return '-';
+        timestamp = n;
+    }
+    if (typeof timestamp !== 'number' || isNaN(timestamp) || timestamp === 0) return '-';
+    return new Date(timestamp * 1000).toLocaleString();
 }
 
 export const Tournaments = () => {
@@ -57,9 +74,17 @@ export const Tournaments = () => {
                 // Fetch details for each tournament
                 const tournamentPromises = tournamentIds.map(async (id) => {
                     try {
-                        console.log('Fetching tournament details for ID:', id);
                         const details = await getTournamentDetailsFromContract(id);
-                        console.log('Tournament ID:', id, 'Details:', details);
+                        let gameConfig = null;
+                        if (details && details.game_id) {
+                            gameConfig = await getGameConfig(details.game_id);
+                        }
+                        let prizePool = null;
+                        try {
+                            prizePool = await getPrizePoolFromContract(id);
+                        } catch (e) {
+                            prizePool = null;
+                        }
                         if (details) {
                             return {
                                 id,
@@ -67,11 +92,12 @@ export const Tournaments = () => {
                                 status: details.status,
                                 players: details.participants || [],
                                 description: `Game ID: ${details.game_id}`,
-                                prize_pool: formatEgld(details.prize_pool) + ' EGLD',
                                 join_deadline: details.join_deadline,
                                 play_deadline: details.play_deadline,
-                                entry_fee: formatEgld(details.entry_fee),
                                 creator: details.creator,
+                                final_podium: details.final_podium || [],
+                                gameConfig,
+                                prizePool
                             };
                         }
                         return null;
@@ -174,7 +200,7 @@ export const Tournaments = () => {
                             <HStack justify="space-between" mb={4}>
                                 <Heading size="md">{tournament.name}</Heading>
                                 <Badge colorScheme={statusColors[tournament.status] || 'gray'} fontSize="sm" px={3} py={1} borderRadius="md">
-                                    {['Joining', 'Playing', 'Processing', 'Completed'][tournament.status] || 'Unknown'}
+                                    {statusMap[Number(tournament.status)] || 'Unknown'}
                                 </Badge>
                             </HStack>
                             <Text color="gray.300" mb={2} noOfLines={2}>
@@ -185,9 +211,10 @@ export const Tournaments = () => {
                                     <Users size={16} />
                                     <Text>{tournament.players.length} players</Text>
                                 </HStack>
+                                {/* Show Prize Pool using new calculation */}
                                 <HStack color="gray.400" fontSize="sm">
                                     <Award size={16} />
-                                    <Text>Prize Pool: {tournament.prize_pool}</Text>
+                                    <Text>Prize Pool: {tournament.prizePool !== null ? (Number(tournament.prizePool) / 1e18).toFixed(2) + ' EGLD' : '-'}</Text>
                                 </HStack>
                                 <HStack color="gray.400" fontSize="sm">
                                     <Calendar size={16} />
@@ -201,12 +228,34 @@ export const Tournaments = () => {
                                         Play Deadline: {formatDate(tournament.play_deadline)}
                                     </Text>
                                 </HStack>
-                                <HStack color="gray.400" fontSize="sm">
+                                {/* Remove Entry Fee UI */}
+                                {/* <HStack color="gray.400" fontSize="sm">
                                     <Text>Entry Fee: {tournament.entry_fee} EGLD</Text>
-                                </HStack>
+                                </HStack> */}
                                 <HStack color="gray.400" fontSize="sm">
                                     <Text>Creator: {tournament.creator}</Text>
                                 </HStack>
+                                <HStack color="gray.400" fontSize="sm">
+                                    <Text>
+                                        Final Podium: {
+                                            tournament.status === 3 && tournament.final_podium.length > 0
+                                                ? tournament.final_podium.join(', ')
+                                                : 'N/A'
+                                        }
+                                    </Text>
+                                </HStack>
+                                {tournament.gameConfig && (
+                                    <Box mt={2} p={2} bg="gray.700" borderRadius="md" w="full">
+                                        <Text fontWeight="bold" color="gray.200">Game Config</Text>
+                                        <Text fontSize="sm" color="gray.300">Signing Server: {tournament.gameConfig.signing_server_address}</Text>
+                                        <Text fontSize="sm" color="gray.300">Podium Size: {tournament.gameConfig.podium_size}</Text>
+                                        <Text fontSize="sm" color="gray.300">Prize Distribution: {tournament.gameConfig.prize_distribution_percentages && tournament.gameConfig.prize_distribution_percentages.length > 0 ? tournament.gameConfig.prize_distribution_percentages.map((value: number, idx: number) => (
+                                            <span key={idx}>{(value / 100).toFixed(2)}%</span>
+                                        )) : 'N/A'}</Text>
+                                        <Text fontSize="sm" color="gray.300">House Fee: {(tournament.gameConfig.house_fee_percentage / 100).toFixed(2)}%</Text>
+                                        <Text fontSize="sm" color="gray.300">Allow Late Join: {tournament.gameConfig.allow_late_join ? 'Yes' : 'No'}</Text>
+                                    </Box>
+                                )}
                             </VStack>
                             <Button
                                 as="a"

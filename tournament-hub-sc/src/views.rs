@@ -5,21 +5,23 @@ multiversx_sc::imports!();
 #[multiversx_sc::module]
 pub trait ViewsModule: crate::storage::StorageModule {
     #[view(getGameConfig)]
-    fn get_game_config(&self, game_id: &u64) -> Option<GameConfig<Self::Api>> {
-        if self.registered_games().contains_key(game_id) {
-            Some(self.registered_games().get(game_id).unwrap())
-        } else {
-            None
-        }
+    fn get_game_config(&self, game_index: usize) -> GameConfig<Self::Api> {
+        let games_len = self.registered_games().len();
+        require!(
+            game_index > 0 && game_index <= games_len,
+            "Invalid game index"
+        );
+        self.registered_games().get(game_index).clone()
     }
 
     #[view(getTournament)]
-    fn get_tournament(&self, tournament_id: &u64) -> Option<Tournament<Self::Api>> {
-        if self.active_tournaments().contains_key(tournament_id) {
-            Some(self.active_tournaments().get(tournament_id).unwrap())
-        } else {
-            None
-        }
+    fn get_tournament(&self, tournament_index: usize) -> Tournament<Self::Api> {
+        let tournaments_len = self.active_tournaments().len();
+        require!(
+            tournament_index > 0 && tournament_index <= tournaments_len,
+            "Tournament does not exist"
+        );
+        self.active_tournaments().get(tournament_index).clone()
     }
 
     #[view(getNumberOfTournaments)]
@@ -30,8 +32,9 @@ pub trait ViewsModule: crate::storage::StorageModule {
     #[view(getActiveTournamentIds)]
     fn get_active_tournament_ids(&self) -> ManagedVec<u64> {
         let mut ids = ManagedVec::new();
-        for id in self.active_tournaments().keys() {
-            ids.push(id);
+        let no_of_tournaments = self.active_tournaments().len();
+        for id in 1..=no_of_tournaments {
+            ids.push(id as u64);
         }
         ids
     }
@@ -39,19 +42,25 @@ pub trait ViewsModule: crate::storage::StorageModule {
     #[view(getSpectatorBets)]
     fn get_spectator_bets(
         &self,
-        tournament_id: &u64,
+        tournament_index: usize,
         player: &ManagedAddress,
     ) -> ManagedVec<SpectatorBet<Self::Api>> {
-        self.spectator_bets(tournament_id, player).get()
+        self.spectator_bets(&(tournament_index as u64), player)
+            .get()
     }
 
     #[view(getSpectatorPoolTotal)]
-    fn get_spectator_pool_total(&self, tournament_id: &u64) -> BigUint {
-        self.spectator_pool_total(tournament_id).get()
+    fn get_spectator_pool_total(&self, tournament_index: usize) -> BigUint {
+        self.spectator_pool_total(&(tournament_index as u64)).get()
     }
 
     #[view(getAccumulatedHouseFees)]
     fn get_accumulated_house_fees(&self) -> BigUint {
         self.accumulated_house_fees().get()
+    }
+
+    #[view(getTournamentFee)]
+    fn get_tournament_fee(&self) -> BigUint<Self::Api> {
+        self.tournament_fee().get()
     }
 }

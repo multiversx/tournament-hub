@@ -28,7 +28,6 @@ interface FormData {
     name: string;
     description: string;
     maxPlayers: string;
-    entryFee: string;
     prizePool: string;
     joinDeadline: string;
     playDeadline: string;
@@ -38,7 +37,6 @@ interface FormErrors {
     name?: string;
     description?: string;
     maxPlayers?: string;
-    entryFee?: string;
     prizePool?: string;
     joinDeadline?: string;
     playDeadline?: string;
@@ -53,7 +51,6 @@ export const CreateTournament: React.FC = () => {
         name: '',
         description: '',
         maxPlayers: '4',
-        entryFee: '0',
         prizePool: '0',
         joinDeadline: '',
         playDeadline: ''
@@ -75,10 +72,6 @@ export const CreateTournament: React.FC = () => {
 
         if (!formData.maxPlayers || parseInt(formData.maxPlayers) < 2) {
             newErrors.maxPlayers = 'Max players must be at least 2';
-        }
-
-        if (!formData.entryFee || parseFloat(formData.entryFee) < 0) {
-            newErrors.entryFee = 'Entry fee cannot be negative';
         }
 
         if (!formData.prizePool || parseFloat(formData.prizePool) < 0) {
@@ -129,9 +122,7 @@ export const CreateTournament: React.FC = () => {
             const gameId = 1;
 
             const sessionId = await createTournament({
-                tournamentId,
                 gameId,
-                entryFee: formData.entryFee,
                 joinDeadline: parseInt(formData.joinDeadline),
                 playDeadline: parseInt(formData.playDeadline)
             });
@@ -149,7 +140,6 @@ export const CreateTournament: React.FC = () => {
                 name: '',
                 description: '',
                 maxPlayers: '4',
-                entryFee: '0',
                 prizePool: '0',
                 joinDeadline: '',
                 playDeadline: ''
@@ -241,19 +231,6 @@ export const CreateTournament: React.FC = () => {
                                         <NumberInputField sx={{ color: 'white !important' }} />
                                     </NumberInput>
                                     {errors.maxPlayers && <Text color="red.400" fontSize="sm">{errors.maxPlayers}</Text>}
-                                </FormControl>
-
-                                <FormControl isInvalid={!!errors.entryFee}>
-                                    <FormLabel color="gray.300">Entry Fee (EGLD)</FormLabel>
-                                    <NumberInput
-                                        value={formData.entryFee}
-                                        onChange={(value) => handleInputChange('entryFee', value)}
-                                        min={0}
-                                        precision={2}
-                                    >
-                                        <NumberInputField sx={{ color: 'white !important' }} />
-                                    </NumberInput>
-                                    {errors.entryFee && <Text color="red.400" fontSize="sm">{errors.entryFee}</Text>}
                                 </FormControl>
 
                                 <FormControl isInvalid={!!errors.prizePool}>

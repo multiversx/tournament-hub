@@ -9,21 +9,22 @@ pub trait SpectatorBettingModule:
 {
     #[endpoint(placeSpectatorBet)]
     #[payable("EGLD")]
-    fn place_spectator_bet(&self, tournament_id: u64, betting_on_player: ManagedAddress) {
+    fn place_spectator_bet(&self, tournament_index: u64, betting_on_player: ManagedAddress) {
         let payment = self.call_value().egld().clone_value();
         let caller = self.blockchain().get_caller();
         let current_time = self.blockchain().get_block_timestamp();
 
         require!(payment > 0, "Bet amount must be greater than 0");
+        let tournaments_len = self.active_tournaments().len() as u64;
         require!(
-            self.active_tournaments().contains_key(&tournament_id),
+            tournament_index > 0 && tournament_index <= tournaments_len,
             "Tournament does not exist"
         );
 
-        let tournament = match self.active_tournaments().get(&tournament_id) {
-            Some(t) => t,
-            None => sc_panic!("Tournament does not exist"),
-        };
+        let tournament = self
+            .active_tournaments()
+            .get(tournament_index as usize)
+            .clone();
 
         require!(
             current_time <= tournament.play_deadline,
@@ -45,35 +46,35 @@ pub trait SpectatorBettingModule:
 
         // Store bet
         let mut bets = self
-            .spectator_bets(&tournament_id, &betting_on_player)
+            .spectator_bets(&(tournament_index as u64), &betting_on_player)
             .get();
         bets.push(bet);
-        self.spectator_bets(&tournament_id, &betting_on_player)
+        self.spectator_bets(&(tournament_index as u64), &betting_on_player)
             .set(bets);
 
         // Update total spectator pool
-        let current_pool = self.spectator_pool_total(&tournament_id).get();
-        self.spectator_pool_total(&tournament_id)
+        let current_pool = self.spectator_pool_total(&(tournament_index as u64)).get();
+        self.spectator_pool_total(&(tournament_index as u64))
             .set(current_pool + payment);
     }
 
     #[endpoint(claimSpectatorWinnings)]
-    fn claim_spectator_winnings(&self, tournament_id: u64) {
+    fn claim_spectator_winnings(&self, tournament_index: usize) {
         let caller = self.blockchain().get_caller();
-
+        let tournaments_len = self.active_tournaments().len();
         require!(
-            self.active_tournaments().contains_key(&tournament_id),
+            tournament_index > 0 && tournament_index <= tournaments_len,
             "Tournament does not exist"
         );
 
-        let tournament = match self.active_tournaments().get(&tournament_id) {
-            Some(t) => t,
-            None => sc_panic!("Tournament does not exist"),
-        };
-        let game_config = match self.registered_games().get(&tournament.game_id) {
-            Some(g) => g,
-            None => sc_panic!("Game config does not exist"),
-        };
+        let tournament = self.active_tournaments().get(tournament_index).clone();
+        let game_index = tournament.game_id as usize;
+        let games_len = self.registered_games().len();
+        require!(
+            game_index > 0 && game_index <= games_len,
+            "Game config does not exist"
+        );
+        let game_config = self.registered_games().get(game_index).clone();
 
         require!(
             tournament.status == TournamentStatus::Completed,
@@ -81,13 +82,13 @@ pub trait SpectatorBettingModule:
         );
 
         // Check if already claimed
-        let claim_key = self.get_claim_key(&tournament_id, &caller);
+        let claim_key = self.get_claim_key(&(tournament_index as u64), &caller);
         require!(
-            !self.spectator_claims().contains_key(&claim_key),
+            !self.spectator_claims().contains(&claim_key),
             "Already claimed winnings"
         );
 
-        let total_spectator_pool = self.spectator_pool_total(&tournament_id).get();
+        let total_spectator_pool = self.spectator_pool_total(&(tournament_index as u64)).get();
         require!(total_spectator_pool > 0, "No spectator pool");
 
         // Calculate house fee (basis points: 10,000 = 100.00%)
@@ -98,7 +99,9 @@ pub trait SpectatorBettingModule:
         let mut caller_winnings = BigUint::zero();
 
         for (position, winner) in tournament.final_podium.iter().enumerate() {
-            let bets = self.spectator_bets(&tournament_id, &winner).get();
+            let bets = self
+                .spectator_bets(&(tournament_index as u64), &winner)
+                .get();
 
             // Calculate total bet on this winner
             let mut total_bet_on_winner = BigUint::zero();
@@ -125,7 +128,7 @@ pub trait SpectatorBettingModule:
         require!(caller_winnings > 0u32, "No winnings to claim");
 
         // Mark as claimed
-        self.spectator_claims().insert(claim_key, true);
+        self.spectator_claims().insert(claim_key);
 
         // Send winnings
         self.send().direct_egld(&caller, &caller_winnings);
