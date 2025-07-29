@@ -1,120 +1,261 @@
-import { ProxyNetworkProvider, SmartContract, Address, AbiRegistry } from '@multiversx/sdk-core';
-import { tournamentHubContract } from '../contracts';
-import { egldToWei } from '../utils/contractUtils';
+import { getContractAddress } from '../config/contract';
 
-export class TournamentService {
-  private networkProvider: ProxyNetworkProvider;
-  private contract: SmartContract;
+// Game configurations
+export const GAME_CONFIGS = {
+  1: {
+    name: "Tic Tac Toe",
+    minPlayers: 2,
+    maxPlayers: 2,
+    gameType: "turn_based",
+    description: "Classic 3x3 grid game"
+  },
+  2: {
+    name: "Chess",
+    minPlayers: 2,
+    maxPlayers: 2,
+    gameType: "turn_based",
+    description: "Strategic board game"
+  },
+  3: {
+    name: "4-Player Card Game",
+    minPlayers: 4,
+    maxPlayers: 4,
+    gameType: "turn_based",
+    description: "Multiplayer card game"
+  },
+  4: {
+    name: "8-Player Battle Royale",
+    minPlayers: 4,
+    maxPlayers: 8,
+    gameType: "real_time",
+    description: "Elimination tournament"
+  }
+};
 
-  constructor() {
-    this.networkProvider = new ProxyNetworkProvider('https://devnet-api.multiversx.com');
-    this.contract = new SmartContract({
-      address: new Address(tournamentHubContract.address),
-      abi: this.getContractAbi()
-    });
+export interface TournamentSession {
+  tournament_id: number;
+  max_players: number;
+  game_type: number;
+  players: string[];
+  status: string;
+  brackets?: any[];
+  current_round: number;
+  created_at: number;
+}
+
+export interface GameSession {
+  sessionId: string;
+  tournament_id: number;
+  game_type: number;
+  players: string[];
+  current_turn?: string;
+  game_state: any;
+  status: string;
+  winner?: string;
+  created_at: number;
+}
+
+export interface MoveRequest {
+  session_id: string;
+  player_address: string;
+  move_data: any;
+}
+
+export interface StartSessionRequest {
+  tournament_id: number;
+  player_address: string;
+}
+
+const BACKEND_URL = 'http://localhost:8000';
+
+// Tournament session management
+export async function startTournamentSession(tournamentId: number, playerAddress: string): Promise<TournamentSession> {
+  const response = await fetch(`${BACKEND_URL}/start_session`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      tournament_id: tournamentId,
+      player: playerAddress
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to start tournament session');
   }
 
-  private getContractAbi() {
-    return AbiRegistry.create(tournamentHubContract.abi);
+  return response.json();
+}
+
+export async function startGameSession(tournamentId: number, playerAddress: string): Promise<GameSession> {
+  const response = await fetch(`${BACKEND_URL}/start_session`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      tournament_id: tournamentId,
+      player: playerAddress
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to start game session');
   }
 
-  /**
-   * Create a new tournament
-   * Note: This method is deprecated. Use the useCreateTournamentTransaction hook instead.
-   */
-  async createTournament(params: {
-    tournamentId: number;
-    gameId: number;
-    entryFee: string;
-    joinDeadline: number;
-    playDeadline: number;
-  }): Promise<{ success: boolean; transactionHash: string; tournamentId: number; error?: string }> {
-    console.warn('TournamentService.createTournament is deprecated. Use useCreateTournamentTransaction hook instead.');
+  return response.json();
+}
 
-    // Return a placeholder response - the actual implementation should use the hook
-    return {
-      success: false,
-      transactionHash: 'deprecated',
-      tournamentId: params.tournamentId,
-      error: 'Please use useCreateTournamentTransaction hook instead'
-    };
+export async function getGameState(sessionId: string): Promise<GameSession> {
+  const response = await fetch(`${BACKEND_URL}/game_state?sessionId=${sessionId}`);
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch game state');
   }
 
-  /**
-   * Join a tournament
-   * Note: This method is deprecated. Use the useJoinTournamentTransaction hook instead.
-   */
-  async joinTournament(params: {
-    tournamentId: number;
-    entryFee: string;
-  }): Promise<{ success: boolean; transactionHash: string; error?: string }> {
-    console.warn('TournamentService.joinTournament is deprecated. Use useJoinTournamentTransaction hook instead.');
+  return response.json();
+}
 
-    // Return a placeholder response - the actual implementation should use the hook
-    return {
-      success: false,
-      transactionHash: 'deprecated',
-      error: 'Please use useJoinTournamentTransaction hook instead'
-    };
+export async function makeMove(sessionId: string, playerAddress: string, moveData: any): Promise<GameSession> {
+  const response = await fetch(`${BACKEND_URL}/move`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      sessionId: sessionId,
+      player: playerAddress,
+      move: moveData
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to make move');
   }
 
-  /**
-   * Get tournament details from blockchain
-   */
-  async getTournamentDetails(tournamentId: number): Promise<any> {
-    try {
-      const response = await fetch('https://devnet-api.multiversx.com/vm-values/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          scAddress: tournamentHubContract.address,
-          funcName: 'getTournament',
-          args: [tournamentId.toString(16).padStart(16, '0')]
-        })
-      });
+  return response.json();
+}
 
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error('Error fetching tournament details:', error);
-      throw error;
-    }
+export async function submitTournamentResults(sessionId: string, winner: string): Promise<any> {
+  const response = await fetch(`${BACKEND_URL}/submit_results`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      sessionId: sessionId,
+      winner: winner
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to submit tournament results');
   }
 
-  /**
-   * Get all active tournament IDs
-   */
-  async getActiveTournamentIds(): Promise<number[]> {
-    try {
-      const response = await fetch('https://devnet-api.multiversx.com/vm-values/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          scAddress: tournamentHubContract.address,
-          funcName: 'getActiveTournamentIds',
-          args: []
-        })
-      });
+  return response.json();
+}
 
-      const data = await response.json();
-      const [base64Result] = data.data.returnData || [];
+export async function getGameConfigs(): Promise<any> {
+  const response = await fetch(`${BACKEND_URL}/game-configs`);
 
-      if (!base64Result) return [];
+  if (!response.ok) {
+    throw new Error('Failed to fetch game configs');
+  }
 
-      const hex = Buffer.from(base64Result, 'base64').toString('hex');
-      const ids = [];
+  return response.json();
+}
 
-      // Each u64 is 16 hex chars
-      for (let i = 0; i < hex.length; i += 16) {
-        ids.push(parseInt(hex.slice(i, i + 16), 16));
-      }
-
-      return ids;
-    } catch (error) {
-      console.error('Error fetching active tournament IDs:', error);
-      throw error;
-    }
+// Legacy functions for backward compatibility
+export async function startSession(tournamentId: number, playerAddress: string): Promise<{ sessionId: string }> {
+  try {
+    const result = await startGameSession(tournamentId, playerAddress);
+    return { sessionId: result.sessionId };
+  } catch (error) {
+    console.error('Error starting session:', error);
+    throw error;
   }
 }
 
-export const tournamentService = new TournamentService(); 
+interface Game {
+  players: string[];
+  status: string;
+  winner?: string;
+  session_id?: string;
+}
+
+// Tournament bracket visualization helpers
+export function getTournamentBracket(tournament: TournamentSession) {
+  if (!tournament.brackets) return null;
+
+  return tournament.brackets.map((round: Game[], roundIndex: number) => ({
+    round: roundIndex + 1,
+    games: round.map((game: Game, gameIndex: number) => ({
+      id: `${roundIndex}-${gameIndex}`,
+      players: game.players,
+      status: game.status,
+      winner: game.winner,
+      sessionId: game.session_id
+    }))
+  }));
+}
+
+export function getCurrentGameForPlayer(tournament: TournamentSession, playerAddress: string) {
+  if (!tournament.brackets || tournament.current_round >= tournament.brackets.length) {
+    return null;
+  }
+
+  const currentRound = tournament.brackets[tournament.current_round];
+
+  for (const game of currentRound) {
+    if (game.players.includes(playerAddress) && game.status === 'playing') {
+      return game;
+    }
+  }
+
+  return null;
+}
+
+export function isPlayerInTournament(tournament: TournamentSession, playerAddress: string): boolean {
+  return tournament.players.includes(playerAddress);
+}
+
+export function canStartGame(tournament: TournamentSession, playerAddress: string): boolean {
+  return (
+    isPlayerInTournament(tournament, playerAddress) &&
+    tournament.status === 'ready' &&
+    getCurrentGameForPlayer(tournament, playerAddress) !== null
+  );
+}
+
+export function getTournamentProgress(tournament: TournamentSession): {
+  currentRound: number;
+  totalRounds: number;
+  completedGames: number;
+  totalGames: number;
+} {
+  if (!tournament.brackets) {
+    return { currentRound: 0, totalRounds: 0, completedGames: 0, totalGames: 0 };
+  }
+
+  const totalRounds = tournament.brackets.length;
+  const currentRound = tournament.current_round;
+
+  let completedGames = 0;
+  let totalGames = 0;
+
+  tournament.brackets.forEach((round: Game[]) => {
+    round.forEach((game: Game) => {
+      totalGames++;
+      if (game.status === 'completed') {
+        completedGames++;
+      }
+    });
+  });
+
+  return { currentRound, totalRounds, completedGames, totalGames };
+} 

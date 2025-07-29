@@ -9,3 +9,4 @@ export * from './MxLink';
 export * from './OutputContainer';
 export * from './TransactionsTable';
 export * from './WalletConnect';
+export { TicTacToeGame } from './TicTacToeGame';

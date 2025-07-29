@@ -1,5 +1,5 @@
 import { RouteNamesEnum } from 'localConstants';
-import { Dashboard, Disclaimer, Home, Unlock, Tournaments, TournamentDetails, CreateTournament } from 'pages';
+import { Dashboard, Disclaimer, Home, Unlock, Tournaments, TournamentDetails, CreateTournament, GameSession } from 'pages';
 import { RouteType } from 'types';
 
 interface RouteWithTitleType extends RouteType {
@@ -35,6 +35,11 @@ export const routes: RouteWithTitleType[] = [
     path: '/tournaments/create',
     title: 'Create Tournament',
     component: CreateTournament
+  },
+  {
+    path: RouteNamesEnum.gameSession,
+    title: 'Game Session',
+    component: GameSession
   },
   {
     path: RouteNamesEnum.disclaimer,

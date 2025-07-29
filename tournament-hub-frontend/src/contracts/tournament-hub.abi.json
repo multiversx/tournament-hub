@@ -144,17 +144,6 @@
             "outputs": []
         },
         {
-            "name": "startTournament",
-            "mutability": "mutable",
-            "inputs": [
-                {
-                    "name": "tournament_index",
-                    "type": "u64"
-                }
-            ],
-            "outputs": []
-        },
-        {
             "name": "setTournamentFee",
             "mutability": "mutable",
             "inputs": [

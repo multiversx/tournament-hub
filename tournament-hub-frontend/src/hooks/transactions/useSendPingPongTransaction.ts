@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { contractAddress } from 'config';
+import { getContractAddress } from '../../config/contract';
 import { signAndSendTransactions } from 'helpers';
 import {
   AbiRegistry,
@@ -45,7 +45,7 @@ export const useSendPingPongTransaction = () => {
     const pingTransaction = new Transaction({
       value: BigInt(amount),
       data: Buffer.from('ping'),
-      receiver: new Address(contractAddress),
+      receiver: new Address(getContractAddress()),
       gasLimit: BigInt(6000000),
       gasPrice: BigInt(GAS_PRICE),
       chainID: network.chainId,
@@ -66,7 +66,7 @@ export const useSendPingPongTransaction = () => {
       {
         gasLimit: BigInt(6000000),
         function: 'ping',
-        contract: new Address(contractAddress),
+        contract: new Address(getContractAddress()),
         nativeTransferAmount: BigInt(amount)
       }
     );
@@ -92,7 +92,7 @@ export const useSendPingPongTransaction = () => {
     const pongTransaction = new Transaction({
       value: BigInt(0),
       data: Buffer.from('pong'),
-      receiver: new Address(contractAddress),
+      receiver: new Address(getContractAddress()),
       gasLimit: BigInt(6000000),
       gasPrice: BigInt(GAS_PRICE),
       chainID: network.chainId,
@@ -113,7 +113,7 @@ export const useSendPingPongTransaction = () => {
       {
         gasLimit: BigInt(6000000),
         function: 'pong',
-        contract: new Address(contractAddress),
+        contract: new Address(getContractAddress()),
         nativeTransferAmount: BigInt(0)
       }
     );

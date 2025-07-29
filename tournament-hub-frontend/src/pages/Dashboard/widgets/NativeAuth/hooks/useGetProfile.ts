@@ -1,9 +1,10 @@
 import axios from 'axios';
 import { useState } from 'react';
-import { API_URL } from 'config';
+import { useGetNetworkConfig } from 'lib';
 import { ProfileType } from 'types';
 
 export const useGetProfile = () => {
+  const { network } = useGetNetworkConfig();
   const [profile, setProfile] = useState<ProfileType | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -11,7 +12,7 @@ export const useGetProfile = () => {
     try {
       setIsLoading(true);
       const { data } = await axios.get('/account', {
-        baseURL: API_URL
+        baseURL: network.apiAddress
       });
 
       if (data) {
