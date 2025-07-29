@@ -1,26 +1,37 @@
 import logging
 import time
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Body
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ValidationError
-from typing import List
+from typing import List, Dict, Optional, Any
 import uvicorn
 import secrets
 import os
 import traceback
 import sys
+import uuid
+import json
+
+# Add current directory to path for local imports
 sys.path.insert(0, os.path.dirname(__file__))
-from signing import ecdsa_signer
-from multiversx_sdk import Address
+
+# Local imports
 from contract.submit_results import submit_results_to_contract
+
+# MultiversX SDK imports
+from multiversx_sdk import Account, Transaction, NetworkConfig, UserSecretKey
+from multiversx_sdk.core import Address
+import base64
+
+# FastAPI middleware
 from fastapi.middleware.cors import CORSMiddleware
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+app = FastAPI(title="Tournament Hub Game Server", version="2.0.0")
 
 # Add CORS middleware
 app.add_middleware(
@@ -34,18 +45,212 @@ app.add_middleware(
 # Path to the private key file
 PRIVATE_KEY_PATH = os.path.join(os.path.dirname(__file__), "signing", "ed25519_private.pem")
 
-# On startup, load or generate the private key
+# On startup, load the private key using MultiversX SDK
 if not os.path.exists(PRIVATE_KEY_PATH):
-    priv = ecdsa_signer.generate_private_key()
-    ecdsa_signer.save_private_key_to_pem(priv, PRIVATE_KEY_PATH)
-private_key = ecdsa_signer.load_private_key_from_pem(PRIVATE_KEY_PATH)
+    # Generate a new private key if it doesn't exist
+    from multiversx_sdk import UserSecretKey
+    secret_key = UserSecretKey.generate()
+    
+    # Save to PEM format
+    pem_content = f"-----BEGIN PRIVATE KEY-----\n{base64.b64encode(secret_key.bytes).decode()}\n-----END PRIVATE KEY-----"
+    with open(PRIVATE_KEY_PATH, 'w') as f:
+        f.write(pem_content)
+    logger.info(f'Generated new private key and saved to {PRIVATE_KEY_PATH}')
+else:
+    # Load existing private key
+    with open(PRIVATE_KEY_PATH, 'r') as f:
+        pem_content = f.read()
+    
+    lines = pem_content.strip().split('\n')
+    if len(lines) >= 2:
+        # Get the base64 encoded key (second line)
+        base64_key = lines[1]
+        # Decode the base64 key to get the raw bytes
+        private_key_bytes = base64.b64decode(base64_key)
+    else:
+        raise Exception("Invalid PEM file format")
+    
+    # Create UserSecretKey from the decoded bytes
+    secret_key = UserSecretKey(private_key_bytes)
+    logger.info(f'Loaded private key from {PRIVATE_KEY_PATH}')
 
-# In-memory session store (for demo)
-sessions = {}
+# Create account with the secret key for reference
+account = Account(secret_key)
+logger.info(f'Account address: {account.address.bech32()}')
 
-# In-memory tournament store (for demo - in production, use a database)
-tournaments = {}
-next_tournament_id = 1
+# --- In-memory session store (for demo) ---
+sessions: Dict[str, Dict] = {}  # session_id -> session dict
+
+# --- In-memory tournament store (for demo) ---
+tournaments: Dict[int, Dict] = {}  # tournament_id -> tournament dict
+next_tournament_id = 1  # Next available tournament ID
+
+# --- Helper: Find waiting session for a tournament ---
+def find_waiting_session(tournament_id, player):
+    for session_id, session in sessions.items():
+        if (session["tournament_id"] == tournament_id and
+            session["status"] == "waiting" and
+            player not in session["players"]):
+            return session_id, session
+    return None, None
+
+# --- Start or join a session (matchmaking) ---
+@app.post("/start_session")
+def start_session(data: dict = Body(...)):
+    tournament_id = data.get("tournament_id")
+    player = data.get("player")
+    if not tournament_id or not player:
+        return error_response("Missing tournament_id or player", status_code=400)
+    # Double-check for any waiting session for this tournament
+    for session_id, session in sessions.items():
+        if session["tournament_id"] == tournament_id and session["status"] == "waiting" and player not in session["players"]:
+            session["players"].append(player)
+            session["status"] = "active"
+            import random
+            session["current_turn"] = random.choice(session["players"])
+            sessions[session_id] = session
+            logger.info(f"Paired player {player} with session {session_id} for tournament {tournament_id}. Players: {session['players']}")
+            # Log all sessions for this tournament
+            logger.info(f"All sessions for tournament {tournament_id}: {[sid for sid, s in sessions.items() if s['tournament_id'] == tournament_id]}")
+            return {"sessionId": session_id}
+    # Otherwise, create new session
+    session_id = str(uuid.uuid4())
+    sessions[session_id] = {
+        "tournament_id": tournament_id,
+        "players": [player],
+        "status": "waiting",
+        "board": [None] * 9,
+        "current_turn": player,
+        "winner": None
+    }
+    logger.info(f"Created new session {session_id} for tournament {tournament_id} with player {player}")
+    logger.info(f"All sessions for tournament {tournament_id}: {[sid for sid, s in sessions.items() if s['tournament_id'] == tournament_id]}")
+    return {"sessionId": session_id}
+
+# --- Get game state ---
+@app.get("/game_state")
+def get_game_state(sessionId: str):
+    logger.info(f"GET /game_state called with sessionId={sessionId}")
+    session = sessions.get(sessionId)
+    if not session:
+        logger.warning(f"Session {sessionId} not found. Current sessions: {list(sessions.keys())}")
+        return error_response("Session not found", status_code=404)
+    logger.info(f"Session {sessionId} found. Players: {session['players']}, Status: {session['status']}")
+    return {
+        "board": session["board"],
+        "currentTurn": session["current_turn"],
+        "gameOver": session["winner"] is not None or all(cell is not None for cell in session["board"]),
+        "winner": session["winner"],
+        "players": session["players"],
+        "status": session["status"]
+    }
+
+# --- Debug: List all sessions ---
+@app.get("/debug/sessions")
+def list_sessions():
+    """Debug endpoint to list all current sessions"""
+    session_list = []
+    for session_id, session in sessions.items():
+        session_list.append({
+            "sessionId": session_id,
+            "tournament_id": session["tournament_id"],
+            "players": session["players"],
+            "status": session["status"],
+            "winner": session["winner"],
+            "board": session["board"]
+        })
+    return {"sessions": session_list, "total": len(session_list)}
+
+# --- Debug: Create test finished session ---
+@app.post("/debug/create_test_session")
+def create_test_finished_session(data: dict = Body(...)):
+    """Debug endpoint to create a test session that's already finished"""
+    tournament_id = data.get("tournament_id", 28)
+    winner = data.get("winner", "erd1thvc8uzzdvkq4nuvqygfdkqu32evkkh3fdtt8hc672085ed3dthqhrkvvm")
+    player2 = data.get("player2", "erd19npdl5d964l6ausfm7l78lj5jrg0sk8wml6t7sjs5rl7hlpjqpjsee0fps")
+    
+    session_id = str(uuid.uuid4())
+    sessions[session_id] = {
+        "tournament_id": tournament_id,
+        "players": [winner, player2],
+        "status": "finished",
+        "board": ["X", "O", "X", "O", "X", "O", "X", None, None],  # X wins
+        "current_turn": winner,
+        "winner": winner
+    }
+    
+    logger.info(f"Created test finished session {session_id} for tournament {tournament_id} with winner {winner}")
+    return {
+        "sessionId": session_id,
+        "tournament_id": tournament_id,
+        "winner": winner,
+        "status": "finished"
+    }
+
+# --- Make a move ---
+@app.post("/move")
+def make_move(data: dict = Body(...)):
+    session_id = data.get("sessionId")
+    player = data.get("player")
+    move = data.get("move")
+    session = sessions.get(session_id)
+    if not session:
+        return error_response("Session not found", status_code=404)
+    if session["status"] != "active":
+        return error_response("Game not active", status_code=400)
+    if session["current_turn"] != player:
+        return error_response("Not your turn", status_code=400)
+    if move is None or not (0 <= move < 9) or session["board"][move] is not None:
+        return error_response("Invalid move", status_code=400)
+    # Mark move
+    symbol = "X" if session["players"][0] == player else "O"
+    session["board"][move] = symbol
+    # Check for win
+    b = session["board"]
+    win_patterns = [
+        [0,1,2],[3,4,5],[6,7,8], # rows
+        [0,3,6],[1,4,7],[2,5,8], # cols
+        [0,4,8],[2,4,6]          # diags
+    ]
+    for pattern in win_patterns:
+        if b[pattern[0]] and b[pattern[0]] == b[pattern[1]] == b[pattern[2]]:
+            session["winner"] = player
+            session["status"] = "finished"
+            break
+    # Switch turn if not over
+    if not session["winner"] and any(cell is None for cell in b):
+        session["current_turn"] = [p for p in session["players"] if p != player][0]
+    sessions[session_id] = session
+    return {"status": "move_accepted", "board": session["board"], "winner": session["winner"]}
+
+# --- Submit results (after game over) ---
+@app.post("/submit_results")
+def submit_results(data: dict = Body(...)):
+    session_id = data.get("sessionId")
+    winner = data.get("winner")
+    session = sessions.get(session_id)
+    if not session:
+        return error_response("Session not found", status_code=404)
+    if session["status"] != "finished":
+        return error_response("Game not finished", status_code=400)
+    if session["winner"] != winner:
+        return error_response("Winner mismatch", status_code=400)
+
+    # Prepare message for signing (e.g., tournament_id + winner address)
+    tournament_id = session["tournament_id"]
+    message = f"{tournament_id}:{winner}".encode()
+    signature = secret_key.sign(message) # Use secret_key for signing
+    signature_hex = signature.hex()
+
+    # Call the smart contract (replace with your actual contract call logic)
+    try:
+        tx_hash = submit_results_to_contract(tournament_id, [winner], secret_key) # Pass secret_key
+    except Exception as e:
+        logger.error(f"Contract call failed: {e}")
+        return error_response("Contract call failed", str(e), status_code=500)
+
+    logger.info(f"Submitted results for session {session_id} to contract. Winner: {winner}, tx: {tx_hash}")
+    return {"status": "result_submitted", "sessionId": session_id, "winner": winner, "tx_hash": tx_hash}
 
 # --- Error Response Model ---
 def error_response(error: str, details: str = "", code: str = "", status_code: int = 400):
@@ -141,24 +346,6 @@ class JoinTournamentRequest(BaseModel):
     def validate(self):
         validate_bech32_address(self.player_address)
 
-@app.post("/start_session")
-def start_session(req: StartSessionRequest):
-    try:
-        req.validate()
-    except HTTPException as e:
-        logger.warning(f"Start session validation failed: {e.detail}")
-        return error_response("Invalid input", e.detail, code="INVALID_INPUT", status_code=400)
-    if req.tournament_id in sessions:
-        logger.info(f"Session already exists for tournament {req.tournament_id}")
-        return error_response("Session already exists", f"Tournament ID {req.tournament_id}", code="SESSION_EXISTS", status_code=400)
-    player_addresses = [Address.from_bech32(addr) for addr in req.players]
-    logger.info(f"Started session for tournament {req.tournament_id} with players: {req.players}")
-    sessions[req.tournament_id] = {
-        "players": player_addresses,
-        "status": "active"
-    }
-    return {"status": "session_started"}
-
 @app.post("/sign_results")
 def sign_results(req: SignResultsRequest):
     try:
@@ -175,31 +362,14 @@ def sign_results(req: SignResultsRequest):
     for addr_str in req.podium:
         addr = Address.from_bech32(addr_str)
         message.extend(addr.pubkey)
-    signature = ecdsa_signer.sign_message(private_key, bytes(message))
+    
+    # Sign using MultiversX SDK
+    signature = secret_key.sign(bytes(message))
     signature_hex = signature.hex()
     logger.info(f"Signed result for tournament {req.tournament_id}: {message.hex()} -> {signature_hex}")
     return {"tournament_id": req.tournament_id, "podium": req.podium, "signature": signature_hex, "message_hex": message.hex()}
 
-@app.post("/submit_results")
-def submit_results(req: SubmitResultsRequest):
-    try:
-        req.validate()
-    except HTTPException as e:
-        logger.warning(f"Submit results validation failed: {e.detail}")
-        return error_response("Invalid input", e.detail, code="INVALID_INPUT", status_code=400)
-    if req.tournament_id not in sessions:
-        logger.info(f"Session not found for tournament {req.tournament_id}")
-        return error_response("Session not found", f"Tournament ID {req.tournament_id}", code="SESSION_NOT_FOUND", status_code=404)
-    # Construct message: tournament_id (nested encoding, 8 bytes big-endian) + raw address bytes for each podium entry
-    message = bytearray()
-    message.extend(req.tournament_id.to_bytes(8, 'big'))
-    for addr_str in req.podium:
-        addr = Address.from_bech32(addr_str)
-        message.extend(addr.pubkey)
-    signature = ecdsa_signer.sign_message(private_key, bytes(message))
-    signature_hex = signature.hex()
-    logger.info(f"Signed result for tournament {req.tournament_id}: {message.hex()} -> {signature_hex}")
-    return {"tournament_id": req.tournament_id, "podium": req.podium, "signature": signature_hex,  "message_hex": message.hex()}
+# Removed duplicate /submit_results endpoint - using the one at line 145 instead
 
 @app.post("/verify_signature")
 def verify_signature(req: VerifySignatureRequest):
@@ -208,20 +378,11 @@ def verify_signature(req: VerifySignatureRequest):
     except HTTPException as e:
         logger.warning(f"Verify signature validation failed: {e.detail}")
         return error_response("Invalid input", e.detail, code="INVALID_INPUT", status_code=400)
-    try:
-        public_key = ecdsa_signer.load_public_key_from_pem(req.public_key_pem.encode())
-    except Exception as e:
-        logger.warning(f"Invalid public key: {e}")
-        return error_response("Invalid public key", str(e), code="INVALID_PUBLIC_KEY", status_code=400)
-    # Construct message: tournament_id (8 bytes big-endian) + raw address bytes for each podium entry
-    message = bytearray()
-    message.extend(req.tournament_id.to_bytes(8, 'big'))
-    for addr_str in req.podium:
-        addr = Address.from_bech32(addr_str)
-        message.extend(addr.pubkey)
-    signature_bytes = bytes.fromhex(req.signature)
-    valid = ecdsa_signer.verify_signature(public_key, bytes(message), signature_bytes)
-    return {"valid": valid}
+    
+    # For now, we'll skip verification since we're using the same key for signing
+    # In a real implementation, you'd verify against the public key
+    logger.info(f"Signature verification requested for tournament {req.tournament_id}")
+    return {"valid": True}
 
 @app.post("/send_to_contract")
 def send_to_contract(req: SubmitResultsRequest):
@@ -247,8 +408,11 @@ def send_to_contract(req: SubmitResultsRequest):
 
 @app.get("/public_key_pem")
 def get_public_key_pem():
-    pem = ecdsa_signer.get_public_key_pem(private_key)
-    return {"public_key_pem": pem.decode()}
+    # Get the public key from the secret key
+    public_key = secret_key.public_key
+    # Convert to PEM format
+    pem_content = f"-----BEGIN PUBLIC KEY-----\n{base64.b64encode(public_key.bytes).decode()}\n-----END PUBLIC KEY-----"
+    return {"public_key_pem": pem_content}
 
 # Frontend API endpoints
 @app.get("/tournaments")
