@@ -4,10 +4,10 @@ use multiversx_sc::imports::*;
 #[multiversx_sc::module]
 pub trait StorageModule {
     #[storage_mapper("registered_games")]
-    fn registered_games(&self) -> MapMapper<u64, GameConfig<Self::Api>>;
+    fn registered_games(&self) -> VecMapper<GameConfig<Self::Api>>;
 
     #[storage_mapper("active_tournaments")]
-    fn active_tournaments(&self) -> MapMapper<u64, Tournament<Self::Api>>;
+    fn active_tournaments(&self) -> VecMapper<Tournament<Self::Api>>;
 
     #[storage_mapper("spectator_bets")]
     fn spectator_bets(
@@ -20,8 +20,14 @@ pub trait StorageModule {
     fn spectator_pool_total(&self, tournament_id: &u64) -> SingleValueMapper<BigUint>;
 
     #[storage_mapper("spectator_claims")]
-    fn spectator_claims(&self) -> MapMapper<ManagedBuffer, bool>;
+    fn spectator_claims(&self) -> UnorderedSetMapper<ManagedBuffer>;
+
+    #[storage_mapper("house_fee_percentage")]
+    fn house_fee_percentage(&self) -> SingleValueMapper<u32>;
 
     #[storage_mapper("accumulated_house_fees")]
     fn accumulated_house_fees(&self) -> SingleValueMapper<BigUint>;
+
+    #[storage_mapper("tournament_fee")]
+    fn tournament_fee(&self) -> SingleValueMapper<BigUint<Self::Api>>;
 }

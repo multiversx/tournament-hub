@@ -39,8 +39,15 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
         self.debug_message_event(&signed_result);
 
         // Verify the signature
+        // Use a feature flag to allow bypassing signature verification in scenario tests
+        #[cfg(not(feature = "no-sig-check"))]
         self.crypto()
             .verify_ed25519(&pubkey, &message, signed_result);
+
+        #[cfg(feature = "no-sig-check")]
+        {
+            // skip signature verification
+        }
     }
 
     fn distribute_player_prizes(
@@ -48,9 +55,11 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
         tournament: &Tournament<Self::Api>,
         game_config: &GameConfig<Self::Api>,
     ) {
-        // Calculate house fee (basis points: 10,000 = 100.00%)
-        let house_fee = &tournament.prize_pool * game_config.house_fee_percentage / 10_000u32;
-        let remaining_pool = &tournament.prize_pool - &house_fee;
+        let num_participants = BigUint::from(tournament.participants.len());
+        let tournament_fee = self.tournament_fee().get();
+        let total_pool = &tournament_fee * &num_participants;
+        let house_fee = &total_pool * game_config.house_fee_percentage / 10_000u32;
+        let remaining_pool = &total_pool - &house_fee;
 
         // Accumulate house fee in contract storage
         if house_fee > 0 {

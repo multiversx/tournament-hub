@@ -40,7 +40,7 @@ def encode_submit_results_args(tournament_id: int, podium: list[str], signature_
 
 # Config
 API_URL = "https://devnet-api.multiversx.com"
-CONTRACT_ADDRESS = "erd1qqqqqqqqqqqqqpgq0uqzyw46yc8zdcpazvwhscl2m92qpmegd8ssja5slh"
+CONTRACT_ADDRESS = "erd1qqqqqqqqqqqqqpgqeqv9v8fydgdh8arf6kfd5y7uvycv9kx3d8ssz87x92"
 PEM_PATH = "alice.pem"  # Path to your PEM file
 CHAIN_ID = "D"
 

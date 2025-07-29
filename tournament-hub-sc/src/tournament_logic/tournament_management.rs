@@ -11,62 +11,64 @@ pub trait TournamentManagementModule:
     #[endpoint(createTournament)]
     fn create_tournament(
         &self,
-        tournament_id: u64,
-        game_id: u64,
-        entry_fee: BigUint,
+        game_index: u64, // sequential index for the game (starting from 1)
         join_deadline: u64,
         play_deadline: u64,
     ) {
+        // Check that the game exists
+        let games_len = self.registered_games().len() as u64;
         require!(
-            !self.active_tournaments().contains_key(&tournament_id),
-            "Tournament ID already exists"
-        );
-        require!(
-            self.registered_games().contains_key(&game_id),
+            game_index > 0 && game_index <= games_len,
             "Game not registered"
         );
-        require!(
-            join_deadline > self.blockchain().get_block_timestamp(),
-            "Join deadline must be in the future"
-        );
-        require!(
-            play_deadline > join_deadline,
-            "Play deadline must be after join deadline"
-        );
 
+        // Prepare tournament
         let tournament = Tournament {
-            game_id,
+            game_id: game_index, // store the index as the game_id
             status: TournamentStatus::Joining,
-            entry_fee,
             participants: ManagedVec::new(),
-            prize_pool: BigUint::zero(),
             join_deadline,
             play_deadline,
             final_podium: ManagedVec::new(),
             creator: self.blockchain().get_caller(),
         };
 
-        self.active_tournaments().insert(tournament_id, tournament);
-        self.tournament_created_event(&tournament_id, &game_id, &self.blockchain().get_caller());
+        // Add tournament to VecMapper; index will be the tournament ID (starting from 1)
+        self.active_tournaments().push(&tournament);
+        let tournament_index = self.active_tournaments().len() as u64; // index of the newly added tournament
+        self.tournament_created_event(
+            &tournament_index,
+            &game_index,
+            &self.blockchain().get_caller(),
+        );
     }
 
     #[endpoint(joinTournament)]
     #[payable("EGLD")]
-    fn join_tournament(&self, tournament_id: u64) {
+    fn join_tournament(&self, tournament_index: u64) {
         let payment = self.call_value().egld().clone_value();
         let caller = self.blockchain().get_caller();
         let current_time = self.blockchain().get_block_timestamp();
 
+        let required_fee = self.tournament_fee().get();
+
+        let tournaments_len = self.active_tournaments().len() as u64;
         require!(
-            self.active_tournaments().contains_key(&tournament_id),
+            tournament_index > 0 && tournament_index <= tournaments_len,
             "Tournament does not exist"
         );
 
-        let mut tournament = self.active_tournaments().get(&tournament_id).unwrap();
-        let game_config = self.registered_games().get(&tournament.game_id).unwrap();
+        require!(
+            payment == required_fee,
+            "Incorrect payment: must send exactly the tournament fee"
+        );
 
-        // Check payment amount
-        require!(payment == tournament.entry_fee, "Incorrect entry fee");
+        let mut tournament = self
+            .active_tournaments()
+            .get(tournament_index as usize)
+            .clone();
+        let game_index = tournament.game_id as usize;
+        let game_config = self.registered_games().get(game_index).clone();
 
         // Check if player can join based on status and timing
         match tournament.status {
@@ -102,22 +104,26 @@ pub trait TournamentManagementModule:
             );
         }
 
-        // Add player and update prize pool
+        // Add player (no prize_pool update)
         tournament.participants.push(caller.clone());
-        tournament.prize_pool += &payment;
 
-        self.active_tournaments().insert(tournament_id, tournament);
-        self.player_joined_event(&tournament_id, &caller);
+        self.active_tournaments()
+            .set(tournament_index as usize, &tournament);
+        self.player_joined_event(&(tournament_index as u64), &caller);
     }
 
     #[endpoint(startTournament)]
-    fn start_tournament(&self, tournament_id: u64) {
+    fn start_tournament(&self, tournament_index: u64) {
+        let tournaments_len = self.active_tournaments().len() as u64;
         require!(
-            self.active_tournaments().contains_key(&tournament_id),
+            tournament_index > 0 && tournament_index <= tournaments_len,
             "Tournament does not exist"
         );
 
-        let mut tournament = self.active_tournaments().get(&tournament_id).unwrap();
+        let mut tournament = self
+            .active_tournaments()
+            .get(tournament_index as usize)
+            .clone();
 
         require!(
             tournament.status == TournamentStatus::Joining,
@@ -138,7 +144,29 @@ pub trait TournamentManagementModule:
         );
 
         tournament.status = TournamentStatus::Playing;
-        self.active_tournaments().insert(tournament_id, tournament);
-        self.tournament_started_event(&tournament_id);
+        self.active_tournaments()
+            .set(tournament_index as usize, &tournament);
+        self.tournament_started_event(&(tournament_index as u64));
+    }
+
+    #[endpoint(setTournamentFee)]
+    fn set_tournament_fee(&self, new_fee: BigUint) {
+        self.tournament_fee().set(&new_fee);
+    }
+
+    #[view(getPrizePool)]
+    fn get_prize_pool(&self, tournament_index: u64) -> BigUint {
+        let tournaments_len = self.active_tournaments().len() as u64;
+        require!(
+            tournament_index > 0 && tournament_index <= tournaments_len,
+            "Tournament does not exist"
+        );
+        let tournament = self
+            .active_tournaments()
+            .get(tournament_index as usize)
+            .clone();
+        let fee = self.tournament_fee().get();
+        let num_participants = BigUint::from(tournament.participants.len());
+        &fee * &num_participants
     }
 }

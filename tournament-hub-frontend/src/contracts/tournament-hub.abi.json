@@ -32,10 +32,6 @@
             "mutability": "mutable",
             "inputs": [
                 {
-                    "name": "game_id",
-                    "type": "u64"
-                },
-                {
                     "name": "signing_server_address",
                     "type": "Address"
                 },
@@ -48,12 +44,20 @@
                     "type": "List<u32>"
                 },
                 {
-                    "name": "house_fee_percentage",
-                    "type": "u32"
-                },
-                {
                     "name": "allow_late_join",
                     "type": "bool"
+                }
+            ],
+            "outputs": []
+        },
+        {
+            "name": "setHouseFeePercentage",
+            "onlyOwner": true,
+            "mutability": "mutable",
+            "inputs": [
+                {
+                    "name": "new_fee",
+                    "type": "u32"
                 }
             ],
             "outputs": []
@@ -63,7 +67,7 @@
             "mutability": "mutable",
             "inputs": [
                 {
-                    "name": "tournament_id",
+                    "name": "tournament_index",
                     "type": "u64"
                 },
                 {
@@ -85,7 +89,7 @@
             ],
             "inputs": [
                 {
-                    "name": "tournament_id",
+                    "name": "tournament_index",
                     "type": "u64"
                 },
                 {
@@ -100,8 +104,8 @@
             "mutability": "mutable",
             "inputs": [
                 {
-                    "name": "tournament_id",
-                    "type": "u64"
+                    "name": "tournament_index",
+                    "type": "u32"
                 }
             ],
             "outputs": []
@@ -111,16 +115,8 @@
             "mutability": "mutable",
             "inputs": [
                 {
-                    "name": "tournament_id",
+                    "name": "game_index",
                     "type": "u64"
-                },
-                {
-                    "name": "game_id",
-                    "type": "u64"
-                },
-                {
-                    "name": "entry_fee",
-                    "type": "BigUint"
                 },
                 {
                     "name": "join_deadline",
@@ -141,7 +137,7 @@
             ],
             "inputs": [
                 {
-                    "name": "tournament_id",
+                    "name": "tournament_index",
                     "type": "u64"
                 }
             ],
@@ -152,19 +148,45 @@
             "mutability": "mutable",
             "inputs": [
                 {
-                    "name": "tournament_id",
+                    "name": "tournament_index",
                     "type": "u64"
                 }
             ],
             "outputs": []
         },
         {
+            "name": "setTournamentFee",
+            "mutability": "mutable",
+            "inputs": [
+                {
+                    "name": "new_fee",
+                    "type": "BigUint"
+                }
+            ],
+            "outputs": []
+        },
+        {
+            "name": "getPrizePool",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "tournament_index",
+                    "type": "u64"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "BigUint"
+                }
+            ]
+        },
+        {
             "name": "getGameConfig",
             "mutability": "readonly",
             "inputs": [
                 {
-                    "name": "game_id",
-                    "type": "u64"
+                    "name": "game_index",
+                    "type": "u32"
                 }
             ],
             "outputs": [
@@ -178,13 +200,13 @@
             "mutability": "readonly",
             "inputs": [
                 {
-                    "name": "tournament_id",
-                    "type": "u64"
+                    "name": "tournament_index",
+                    "type": "u32"
                 }
             ],
             "outputs": [
                 {
-                    "type": "Option<Tournament>"
+                    "type": "Tournament"
                 }
             ]
         },
@@ -213,8 +235,8 @@
             "mutability": "readonly",
             "inputs": [
                 {
-                    "name": "tournament_id",
-                    "type": "u64"
+                    "name": "tournament_index",
+                    "type": "u32"
                 },
                 {
                     "name": "player",
@@ -232,8 +254,8 @@
             "mutability": "readonly",
             "inputs": [
                 {
-                    "name": "tournament_id",
-                    "type": "u64"
+                    "name": "tournament_index",
+                    "type": "u32"
                 }
             ],
             "outputs": [
@@ -244,6 +266,16 @@
         },
         {
             "name": "getAccumulatedHouseFees",
+            "mutability": "readonly",
+            "inputs": [],
+            "outputs": [
+                {
+                    "type": "BigUint"
+                }
+            ]
+        },
+        {
+            "name": "getTournamentFee",
             "mutability": "readonly",
             "inputs": [],
             "outputs": [
@@ -437,16 +469,8 @@
                     "type": "TournamentStatus"
                 },
                 {
-                    "name": "entry_fee",
-                    "type": "BigUint"
-                },
-                {
                     "name": "participants",
                     "type": "List<Address>"
-                },
-                {
-                    "name": "prize_pool",
-                    "type": "BigUint"
                 },
                 {
                     "name": "join_deadline",

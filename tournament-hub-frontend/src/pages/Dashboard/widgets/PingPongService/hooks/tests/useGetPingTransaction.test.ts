@@ -5,7 +5,7 @@ import { useGetPingTransaction } from '../useGetPingTransaction';
 const pingTransaction = {
   nonce: 10705,
   value: '1000000000000000000',
-  receiver: 'erd1qqqqqqqqqqqqqpgq0uqzyw46yc8zdcpazvwhscl2m92qpmegd8ssja5slh',
+  receiver: 'erd1qqqqqqqqqqqqqpgqeqv9v8fydgdh8arf6kfd5y7uvycv9kx3d8ssz87x92',
   sender: 'erd1axhx4kenjlae6sknq7zjg2g4fvzavv979r2fg425p62wkl84avtqsf7vvv',
   gasPrice: 1000000000,
   gasLimit: 6000000,

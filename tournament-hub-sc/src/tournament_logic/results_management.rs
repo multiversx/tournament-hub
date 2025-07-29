@@ -10,17 +10,27 @@ pub trait ResultsManagementModule:
     #[endpoint(submitResults)]
     fn submit_results(
         &self,
-        tournament_id: u64,
+        tournament_index: u64,
         winner_podium: ManagedVec<ManagedAddress>,
         signed_result: ManagedBuffer,
     ) {
+        let tournaments_len = self.active_tournaments().len() as u64;
         require!(
-            self.active_tournaments().contains_key(&tournament_id),
+            tournament_index > 0 && tournament_index <= tournaments_len,
             "Tournament does not exist"
         );
 
-        let mut tournament = self.active_tournaments().get(&tournament_id).unwrap();
-        let game_config = self.registered_games().get(&tournament.game_id).unwrap();
+        let mut tournament = self
+            .active_tournaments()
+            .get(tournament_index as usize)
+            .clone();
+        let game_index = tournament.game_id as usize;
+        let games_len = self.registered_games().len();
+        require!(
+            game_index > 0 && game_index <= games_len,
+            "Game config does not exist"
+        );
+        let game_config = self.registered_games().get(game_index).clone();
 
         require!(
             tournament.status == TournamentStatus::Playing,
@@ -33,10 +43,13 @@ pub trait ResultsManagementModule:
             "Play deadline has not passed yet"
         );
 
-        // Verify signature (simplified - in production, implement proper signature verification)
-        // This would involve verifying the signed_result against the game's signing_server_address
-        self.verify_result_signature(&tournament_id, &winner_podium, &signed_result, &game_config);
-        self.results_submitted_event(&tournament_id, &self.blockchain().get_caller());
+        self.verify_result_signature(
+            &(tournament_index as u64),
+            &winner_podium,
+            &signed_result,
+            &game_config,
+        );
+        self.results_submitted_event(&(tournament_index as u64), &self.blockchain().get_caller());
 
         // Validate winner podium
         require!(
@@ -61,9 +74,13 @@ pub trait ResultsManagementModule:
 
         // Calculate and distribute prizes
         self.distribute_player_prizes(&tournament, &game_config);
-        <Self as crate::events::EventsModule>::prizes_distributed_event(self, &tournament_id);
+        <Self as crate::events::EventsModule>::prizes_distributed_event(
+            self,
+            &(tournament_index as u64),
+        );
 
         tournament.status = TournamentStatus::Completed;
-        self.active_tournaments().insert(tournament_id, tournament);
+        self.active_tournaments()
+            .set(tournament_index as usize, &tournament);
     }
 }
