@@ -6,3 +6,4 @@ export * from './Unlock';
 export * from './Tournaments';
 export { default as TournamentDetails } from './TournamentDetails';
 export { default as CreateTournament } from './CreateTournament';
+export { default as GameSession } from './GameSession';

@@ -1,6 +1,6 @@
 import './styles/globals.css';
 
-import { walletConnectV2ProjectId } from 'config';
+import { walletConnectV2ProjectId } from './config/sharedConfig';
 import { EnvironmentsEnum, ICustomProvider, InitAppType } from './lib';
 import { InMemoryProvider } from './provider/inMemoryProvider';
 

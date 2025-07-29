@@ -37,11 +37,11 @@ export const useJoinTournamentTransaction = () => {
         // Build the transaction data string
         const dataString = `joinTournament@${tournamentIdHex}`;
 
-        const entryFeeWei = egldToWei(params.entryFee);
-        const value = entryFeeWei !== '0' ? BigInt(entryFeeWei) : undefined;
+        // Do NOT convert entryFee to Number or use scientific notation
+        const value = BigInt(params.entryFee); // params.entryFee is a string like "1000000000000000000"
 
         const transaction = new Transaction({
-            ...(value ? { value } : {}),
+            value,
             data: Buffer.from(dataString),
             receiver: new Address(tournamentHubContract.address),
             gasLimit: BigInt(60000000), // 60M gas for contract interaction
