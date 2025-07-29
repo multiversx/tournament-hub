@@ -165,20 +165,14 @@ where
 
     pub fn create_tournament<
         Arg0: ProxyArg<u64>,
-        Arg1: ProxyArg<u64>,
-        Arg2: ProxyArg<u64>,
     >(
         self,
         game_index: Arg0,
-        join_deadline: Arg1,
-        play_deadline: Arg2,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("createTournament")
             .argument(&game_index)
-            .argument(&join_deadline)
-            .argument(&play_deadline)
             .original_result()
     }
 
@@ -190,19 +184,6 @@ where
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("joinTournament")
-            .argument(&tournament_index)
-            .original_result()
-    }
-
-    pub fn start_tournament<
-        Arg0: ProxyArg<u64>,
-    >(
-        self,
-        tournament_index: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("startTournament")
             .argument(&tournament_index)
             .original_result()
     }
@@ -238,7 +219,7 @@ where
     >(
         self,
         game_index: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, Option<GameConfig<Env::Api>>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, GameConfig<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getGameConfig")
@@ -347,8 +328,6 @@ where
     pub game_id: u64,
     pub status: TournamentStatus,
     pub participants: ManagedVec<Api, ManagedAddress<Api>>,
-    pub join_deadline: u64,
-    pub play_deadline: u64,
     pub final_podium: ManagedVec<Api, ManagedAddress<Api>>,
     pub creator: ManagedAddress<Api>,
 }
@@ -357,13 +336,14 @@ where
 #[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
 pub enum TournamentStatus {
     Joining,
-    Playing,
     ProcessingResults,
     Completed,
 }
 
 #[type_abi]
-#[derive(TopEncode, TopDecode, ManagedVecItem, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
+#[derive(
+    TopEncode, TopDecode, ManagedVecItem, NestedEncode, NestedDecode, Clone, Debug, PartialEq,
+)]
 pub struct SpectatorBet<Api>
 where
     Api: ManagedTypeApi,
