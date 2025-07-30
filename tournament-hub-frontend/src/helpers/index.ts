@@ -344,36 +344,119 @@ export async function getTournamentFeeFromContract() {
 
 export async function getSubmitResultsTransactionHash(tournamentId: number | bigint) {
     try {
-        // Query all events for the contract
-        const url = `https://devnet-api.multiversx.com/events?address=${getContractAddress()}&order=desc&size=100`;
+        console.log(`Searching for result TX for tournament ${tournamentId}...`);
+
+        // Query all events for the contract to find resultsSubmitted events
+        const contractAddress = getContractAddress();
+
+        // Try with larger size first, then paginate if needed
+        let url = `https://devnet-api.multiversx.com/events?address=${contractAddress}&order=desc&size=500`;
+        console.log(`Contract address: ${contractAddress}`);
+        console.log(`Fetching events from: ${url}`);
+
         const response = await fetch(url);
         const data = await response.json();
 
         if (!data || !Array.isArray(data)) {
+            console.log(`No events found for tournament ${tournamentId}`);
             return null;
         }
 
+        console.log(`Found ${data.length} events, searching for resultsSubmitted...`);
+
+        // Debug: Show all event types found
+        const eventTypes = new Set();
+        data.forEach((event: any) => {
+            if (event.topics && event.topics.length > 0) {
+                eventTypes.add(event.topics[0]);
+            }
+        });
+        console.log('Found event types:', Array.from(eventTypes));
+
+        // The resultsSubmitted event signature hash (keccak256 of "resultsSubmitted(u64,address)")
+        const resultsSubmittedSignature = '0139472eff6886771a982f3083da5d421f24c29181e63888228dc81ca60d69e1';
+        console.log('Looking for resultsSubmitted signature:', resultsSubmittedSignature);
+        console.log('Is resultsSubmitted signature in event types?', eventTypes.has(resultsSubmittedSignature));
+
+        // Also try looking for the event name directly in the first topic
+        const resultsSubmittedName = Buffer.from('resultsSubmitted', 'utf8').toString('hex');
+        console.log('Looking for resultsSubmitted name:', resultsSubmittedName);
+        console.log('Is resultsSubmitted name in event types?', eventTypes.has(resultsSubmittedName));
+
         // Look for the resultsSubmitted event for this specific tournament
+        let resultsSubmittedCount = 0;
         for (const event of data) {
-            if (event.topics && event.topics.length >= 2) {
-                // Check if this is a resultsSubmitted event
+            if (event.topics && event.topics.length >= 3) { // resultsSubmitted should have at least 3 topics
+                // Check if this is a resultsSubmitted event by signature or name
                 const firstTopic = event.topics[0];
-                try {
-                    // Decode the first topic from hex
-                    const decodedEventName = Buffer.from(firstTopic, 'hex').toString();
-                    if (decodedEventName === 'resultsSubmitted') {
-                        // Look for the tournament ID in the topics (second topic)
-                        const tournamentIdHex = tournamentId.toString(16);
-                        if (event.topics.includes(tournamentIdHex)) {
-                            // Extract only the transaction hash part (remove shard and order metadata)
-                            const fullTxHash = event.txHash;
-                            const cleanTxHash = fullTxHash.split('-')[0]; // Remove everything after the first dash
-                            return cleanTxHash;
+                const isResultsSubmitted = firstTopic === resultsSubmittedSignature ||
+                    firstTopic === resultsSubmittedName;
+
+                if (isResultsSubmitted) {
+                    resultsSubmittedCount++;
+                    console.log(`Found resultsSubmitted event #${resultsSubmittedCount}, checking topics:`, event.topics);
+
+                    // The tournament_id should be in the second topic (index 1)
+                    if (event.topics.length >= 2) {
+                        const tournamentIdTopic = event.topics[1];
+
+                        // Validate that the tournament ID topic looks like a reasonable tournament ID
+                        // Tournament IDs should be relatively small numbers, not extremely long hex strings
+                        if (tournamentIdTopic.length <= 16) { // Max 8 bytes for u64
+                            // Use BigInt for parsing to handle large numbers correctly
+                            const tournamentIdFromEvent = BigInt('0x' + tournamentIdTopic);
+                            console.log(`Event tournament ID: ${tournamentIdFromEvent}, Looking for: ${tournamentId}`);
+
+                            if (tournamentIdFromEvent === BigInt(tournamentId)) {
+                                // Extract only the transaction hash part (remove shard and order metadata)
+                                const fullTxHash = event.txHash;
+                                const cleanTxHash = fullTxHash.split('-')[0]; // Remove everything after the first dash
+                                console.log(`Found result TX for tournament ${tournamentId}: ${cleanTxHash}`);
+                                return cleanTxHash;
+                            } else {
+                                console.log(`Tournament ID mismatch: event has ${tournamentIdFromEvent}, looking for ${tournamentId}`);
+                            }
+                        } else {
+                            console.log(`Skipping event with invalid tournament ID topic length: ${tournamentIdTopic.length} (topic: ${tournamentIdTopic})`);
                         }
                     }
-                } catch (e) {
-                    // Skip events that can't be decoded
-                    continue;
+                }
+            }
+        }
+
+        console.log(`No result TX found for tournament ${tournamentId}. Found ${resultsSubmittedCount} resultsSubmitted events total.`);
+
+        // If we didn't find it in the first 500 events, try with even more events
+        if (resultsSubmittedCount > 0) {
+            console.log(`Trying with more events (1000) to find tournament ${tournamentId}...`);
+            url = `https://devnet-api.multiversx.com/events?address=${contractAddress}&order=desc&size=1000`;
+            const response2 = await fetch(url);
+            const data2 = await response2.json();
+
+            if (data2 && Array.isArray(data2)) {
+                console.log(`Found ${data2.length} events in second search...`);
+
+                for (const event of data2) {
+                    if (event.topics && event.topics.length >= 3) {
+                        const firstTopic = event.topics[0];
+                        const isResultsSubmitted = firstTopic === resultsSubmittedSignature ||
+                            firstTopic === resultsSubmittedName;
+
+                        if (isResultsSubmitted) {
+                            if (event.topics.length >= 2) {
+                                const tournamentIdTopic = event.topics[1];
+                                if (tournamentIdTopic.length <= 16) {
+                                    const tournamentIdFromEvent = BigInt('0x' + tournamentIdTopic);
+                                    if (tournamentIdFromEvent === BigInt(tournamentId)) {
+                                        const fullTxHash = event.txHash;
+                                        const cleanTxHash = fullTxHash.split('-')[0];
+                                        console.log(`Found result TX for tournament ${tournamentId} in extended search: ${cleanTxHash}`);
+                                        return cleanTxHash;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
