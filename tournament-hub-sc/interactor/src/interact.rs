@@ -252,7 +252,7 @@ impl ContractInteract {
     }
 
     pub async fn create_tournament(&mut self) {
-        let game_index = 1u64;
+        let game_index = 5u64;
 
         let response = self
             .interactor
