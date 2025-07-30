@@ -115,7 +115,7 @@ export const Home = () => {
                 </Box>
                 <Heading size="md">Flexible Scheduling</Heading>
                 <Text color="gray.400" textAlign="center">
-                  Set your own deadlines and play at your own pace.
+                  Play immediately without waiting for deadlines.
                 </Text>
               </VStack>
             </Box>

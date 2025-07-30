@@ -1,24 +1,90 @@
 export * from './pingPong';
 export * from './signAndSendTransactions';
 
-import { contractAddress } from 'config';
+import { getContractAddress, getNetwork } from '../config/contract';
 import { Address } from '@multiversx/sdk-core';
 
 export async function getTournamentsFromBlockchain() {
-    // Fetch tournamentCreated events from the MultiversX API
-    const url = `https://devnet-api.multiversx.com/events?address=${contractAddress}&event=tournamentCreated&order=desc`;
-    const response = await fetch(url);
-    const data = await response.json();
-    // Parse events into tournament objects (basic parsing, adjust as needed)
-    return data.map((event: any) => {
-        // Example: event.topics = ["tournamentCreated", "<tournamentId>", ...]
-        return {
-            id: parseInt(event.topics[1], 16),
-            creator: event.address,
-            txHash: event.identifier,
-            // Add more fields as needed by parsing event.data or topics
-        };
-    });
+    try {
+        const url = `https://devnet-api.multiversx.com/events?address=${getContractAddress()}&event=tournamentCreated&order=desc`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (!data || !Array.isArray(data)) {
+            return [];
+        }
+
+        // Parse events into tournament objects
+        const tournaments = data.map((event: any) => {
+            // Look for tournamentCreated events by checking the topics
+            const tournamentCreatedSignature = '0139472eff6886771a982f3083da5d421f24c29181e63888228dc81ca60d69e1';
+
+            // Check if any topic contains the tournamentCreated signature
+            const hasTournamentCreatedSignature = event.topics && event.topics.some((topic: string) => topic === tournamentCreatedSignature);
+
+            if (!hasTournamentCreatedSignature) {
+                return null;
+            }
+
+            // Extract tournament ID from topics
+            let tournamentId = null;
+            let gameId = null;
+            let creator = null;
+
+            if (event.topics && event.topics.length >= 3) {
+                try {
+                    // Find the index of the tournamentCreated signature
+                    const signatureIndex = event.topics.findIndex((topic: string) => topic === tournamentCreatedSignature);
+
+                    if (signatureIndex >= 0 && signatureIndex + 2 < event.topics.length) {
+                        // topics[signatureIndex + 1] should be the tournament_id (u64 = 8 bytes = 16 hex chars)
+                        const tournamentIdHex = event.topics[signatureIndex + 1];
+
+                        if (tournamentIdHex.length === 16) {
+                            tournamentId = parseInt(tournamentIdHex, 16);
+                        }
+
+                        // topics[signatureIndex + 2] should be the game_id (u64 = 8 bytes = 16 hex chars)
+                        const gameIdHex = event.topics[signatureIndex + 2];
+
+                        if (gameIdHex.length === 16) {
+                            gameId = parseInt(gameIdHex, 16);
+                        }
+                    }
+                } catch (e) {
+                    // Ignore parsing errors
+                }
+            }
+
+            // Extract creator from data
+            if (event.data) {
+                try {
+                    const dataHex = Buffer.from(event.data, 'base64').toString('hex');
+
+                    // The creator address should be in the data field
+                    if (dataHex.length >= 64) {
+                        creator = '0x' + dataHex.slice(0, 64);
+                    }
+                } catch (e) {
+                    // Ignore parsing errors
+                }
+            }
+
+            const tournament = {
+                id: tournamentId,
+                gameId: gameId,
+                creator: creator || event.address,
+                txHash: event.identifier,
+            };
+
+            return tournament;
+        }).filter(t => t !== null && t.id !== null && t.id > 0 && t.id < 1000000); // Filter out unreasonable IDs
+
+        return tournaments;
+    } catch (err) {
+        console.error('getTournamentsFromBlockchain: Error:', err);
+        return [];
+    }
 }
 
 function hexToBech32(hex: string): string {
@@ -32,7 +98,7 @@ function hexToBech32(hex: string): string {
 export function parseTournamentHex(hex: string) {
     let offset = 0;
     function logField(name: string, raw: string, value: any) {
-        console.log(`[${name}] offset=${offset - raw.length} raw=0x${raw} value=`, value);
+        // Debug logging removed
     }
     function readHex(len: number) {
         const out = hex.slice(offset, offset + len);
@@ -43,10 +109,6 @@ export function parseTournamentHex(hex: string) {
         const raw = readHex(16);
         const val = BigInt('0x' + raw);
         if (name) logField(name, raw, val);
-        // Debug: print as number if safe
-        if (val < BigInt(Number.MAX_SAFE_INTEGER)) {
-            console.log(`[${name}] as number:`, Number(val));
-        }
         return val;
     }
     function readU32(name?: string) {
@@ -59,11 +121,8 @@ export function parseTournamentHex(hex: string) {
         return readU32(name);
     }
     function readVecAddress(name?: string) {
-        // Print the offset and next 16 hex chars before reading the length
-        console.log(`[readVecAddress] Before reading length for ${name}, offset=${offset}, next16=${hex.slice(offset, offset + 16)}`);
         const lenRaw = readHex(8); // 4 bytes, 8 hex chars
         const len = parseInt(lenRaw, 16);
-        console.log(`[readVecAddress] ${name} length raw=0x${lenRaw}, parsed=${len}`);
         const addresses = [];
         for (let i = 0; i < len; i++) {
             const hexAddr = readHex(64);
@@ -87,14 +146,11 @@ export function parseTournamentHex(hex: string) {
         return val;
     }
     const game_id = readU64('game_id');
-    console.log(`After game_id, offset=${offset}, next16=${hex.slice(offset, offset + 16)}`);
     const status = readU8('status');
-    console.log(`After status, offset=${offset}, next16=${hex.slice(offset, offset + 16)}`);
     // participants: 4 bytes (8 hex chars) length, then 64 hex chars per address
     function readVecAddressU32Len(name?: string) {
         const lenRaw = readHex(8); // 4 bytes, 8 hex chars
         const len = parseInt(lenRaw, 16);
-        console.log(`[readVecAddressU32Len] ${name} length raw=0x${lenRaw}, parsed=${len}`);
         const addresses = [];
         for (let i = 0; i < len; i++) {
             const hexAddr = readHex(64);
@@ -105,21 +161,12 @@ export function parseTournamentHex(hex: string) {
         return addresses;
     }
     const participants = readVecAddressU32Len('participants');
-    console.log(`After participants, offset=${offset}, next16=${hex.slice(offset, offset + 16)}`);
-    const join_deadline = readU64('join_deadline');
-    console.log(`After join_deadline, offset=${offset}, next16=${hex.slice(offset, offset + 16)}`);
-    const play_deadline = readU64('play_deadline');
-    console.log(`After play_deadline, offset=${offset}, next16=${hex.slice(offset, offset + 16)}`);
     const final_podium = readVecAddressU32Len('final_podium');
-    console.log(`After final_podium, offset=${offset}, next16=${hex.slice(offset, offset + 16)}`);
     const creator = readAddress('creator');
-    console.log(`After creator, offset=${offset}, next16=${hex.slice(offset, offset + 16)}`);
     return {
         game_id,
         status,
         participants,
-        join_deadline,
-        play_deadline,
         final_podium,
         creator
     };
@@ -133,18 +180,29 @@ export async function getTournamentDetailsFromContract(tournamentId: number | bi
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                scAddress: contractAddress,
+                scAddress: getContractAddress(),
                 funcName: 'getTournament',
                 args: [argHex]
             })
         });
         const data = await response.json();
+
+        // Check if there's an error
+        if (data.error) {
+            console.error(`getTournamentDetailsFromContract: API error for tournament ${tournamentId}:`, data.error);
+            return null;
+        }
+
         const returnData = data.data?.data?.returnData || data.data?.returnData;
         const [base64Result] = returnData || [];
-        if (!base64Result) return null;
+        if (!base64Result) {
+            return null;
+        }
         const hex = Buffer.from(base64Result, 'base64').toString('hex');
-        return parseTournamentHex(hex);
+        const result = parseTournamentHex(hex);
+        return result;
     } catch (err) {
+        console.error(`getTournamentDetailsFromContract: Error for tournament ${tournamentId}:`, err);
         return null;
     }
 }
@@ -155,15 +213,24 @@ export async function getActiveTournamentIds() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                scAddress: contractAddress,
+                scAddress: getContractAddress(),
                 funcName: 'getActiveTournamentIds',
                 args: []
             })
         });
         const data = await response.json();
+
+        // Check if there's an error
+        if (data.error) {
+            console.error('getActiveTournamentIds: API error:', data.error);
+            return [];
+        }
+
         const returnData = data.data?.data?.returnData || data.data?.returnData;
         const [base64Result] = returnData || [];
-        if (!base64Result) return [];
+        if (!base64Result) {
+            return [];
+        }
         const hex = Buffer.from(base64Result, 'base64').toString('hex');
         const ids = [];
         for (let i = 0; i < hex.length; i += 16) {
@@ -171,9 +238,31 @@ export async function getActiveTournamentIds() {
         }
         return ids;
     } catch (err) {
+        console.error('getActiveTournamentIds: Error:', err);
         return [];
     }
 }
+
+// Try to find tournaments by testing common IDs
+export async function findTournamentsByTesting() {
+    const foundTournaments = [];
+
+    // Test IDs 1-20 to see if any tournaments exist
+    for (let i = 1; i <= 20; i++) {
+        try {
+            const details = await getTournamentDetailsFromContract(i);
+            if (details) {
+                foundTournaments.push(BigInt(i));
+            }
+        } catch (err) {
+            // Ignore errors
+        }
+    }
+
+    return foundTournaments;
+}
+
+
 
 export async function getGameConfig(gameId: number | bigint) {
     const argHex = BigInt(gameId).toString(16).padStart(16, '0');
@@ -182,7 +271,7 @@ export async function getGameConfig(gameId: number | bigint) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                scAddress: contractAddress,
+                scAddress: getContractAddress(),
                 funcName: 'getGameConfig',
                 args: [argHex]
             })
@@ -205,7 +294,7 @@ export async function getPrizePoolFromContract(tournamentId: number | bigint) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                scAddress: contractAddress,
+                scAddress: getContractAddress(),
                 funcName: 'getPrizePool',
                 args: [argHex]
             })
@@ -221,10 +310,85 @@ export async function getPrizePoolFromContract(tournamentId: number | bigint) {
     }
 }
 
+export async function getTournamentFeeFromContract() {
+    try {
+        const response = await fetch('https://devnet-api.multiversx.com/vm-values/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                scAddress: getContractAddress(),
+                funcName: 'getTournamentFee',
+                args: []
+            })
+        });
+        const data = await response.json();
+
+        // Check if there's an error
+        if (data.error) {
+            console.error('getTournamentFeeFromContract: API error:', data.error);
+            return '0';
+        }
+
+        const returnData = data.data?.data?.returnData || data.data?.returnData;
+        const [base64Result] = returnData || [];
+        if (!base64Result) {
+            return '0';
+        }
+        const hex = Buffer.from(base64Result, 'base64').toString('hex');
+        return BigInt('0x' + hex).toString();
+    } catch (err) {
+        console.error('getTournamentFeeFromContract: Error:', err);
+        return '0';
+    }
+}
+
+export async function getSubmitResultsTransactionHash(tournamentId: number | bigint) {
+    try {
+        // Query all events for the contract
+        const url = `https://devnet-api.multiversx.com/events?address=${getContractAddress()}&order=desc&size=100`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (!data || !Array.isArray(data)) {
+            return null;
+        }
+
+        // Look for the resultsSubmitted event for this specific tournament
+        for (const event of data) {
+            if (event.topics && event.topics.length >= 2) {
+                // Check if this is a resultsSubmitted event
+                const firstTopic = event.topics[0];
+                try {
+                    // Decode the first topic from hex
+                    const decodedEventName = Buffer.from(firstTopic, 'hex').toString();
+                    if (decodedEventName === 'resultsSubmitted') {
+                        // Look for the tournament ID in the topics (second topic)
+                        const tournamentIdHex = tournamentId.toString(16);
+                        if (event.topics.includes(tournamentIdHex)) {
+                            // Extract only the transaction hash part (remove shard and order metadata)
+                            const fullTxHash = event.txHash;
+                            const cleanTxHash = fullTxHash.split('-')[0]; // Remove everything after the first dash
+                            return cleanTxHash;
+                        }
+                    }
+                } catch (e) {
+                    // Skip events that can't be decoded
+                    continue;
+                }
+            }
+        }
+
+        return null;
+    } catch (err) {
+        console.error('getSubmitResultsTransactionHash: Error:', err);
+        return null;
+    }
+}
+
 function parseGameConfigHex(hex: string) {
     let offset = 0;
     function logField(name: string, raw: string, value: any) {
-        console.log(`[GameConfig:${name}] offset=${offset - raw.length} raw=0x${raw} value=`, value);
+        // Debug logging removed
     }
     function readHex(len: number) {
         const out = hex.slice(offset, offset + len);

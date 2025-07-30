@@ -1,4 +1,4 @@
-import { BATCH_TRANSACTIONS_SC } from 'config';
+import { BATCH_TRANSACTIONS_SC } from '../../../../../config/sharedConfig';
 import { Address, GAS_PRICE, Transaction, VERSION } from 'lib';
 import { TransactionProps } from 'types';
 

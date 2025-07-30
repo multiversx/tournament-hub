@@ -16,7 +16,6 @@ pub struct GameConfig<M: ManagedTypeApi> {
 #[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
 pub enum TournamentStatus {
     Joining,
-    Playing,
     ProcessingResults,
     Completed,
 }
@@ -27,8 +26,6 @@ pub struct Tournament<M: ManagedTypeApi> {
     pub game_id: u64,
     pub status: TournamentStatus,
     pub participants: ManagedVec<M, ManagedAddress<M>>,
-    pub join_deadline: u64,
-    pub play_deadline: u64,
     pub final_podium: ManagedVec<M, ManagedAddress<M>>,
     pub creator: ManagedAddress<M>,
 }

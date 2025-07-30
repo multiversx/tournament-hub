@@ -1,5 +1,6 @@
 from pathlib import Path
-from multiversx_sdk import Address, Transaction, Account, DevnetEntrypoint
+from multiversx_sdk import Transaction, Account, DevnetEntrypoint
+from multiversx_sdk.core import Address
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -8,18 +9,32 @@ import binascii
 
 # --- Helper: Convert bech32 address to raw bytes (32 bytes) ---
 def bech32_to_bytes(addr: str) -> bytes:
-    return Address.from_bech32(addr).pubkey
+    # Return the address bytes, not the public key bytes
+    return Address.from_bech32(addr).hex().encode()
+
+# --- Helper: Get address from Ed25519 public key ---
+def get_address_from_public_key(public_key_bytes: bytes) -> str:
+    """Convert Ed25519 public key to MultiversX address"""
+    # MultiversX uses the first 20 bytes of the SHA256 hash of the public key
+    import hashlib
+    hash_bytes = hashlib.sha256(public_key_bytes).digest()[:20]
+    # Pad to 32 bytes (add 12 zero bytes at the end)
+    padded_hash = hash_bytes + b'\x00' * 12
+    # Create address from the 32-byte padded hash
+    return Address(padded_hash).bech32()
 
 # --- Construct the message to sign (as required by the contract) ---
 def construct_result_message(tournament_id: int, podium: list[str]) -> bytes:
     """
     Constructs the message to be signed for result submission:
     - 8 bytes: tournament_id (big endian)
-    - 32 bytes per podium address (raw address bytes)
+    - Address bytes for each podium address (as managed buffer)
     """
     msg = tournament_id.to_bytes(8, "big")
     for addr in podium:
-        msg += bech32_to_bytes(addr)
+        # Get the address bytes (same as addr.as_managed_buffer() in the contract)
+        addr_bytes = bytes.fromhex(Address.from_bech32(addr).hex())
+        msg += addr_bytes
     return msg
 
 # --- Encode contract call arguments ---
@@ -38,58 +53,114 @@ def encode_submit_results_args(tournament_id: int, podium: list[str], signature_
     print(f"Encoded data: submitResults@{arg_tournament_id}@{arg_podium}@{arg_signature}")
     return f"submitResults@{arg_tournament_id}@{arg_podium}@{arg_signature}"
 
-# Config
+# Import configuration
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+# Config - hardcoded values since config directory was removed
 API_URL = "https://devnet-api.multiversx.com"
-CONTRACT_ADDRESS = "erd1qqqqqqqqqqqqqpgqeqv9v8fydgdh8arf6kfd5y7uvycv9kx3d8ssz87x92"
-PEM_PATH = "alice.pem"  # Path to your PEM file
+CONTRACT_ADDRESS = "erd1qqqqqqqqqqqqqpgqh040ajuxhrf642mmqlaf0jys58cjn0fcd8ssr0v2vw"
+PEM_PATH = os.path.join(os.path.dirname(__file__), "..", "signing", "ed25519_private.pem")  # Path to Ed25519 private key
 CHAIN_ID = "D"
 
 # --- Main submission function ---
 def submit_results_to_contract(tournament_id: int, podium: list[str], private_key=None):
+    # Load Ed25519 private key using MultiversX SDK format
+    from multiversx_sdk import UserSecretKey, Account, Transaction, DevnetEntrypoint, Address
+    import base64
+    
+    # Read the PEM file and extract the private key
+    with open(PEM_PATH, 'r') as f:
+        pem_content = f.read()
+    
+    lines = pem_content.strip().split('\n')
+    if len(lines) >= 2:
+        # Get the base64 encoded key (second line)
+        base64_key = lines[1]
+        # Decode the base64 key to get the raw bytes
+        private_key_bytes = base64.b64decode(base64_key)
+    else:
+        raise Exception("Invalid PEM file format")
+    
+    # Create UserSecretKey from the decoded bytes
+    secret_key = UserSecretKey(private_key_bytes)
+    
+    # Create account with the secret key
+    account = Account(secret_key)
+    print("Loaded account address:", account.address.bech32())
+    
     # Construct message as required by contract
     message = construct_result_message(tournament_id, podium)
-    # Sign with Ed25519
-    if private_key is None:
-        # Load from default location (used for testing/demo)
-        from signing import ecdsa_signer
-        import os
-        key_path = os.path.join(os.path.dirname(__file__), "..", "signing", "ed25519_private.pem")
-        private_key = ecdsa_signer.load_private_key_from_pem(key_path)
-    signature = ecdsa_signer.sign_message(private_key, message)
+    
+    # Debug: Print the message being signed
+    print(f"Message to sign (hex): {message.hex()}")
+    print(f"Message length: {len(message)} bytes")
+    print(f"Tournament ID: {tournament_id}")
+    print(f"Podium addresses: {podium}")
+    
+    # Sign the result message using the MultiversX SDK
+    signature = secret_key.sign(message)
     signature_hex = signature.hex()
+    
+    print(f"Signature (hex): {signature_hex}")
+    print(f"Signature length: {len(signature)} bytes")
+    
     # Prepare contract call data
     data = encode_submit_results_args(tournament_id, podium, signature_hex)
-    # Load account from PEM
-    account = Account.new_from_pem(Path(PEM_PATH))
-    print("Loaded account address:", account.address.bech32())
-    entrypoint = DevnetEntrypoint(url=API_URL)
-    account.nonce = entrypoint.recall_account_nonce(account.address)
-    print(f"Account nonce: {account.nonce}")
-    print(f"Account address: {account.address}")
-    # Build transaction
-    tx = Transaction(
-        nonce=account.get_nonce_then_increment(),
-        value=0,
-        sender=account.address,
-        receiver=Address.from_bech32(CONTRACT_ADDRESS),
-        gas_price=1000000000,
-        gas_limit=60000000,
-        data=data.encode(),
-        chain_id=CHAIN_ID,
-        version=1,
-    )
-    # Sign and send
+    
+    # Sign transaction with the same secret key
     try:
+        from multiversx_sdk import ProxyNetworkProvider
+        
+        # Use ProxyNetworkProvider instead of DevnetEntrypoint
+        provider = ProxyNetworkProvider(API_URL)
+        
+        # Get account info
+        account_info = provider.get_account(account.address)
+        account.nonce = account_info.nonce
+        
+        print(f"Account nonce: {account.nonce}")
+        print(f"Account address: {account.address}")
+        
+        # Create transaction with proper format
+        tx = Transaction(
+            nonce=account.nonce,
+            value=0,
+            sender=account.address,
+            receiver=Address.from_bech32(CONTRACT_ADDRESS),
+            gas_price=1000000000,
+            gas_limit=60000000,
+            data=data.encode(),
+            chain_id=CHAIN_ID,
+            version=1,
+        )
+        
+        # Sign the transaction using the account's secret key
         tx.signature = account.sign_transaction(tx)
-        print("Transaction signed. Signature:", tx.signature.hex())
+        
+        print(f"Transaction signed successfully")
+        print(f"Transaction signature: {tx.signature.hex()}")
+        
+        # Send the signed transaction
+        print(f"Sending transaction to blockchain...")
+        tx_hash_result = provider.send_transaction(tx)
+        
+        if isinstance(tx_hash_result, bytes):
+            tx_hash_result = tx_hash_result.hex()
+        
+        print(f"Transaction sent successfully!")
+        print(f"Transaction hash: {tx_hash_result}")
+        print(f"View on explorer: https://devnet-explorer.multiversx.com/transactions/{tx_hash_result}")
+        
+        return tx_hash_result
+        
     except Exception as e:
-        print("Error during signing:", e)
-    tx_hash = entrypoint.send_transaction(tx)
-    if isinstance(tx_hash, bytes):
-        tx_hash = tx_hash.hex()
-    print(f"Transaction sent! Hash: {tx_hash}")
-    print(f"View on explorer: https://devnet-explorer.multiversx.com/transactions/{tx_hash}")
-    return tx_hash
+        print(f"Error during transaction signing/sending: {e}")
+        print(f"Transaction data: {data}")
+        print(f"Message to sign: {message.hex()}")
+        print(f"Signature: {signature_hex}")
+        raise
 
 # Example usage:
 if __name__ == "__main__":
@@ -99,8 +170,6 @@ if __name__ == "__main__":
         "erd1qyu5wthldzr8wx5c9ucg8kjagg0jfs53s8nr3zpz3hypefsdd8ssycr6th",  # winner 1
     ]
     # Load private key for signing
-    from signing import ecdsa_signer
-    import os
     key_path = os.path.join(os.path.dirname(__file__), "..", "signing", "ed25519_private.pem")
     priv = ecdsa_signer.load_private_key_from_pem(key_path)
     submit_results_to_contract(tournament_id, podium, private_key=priv)

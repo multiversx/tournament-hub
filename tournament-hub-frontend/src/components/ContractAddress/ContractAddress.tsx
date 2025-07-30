@@ -1,5 +1,5 @@
 import { Label } from 'components';
-import { contractAddress } from 'config';
+import { getContractAddress } from '../../config/contract';
 import {
   ACCOUNTS_ENDPOINT,
   getExplorerLink,
@@ -11,7 +11,7 @@ export const ContractAddress = () => {
   const { network } = useGetNetworkConfig();
   const explorerAddress = network.explorerAddress;
   const explorerLink = getExplorerLink({
-    to: `/${ACCOUNTS_ENDPOINT}/${contractAddress}`,
+    to: `/${ACCOUNTS_ENDPOINT}/${getContractAddress()}`,
     explorerAddress
   });
   return (
@@ -21,7 +21,7 @@ export const ContractAddress = () => {
         link={explorerLink}
         className='border-b border-dotted border-gray-500 hover:border-solid hover:border-gray-800'
       >
-        {contractAddress}
+        {getContractAddress()}
       </MvxExplorerLink>
     </p>
   );

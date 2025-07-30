@@ -1,5 +1,5 @@
 import tournamentHubAbi from './tournament-hub.abi.json';
-import { contractAddress } from '../config';
+import { getContractAddress } from '../config/contract';
 
 export interface ContractAbi {
     name: string;
@@ -20,7 +20,7 @@ export interface ContractAbi {
 }
 
 export const tournamentHubContract = {
-    address: contractAddress,
+    address: getContractAddress(),
     abi: tournamentHubAbi as ContractAbi,
 };
 

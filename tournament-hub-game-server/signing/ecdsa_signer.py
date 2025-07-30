@@ -71,7 +71,8 @@ if __name__ == "__main__":
     # Sign and verify
     msg = b"test message"
     sig = sign_message(priv2, msg)
-    print("Signature valid:", verify_signature(pub, msg, sig))
+    # Verify the signature
+    is_valid = verify_signature(pub, msg, sig)
+    
     # Export public key PEM
-    pub_pem = get_public_key_pem(priv2)
-    print(pub_pem.decode()) 
+    pub_pem = get_public_key_pem(priv2) 

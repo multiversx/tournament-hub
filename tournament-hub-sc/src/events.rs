@@ -33,9 +33,6 @@ pub trait EventsModule {
     #[event("debugCurrentTime")]
     fn debug_current_time_event(&self, #[indexed] current_time: &u64);
 
-    #[event("debugJoinDeadline")]
-    fn debug_join_deadline_event(&self, #[indexed] join_deadline: &u64);
-
     #[event("debugTournamentStatus")]
     fn debug_tournament_status_event(&self, #[indexed] status: &u32);
 

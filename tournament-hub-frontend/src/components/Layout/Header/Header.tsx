@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Box, Text, HStack, VStack } from '@chakra-ui/react';
 import { Button, MxLink } from 'components';
-import { environment } from 'config';
+
 import { getAccountProvider, useGetIsLoggedIn, useGetAccountInfo, useGetNetworkConfig, DECIMALS, DIGITS, FormatAmountController } from 'lib';
 import { RouteNamesEnum } from 'localConstants';
 import { NotificationsButton } from './components/NotificationsButton';
@@ -39,7 +39,7 @@ export const Header = () => {
         <HStack justify="end" spacing={2} alignItems="center">
           <HStack spacing={1} alignItems="center">
             <Box w={2} h={2} borderRadius="full" bg="green.500" />
-            <Text color="gray.400">{environment}</Text>
+            <Text color="gray.400">{network.name}</Text>
           </HStack>
 
           {isLoggedIn && (
