@@ -29,7 +29,6 @@ import {
 import { getTournamentDetailsFromContract, getGameConfig, getPrizePoolFromContract } from '../helpers';
 import { getTournamentFeeFromContract, getSubmitResultsTransactionHash } from '../helpers';
 import { egldToWei } from '../utils/contractUtils';
-import { TicTacToeGame } from '../components';
 import { useGetAccount } from 'lib';
 import { useJoinTournamentTransaction } from 'hooks/transactions';
 import { Tooltip } from '@chakra-ui/react';
@@ -45,6 +44,17 @@ const statusColors: Record<string, string> = {
 function shortenAddress(addr: string, start = 6, end = 6) {
     if (!addr) return '';
     return addr.length > start + end ? `${addr.slice(0, start)}...${addr.slice(-end)}` : addr;
+}
+
+function getGameName(gameId: number): string {
+    switch (gameId) {
+        case 1:
+            return 'Tic-Tac-Toe';
+        case 5:
+            return 'CryptoBubbles';
+        default:
+            return `Game ID: ${gameId}`;
+    }
 }
 
 export const TournamentDetails = () => {
@@ -92,7 +102,7 @@ export const TournamentDetails = () => {
                     status: ['Joining', 'ProcessingResults', 'Completed'][details.status] || 'unknown',
                     current_players: details.participants.length,
                     max_players: 2, // Force max_players to 2 for now
-                    description: `Game ID: ${details.game_id}`,
+                    description: getGameName(Number(details.game_id)),
                     players: details.participants,
                     resultTxHash,
                 });
@@ -110,6 +120,17 @@ export const TournamentDetails = () => {
     }, [id]);
 
     const handleJoinTournament = async () => {
+        if (!playerAddress) {
+            toast({
+                title: 'Wallet not connected',
+                description: 'Please connect your wallet first',
+                status: 'warning',
+                duration: 3000,
+                isClosable: true,
+            });
+            return;
+        }
+
         setJoining(true);
         try {
             await joinTournament({
@@ -119,7 +140,7 @@ export const TournamentDetails = () => {
 
             // Start tournament session on backend
             try {
-                const session = await startTournamentSession(parseInt(id || '0'), playerAddress);
+                const session = await startTournamentSession(parseInt(id || '0'), Number(tournament.game_id));
                 setTournamentSession(session);
             } catch (sessionError) {
                 console.error('Error starting tournament session:', sessionError);
@@ -380,9 +401,9 @@ export const TournamentDetails = () => {
                         onClick={async () => {
                             setStartingGame(true);
                             try {
-                                const res = await startGameSession(Number(id), playerAddress);
-                                if (res.sessionId) {
-                                    navigate(`/game/${res.sessionId}`);
+                                const res = await startGameSession(Number(id).toString(), Number(tournament.game_id), tournament.players);
+                                if (res.session_id) {
+                                    navigate(`/game/${res.session_id}`);
                                 } else {
                                     toast({
                                         title: 'Error',
