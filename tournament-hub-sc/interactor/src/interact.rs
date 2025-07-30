@@ -26,13 +26,13 @@ pub async fn tournament_hub_cli() {
     match cmd.as_str() {
         "deploy" => interact.deploy().await,
         "upgrade" => interact.upgrade().await,
+        "config" => interact.config().await,
         "registerGame" => interact.register_game().await,
         "submitResults" => interact.submit_results().await,
         "placeSpectatorBet" => interact.place_spectator_bet().await,
         "claimSpectatorWinnings" => interact.claim_spectator_winnings().await,
         "createTournament" => interact.create_tournament().await,
         "joinTournament" => interact.join_tournament().await,
-        "startTournament" => interact.start_tournament().await,
         "getGameConfig" => interact.get_game_config().await,
         "getTournament" => interact.get_tournament().await,
         "getSpectatorBets" => interact.get_spectator_bets().await,
@@ -153,6 +153,11 @@ impl ContractInteract {
         println!("Result: {response:?}");
     }
 
+    pub async fn config(&mut self) {
+        self.set_tournament_fee().await;
+        self.set_house_fee().await;
+    }
+
     pub async fn register_game(&mut self) {
         let signing_server_address = Bech32Address::from_bech32_string(
             "erd1qyu5wthldzr8wx5c9ucg8kjagg0jfs53s8nr3zpz3hypefsdd8ssycr6th".to_string(),
@@ -249,17 +254,6 @@ impl ContractInteract {
     pub async fn create_tournament(&mut self) {
         let game_index = 1u64;
 
-        // Get current unix timestamp and add 100 seconds
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let join_deadline = now + 60 * 60 * 24;
-        let play_deadline = now + 60 * 60 * 24 * 2;
-
-        println!("join_deadline: {join_deadline}");
-        println!("play_deadline: {play_deadline}");
-
         let response = self
             .interactor
             .tx()
@@ -267,7 +261,7 @@ impl ContractInteract {
             .to(self.state.current_address())
             .gas(100_000_000u64)
             .typed(proxy::TournamentHubProxy)
-            .create_tournament(game_index, join_deadline, play_deadline)
+            .create_tournament(game_index)
             .returns(ReturnsResultUnmanaged)
             .run()
             .await;
@@ -296,17 +290,35 @@ impl ContractInteract {
         println!("Result: {response:?}");
     }
 
-    pub async fn start_tournament(&mut self) {
-        let tournament_id = 18usize;
+    pub async fn set_tournament_fee(&mut self) {
+        let entry_fee = BigUint::from(1u64).mul(10u64.pow(16));
 
         let response = self
             .interactor
             .tx()
             .from(&self.wallet_address)
             .to(self.state.current_address())
-            .gas(100_000_000u64)
+            .gas(10_000_000u64)
             .typed(proxy::TournamentHubProxy)
-            .start_tournament(tournament_id)
+            .set_tournament_fee(entry_fee)
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Result: {response:?}");
+    }
+
+    pub async fn set_house_fee(&mut self) {
+        let house_fee = 100u32;
+
+        let response = self
+            .interactor
+            .tx()
+            .from(&self.wallet_address)
+            .to(self.state.current_address())
+            .gas(10_000_000u64)
+            .typed(proxy::TournamentHubProxy)
+            .set_house_fee_percentage(house_fee)
             .returns(ReturnsResultUnmanaged)
             .run()
             .await;

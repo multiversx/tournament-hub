@@ -29,8 +29,6 @@ interface FormData {
     description: string;
     maxPlayers: string;
     prizePool: string;
-    joinDeadline: string;
-    playDeadline: string;
 }
 
 interface FormErrors {
@@ -38,8 +36,6 @@ interface FormErrors {
     description?: string;
     maxPlayers?: string;
     prizePool?: string;
-    joinDeadline?: string;
-    playDeadline?: string;
 }
 
 export const CreateTournament: React.FC = () => {
@@ -51,9 +47,7 @@ export const CreateTournament: React.FC = () => {
         name: '',
         description: '',
         maxPlayers: '4',
-        prizePool: '0',
-        joinDeadline: '',
-        playDeadline: ''
+        prizePool: '0'
     });
 
     const [errors, setErrors] = useState<FormErrors>({});
@@ -70,25 +64,15 @@ export const CreateTournament: React.FC = () => {
             newErrors.description = 'Description is required';
         }
 
-        if (!formData.maxPlayers || parseInt(formData.maxPlayers) < 2) {
-            newErrors.maxPlayers = 'Max players must be at least 2';
+        if (!formData.maxPlayers || parseInt(formData.maxPlayers) < 2 || parseInt(formData.maxPlayers) > 8) {
+            newErrors.maxPlayers = 'Max players must be between 2 and 8';
         }
 
         if (!formData.prizePool || parseFloat(formData.prizePool) < 0) {
             newErrors.prizePool = 'Prize pool cannot be negative';
         }
 
-        const now = Math.floor(Date.now() / 1000);
-        const joinDeadline = parseInt(formData.joinDeadline);
-        const playDeadline = parseInt(formData.playDeadline);
 
-        if (!formData.joinDeadline || joinDeadline <= now) {
-            newErrors.joinDeadline = 'Join deadline must be in the future';
-        }
-
-        if (!formData.playDeadline || playDeadline <= joinDeadline) {
-            newErrors.playDeadline = 'Play deadline must be after join deadline';
-        }
 
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
@@ -122,9 +106,7 @@ export const CreateTournament: React.FC = () => {
             const gameId = 1;
 
             const sessionId = await createTournament({
-                gameId,
-                joinDeadline: parseInt(formData.joinDeadline),
-                playDeadline: parseInt(formData.playDeadline)
+                gameId
             });
 
             toast({
@@ -140,9 +122,7 @@ export const CreateTournament: React.FC = () => {
                 name: '',
                 description: '',
                 maxPlayers: '4',
-                prizePool: '0',
-                joinDeadline: '',
-                playDeadline: ''
+                prizePool: '0'
             });
         } catch (error) {
             console.error('Error creating tournament:', error);
@@ -221,12 +201,12 @@ export const CreateTournament: React.FC = () => {
                                 </FormControl>
 
                                 <FormControl isInvalid={!!errors.maxPlayers}>
-                                    <FormLabel color="gray.300">Max Players</FormLabel>
+                                    <FormLabel color="gray.300">Max Players (2-8)</FormLabel>
                                     <NumberInput
                                         value={formData.maxPlayers}
                                         onChange={(value) => handleInputChange('maxPlayers', value)}
                                         min={2}
-                                        max={100}
+                                        max={8}
                                     >
                                         <NumberInputField sx={{ color: 'white !important' }} />
                                     </NumberInput>
@@ -246,29 +226,7 @@ export const CreateTournament: React.FC = () => {
                                     {errors.prizePool && <Text color="red.400" fontSize="sm">{errors.prizePool}</Text>}
                                 </FormControl>
 
-                                <FormControl isInvalid={!!errors.joinDeadline}>
-                                    <FormLabel color="gray.300">Join Deadline (Unix Timestamp)</FormLabel>
-                                    <Input
-                                        type="number"
-                                        value={formData.joinDeadline}
-                                        onChange={(e) => handleInputChange('joinDeadline', e.target.value)}
-                                        placeholder="Enter join deadline timestamp"
-                                        sx={{ color: 'white !important' }}
-                                    />
-                                    {errors.joinDeadline && <Text color="red.400" fontSize="sm">{errors.joinDeadline}</Text>}
-                                </FormControl>
 
-                                <FormControl isInvalid={!!errors.playDeadline}>
-                                    <FormLabel color="gray.300">Play Deadline (Unix Timestamp)</FormLabel>
-                                    <Input
-                                        type="number"
-                                        value={formData.playDeadline}
-                                        onChange={(e) => handleInputChange('playDeadline', e.target.value)}
-                                        placeholder="Enter play deadline timestamp"
-                                        sx={{ color: 'white !important' }}
-                                    />
-                                    {errors.playDeadline && <Text color="red.400" fontSize="sm">{errors.playDeadline}</Text>}
-                                </FormControl>
 
                                 <Button
                                     type="submit"

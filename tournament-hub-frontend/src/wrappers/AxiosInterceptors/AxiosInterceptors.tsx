@@ -1,5 +1,6 @@
 import { PropsWithChildren, useEffect } from 'react';
-import { sampleAuthenticatedDomains } from 'config';
+// sampleAuthenticatedDomains is not needed for tournament hub - using empty array
+const sampleAuthenticatedDomains: string[] = [];
 import { setAxiosInterceptors, useGetLoginInfo } from 'lib';
 
 export const AxiosInterceptors = ({ children }: PropsWithChildren) => {

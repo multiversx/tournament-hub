@@ -33,14 +33,8 @@ pub trait ResultsManagementModule:
         let game_config = self.registered_games().get(game_index).clone();
 
         require!(
-            tournament.status == TournamentStatus::Playing,
-            "Tournament is not in playing phase"
-        );
-
-        let current_time = self.blockchain().get_block_timestamp();
-        require!(
-            current_time >= tournament.play_deadline,
-            "Play deadline has not passed yet"
+            tournament.status == TournamentStatus::Joining,
+            "Tournament is not in joining phase"
         );
 
         self.verify_result_signature(

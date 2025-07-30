@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { apiTimeout, transactionSize } from 'config';
+import { apiTimeout, transactionSize } from '../../../../../config/sharedConfig';
 import {
   getInterpretedTransaction,
   getTransactions,
