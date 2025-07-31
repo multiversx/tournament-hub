@@ -304,18 +304,50 @@ async def submit_cryptobubbles_move(request: CryptoBubblesMoveRequest):
 @app.post("/join_cryptobubbles_session")
 async def join_cryptobubbles_session(sessionId: str, player: str):
     """Join an existing CryptoBubbles session"""
-    game = get_cryptobubbles_game(sessionId)
-    if not game:
-        raise HTTPException(status_code=404, detail="CryptoBubbles game not found")
-    
-    # Add player to game if not already present
-    if player not in game.players:
-        game.players.append(player)
-        game.state.cells[player] = game.state.cells[game.players[0]].__class__(
-            x=200, y=200, size=game.min_cell_size, player=player
-        )
-    
-    return {"status": "joined"}
+    try:
+        game = get_cryptobubbles_game(sessionId)
+        if not game:
+            raise HTTPException(status_code=404, detail="CryptoBubbles game not found")
+        
+        # Add player to game if not already present
+        if player not in game.players:
+            game.players.append(player)
+            
+            # Position the new player in a safe location
+            arena_size = game.state.arena_size
+            import random
+            
+            # Find a position away from other players
+            attempts = 0
+            while attempts < 10:
+                x = random.randint(200, arena_size[0] - 200)
+                y = random.randint(200, arena_size[1] - 200)
+                
+                # Check if position is far enough from other players
+                too_close = False
+                for cell in game.state.cells.values():
+                    if hasattr(cell, 'state') and cell.state == 'alive':
+                        distance = ((x - cell.x) ** 2 + (y - cell.y) ** 2) ** 0.5
+                        if distance < 300:  # Minimum 300 pixels from other players
+                            too_close = True
+                            break
+                
+                if not too_close:
+                    break
+                attempts += 1
+            
+            # Create new cell for the player
+            from cryptobubbles_game_engine import Cell, CellState
+            game.state.cells[player] = Cell(
+                x=x, y=y, size=game.min_cell_size, player=player, state=CellState.ALIVE
+            )
+            
+            logger.info(f"Player {player} joined session {sessionId} at position ({x}, {y})")
+        
+        return {"status": "joined"}
+    except Exception as e:
+        logger.error(f"Error joining CryptoBubbles session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/game_config")
 async def get_game_config(game_type: str):
@@ -324,9 +356,9 @@ async def get_game_config(game_type: str):
         "cryptobubbles": {
             "name": "CryptoBubbles",
             "description": "Real-time cell battle game",
-            "max_players": 2,
-            "min_players": 2,
-            "game_duration": 300
+            "max_players": 8,
+            "min_players": 1,
+            "game_duration": 600
         }
     }
     
@@ -341,9 +373,9 @@ async def get_game_configs():
     return {
         "5": {
             "name": "CryptoBubbles",
-            "minPlayers": 2,
-            "maxPlayers": 2,
-            "gameType": "real_time_duel",
+            "minPlayers": 1,
+            "maxPlayers": 8,
+            "gameType": "real_time_battle",
             "description": "Real-time cell battle game"
         }
     }
@@ -360,7 +392,10 @@ def update_cryptobubbles_games():
                     game.update_game_state()
                     
                     # Check if game finished and submit results
-                    if game.state.game_over and game.state.winner and not getattr(game, 'results_submitted', False):
+                    # Only submit results if there were originally multiple players
+                    if (game.state.game_over and game.state.winner and 
+                        len(game.players) > 1 and 
+                        not getattr(game, 'results_submitted', False)):
                         logger.info(f"CryptoBubbles game {session_id} finished! Winner: {game.state.winner}")
                         
                         # Mark as submitted to prevent repeated processing

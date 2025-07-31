@@ -51,37 +51,103 @@ class CryptoBubblesGameEngine:
         # Game settings
         self.min_cell_size = 20
         self.max_cell_size = 200
-        self.pellet_count = 200
         self.game_duration = 300  # 5 minutes
-        self.expansion_threshold = 200
+        self.expansion_threshold = 400  # Increased to trigger expansion earlier
         self.expansion_amount = 1000
         self.max_arena_size = (10000, 8000)
-        self.bot_count = 3  # Number of bots to add
+        
+        # Dynamic settings based on player count (will be set in _initialize_game)
+        self.pellet_count = 200
+        self.bot_count = 3
         
         # Initialize game
         self._initialize_game()
     
     def _initialize_game(self):
         """Initialize the game with players and pellets"""
-        arena_size = self.state.arena_size
+        # Calculate arena size based on player count
+        self._calculate_arena_size()
         
-        # Initialize players at opposite corners
-        if len(self.players) >= 1:
-            self.state.cells[self.players[0]] = Cell(
-                x=200, y=200, size=self.min_cell_size, player=self.players[0]
-            )
+        # Scale pellet and bot count based on player count
+        self._scale_game_resources()
         
-        if len(self.players) >= 2:
-            self.state.cells[self.players[1]] = Cell(
-                x=arena_size[0]-200, y=arena_size[1]-200, 
-                size=self.min_cell_size, player=self.players[1]
-            )
+        # Position players dynamically
+        self._position_players()
         
         # Add bots
         self._add_bots()
         
         # Generate pellets
         self._generate_pellets()
+    
+    def _calculate_arena_size(self):
+        """Calculate arena size based on number of players"""
+        num_players = len(self.players)
+        
+        # Base arena size for 2 players
+        base_width, base_height = 3000, 2500
+        
+        # Scale arena size based on player count
+        if num_players <= 2:
+            self.state.arena_size = (base_width, base_height)
+        elif num_players <= 4:
+            self.state.arena_size = (4000, 3500)
+        elif num_players <= 6:
+            self.state.arena_size = (5000, 4000)
+        else:  # 7-8 players
+            self.state.arena_size = (6000, 5000)
+        
+        # Update max arena size for expansion - use the fixed maximum size
+        # This ensures consistent expansion regardless of initial arena size
+        self.max_arena_size = (10000, 8000)
+    
+    def _position_players(self):
+        """Position players evenly across the arena"""
+        arena_size = self.state.arena_size
+        num_players = len(self.players)
+        
+        if num_players == 1:
+            # Single player starts in center
+            self.state.cells[self.players[0]] = Cell(
+                x=arena_size[0] // 2, y=arena_size[1] // 2,
+                size=self.min_cell_size, player=self.players[0]
+            )
+        elif num_players == 2:
+            # Two players at opposite corners
+            self.state.cells[self.players[0]] = Cell(
+                x=200, y=200, size=self.min_cell_size, player=self.players[0]
+            )
+            self.state.cells[self.players[1]] = Cell(
+                x=arena_size[0] - 200, y=arena_size[1] - 200,
+                size=self.min_cell_size, player=self.players[1]
+            )
+        else:
+            # Multiple players in a circle pattern
+            center_x, center_y = arena_size[0] // 2, arena_size[1] // 2
+            radius = min(arena_size[0], arena_size[1]) * 0.25  # 25% of arena size
+            
+            for i, player in enumerate(self.players):
+                angle = (2 * math.pi * i) / num_players
+                x = center_x + radius * math.cos(angle)
+                y = center_y + radius * math.sin(angle)
+                
+                # Ensure players are within arena bounds
+                x = max(200, min(x, arena_size[0] - 200))
+                y = max(200, min(y, arena_size[1] - 200))
+                
+                self.state.cells[player] = Cell(
+                    x=x, y=y, size=self.min_cell_size, player=player
+                                 )
+    
+    def _scale_game_resources(self):
+        """Scale pellet count and bot count based on player count"""
+        num_players = len(self.players)
+        
+        # Scale pellet count: base 100 per player, minimum 200
+        self.pellet_count = max(200, 100 * num_players)
+        
+        # Scale bot count: 1 bot per 2 players, minimum 2, maximum 6
+        self.bot_count = max(2, min(6, num_players // 2))
     
     def _generate_pellets(self):
         """Generate pellets randomly across the arena"""
@@ -104,17 +170,29 @@ class CryptoBubblesGameEngine:
             
             # Place bots in different areas of the map
             if i == 0:
-                # Bot 1: Top area
-                x = random.randint(500, arena_size[0] - 500)
+                # Bot 1: Top-left area
+                x = random.randint(500, arena_size[0] // 3)
                 y = random.randint(500, arena_size[1] // 3)
             elif i == 1:
-                # Bot 2: Middle area
-                x = random.randint(500, arena_size[0] - 500)
+                # Bot 2: Top-right area
+                x = random.randint(2 * arena_size[0] // 3, arena_size[0] - 500)
+                y = random.randint(500, arena_size[1] // 3)
+            elif i == 2:
+                # Bot 3: Bottom-left area
+                x = random.randint(500, arena_size[0] // 3)
+                y = random.randint(2 * arena_size[1] // 3, arena_size[1] - 500)
+            elif i == 3:
+                # Bot 4: Bottom-right area
+                x = random.randint(2 * arena_size[0] // 3, arena_size[0] - 500)
+                y = random.randint(2 * arena_size[1] // 3, arena_size[1] - 500)
+            elif i == 4:
+                # Bot 5: Center area
+                x = random.randint(arena_size[0] // 3, 2 * arena_size[0] // 3)
                 y = random.randint(arena_size[1] // 3, 2 * arena_size[1] // 3)
             else:
-                # Bot 3: Bottom area
+                # Bot 6+: Random position
                 x = random.randint(500, arena_size[0] - 500)
-                y = random.randint(2 * arena_size[1] // 3, arena_size[1] - 500)
+                y = random.randint(500, arena_size[1] - 500)
             
             # Random size between min and max
             bot_size = random.randint(self.min_cell_size, self.min_cell_size + 10)
@@ -214,6 +292,9 @@ class CryptoBubblesGameEngine:
         
         # Only expand if needed
         if new_width > arena_size[0] or new_height > arena_size[1]:
+            print(f"MAP EXPANSION: {arena_size} -> ({new_width}, {new_height})")
+            print(f"  Reasons: right={expand_right}, left={expand_left}, top={expand_top}, bottom={expand_bottom}")
+            
             # Add expansion to history
             self.state.expansion_history.append({
                 'timestamp': time.time(),
@@ -314,16 +395,28 @@ class CryptoBubblesGameEngine:
         alive_human_players = [cell for cell in self.state.cells.values() 
                               if cell.state == CellState.ALIVE and not cell.player.startswith("Bot_")]
         
-        if len(alive_human_players) <= 1:
+        # Game only ends when there are multiple players and only one remains
+        # Don't end game if there's only 1 player (waiting for others to join)
+        if len(alive_human_players) == 0:
+            # No human players alive - end game with no winner
+            self._end_game_by_elimination()
+        elif len(alive_human_players) == 1 and len(self.players) > 1:
+            # Only one player remains and there were originally multiple players - end game
             self._end_game_by_elimination()
     
     def _end_game_by_elimination(self):
-        """End game when only one human player remains"""
+        """End game when no human players remain alive"""
         alive_human_players = [cell for cell in self.state.cells.values() 
                               if cell.state == CellState.ALIVE and not cell.player.startswith("Bot_")]
         
         if len(alive_human_players) == 1:
+            # One player remains - they win
             self.state.winner = alive_human_players[0].player
+        elif len(alive_human_players) > 1:
+            # Multiple players still alive - this shouldn't happen with current logic
+            # Find the largest player as winner
+            largest_cell = max(alive_human_players, key=lambda c: c.size)
+            self.state.winner = largest_cell.player
         else:
             # No human players alive, no winner
             self.state.winner = None
