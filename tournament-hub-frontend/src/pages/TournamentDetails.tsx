@@ -17,8 +17,9 @@ import {
     Divider,
     useToast,
     IconButton,
+    Progress,
 } from '@chakra-ui/react';
-import { Users, Award, Calendar, Play, Trophy, CopyIcon } from 'lucide-react';
+import { Users, Award, Calendar, Play, Trophy, CopyIcon, Clock, Coins } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     startTournamentSession,
@@ -27,8 +28,8 @@ import {
     GAME_CONFIGS
 } from '../services/tournamentService';
 import { getTournamentDetailsFromContract, getGameConfig, getPrizePoolFromContract } from '../helpers';
-import { getTournamentFeeFromContract, getSubmitResultsTransactionHash } from '../helpers';
-import { egldToWei } from '../utils/contractUtils';
+import { getSubmitResultsTransactionHash } from '../helpers';
+import { weiToEgld } from '../utils/contractUtils';
 import { useGetAccount } from 'lib';
 import { useJoinTournamentTransaction } from 'hooks/transactions';
 import { Tooltip } from '@chakra-ui/react';
@@ -47,14 +48,29 @@ function shortenAddress(addr: string, start = 6, end = 6) {
 }
 
 function getGameName(gameId: number): string {
-    switch (gameId) {
-        case 1:
-            return 'Tic-Tac-Toe';
-        case 5:
-            return 'CryptoBubbles';
-        default:
-            return `Game ID: ${gameId}`;
+    const gameConfig = GAME_CONFIGS[gameId as keyof typeof GAME_CONFIGS];
+    return gameConfig ? gameConfig.name : `Game ID: ${gameId}`;
+}
+
+function formatDuration(seconds: number): string {
+    const hours = Math.floor(seconds / 3600);
+    const days = Math.floor(hours / 24);
+
+    if (days > 0) {
+        return `${days} day${days > 1 ? 's' : ''}`;
+    } else if (hours > 0) {
+        return `${hours} hour${hours > 1 ? 's' : ''}`;
+    } else {
+        return `${Math.floor(seconds / 60)} minute${Math.floor(seconds / 60) > 1 ? 's' : ''}`;
     }
+}
+
+function getTimeRemaining(createdAt: number, duration: number): { remaining: number; percentage: number } {
+    const now = Math.floor(Date.now() / 1000);
+    const endTime = createdAt + duration;
+    const remaining = Math.max(0, endTime - now);
+    const percentage = Math.max(0, Math.min(100, ((endTime - now) / duration) * 100));
+    return { remaining, percentage };
 }
 
 export const TournamentDetails = () => {
@@ -67,10 +83,9 @@ export const TournamentDetails = () => {
     const { address: playerAddress } = useGetAccount();
     const navigate = useNavigate();
     const { joinTournament } = useJoinTournamentTransaction();
-    const [tournamentFeeWei, setTournamentFeeWei] = useState('0');
-    const [tournamentFeeEGLD, setTournamentFeeEGLD] = useState('0');
     const [startingGame, setStartingGame] = useState(false);
     const [tournamentSession, setTournamentSession] = useState<TournamentSession | null>(null);
+    const [timeRemaining, setTimeRemaining] = useState<{ remaining: number; percentage: number }>({ remaining: 0, percentage: 100 });
 
     useEffect(() => {
         async function fetchTournament() {
@@ -94,21 +109,20 @@ export const TournamentDetails = () => {
                     }
                 }
 
+                // Calculate time remaining
+                const timeInfo = getTimeRemaining(Number(details.created_at), Number(details.duration));
+
                 setTournament({
                     ...details,
                     gameConfig,
-                    prize_pool: prizePool ? (Number(prizePool) / 1e18).toFixed(2) + ' EGLD' : '-',
-                    name: `Tournament #${id}`,
+                    prize_pool: prizePool ? (Number(prizePool) / 1e18).toFixed(4) + ' EGLD' : '-',
                     status: ['Joining', 'ProcessingResults', 'Completed'][details.status] || 'unknown',
                     current_players: details.participants.length,
-                    max_players: 8, // Support up to 8 players
-                    description: getGameName(Number(details.game_id)),
+                    description: details.name || getGameName(Number(details.game_id)),
                     resultTxHash,
+                    entry_fee_egld: weiToEgld(details.entry_fee.toString()),
                 });
-                // Fetch global tournament fee
-                const feeWei = await getTournamentFeeFromContract();
-                setTournamentFeeWei(feeWei);
-                setTournamentFeeEGLD((Number(feeWei) / 1e18).toFixed(4));
+                setTimeRemaining(timeInfo);
             } catch (err: any) {
                 setError(err.message || 'Failed to fetch tournament');
             } finally {
@@ -117,6 +131,18 @@ export const TournamentDetails = () => {
         }
         fetchTournament();
     }, [id]);
+
+    // Update time remaining every minute
+    useEffect(() => {
+        if (!tournament) return;
+
+        const interval = setInterval(() => {
+            const timeInfo = getTimeRemaining(Number(tournament.created_at), Number(tournament.duration));
+            setTimeRemaining(timeInfo);
+        }, 60000); // Update every minute
+
+        return () => clearInterval(interval);
+    }, [tournament]);
 
     const handleJoinTournament = async () => {
         if (!playerAddress) {
@@ -134,7 +160,7 @@ export const TournamentDetails = () => {
         try {
             await joinTournament({
                 tournamentId: parseInt(id || '0'),
-                entryFee: tournamentFeeWei
+                entryFee: tournament.entry_fee.toString()
             });
 
             // Start tournament session on backend
@@ -207,10 +233,21 @@ export const TournamentDetails = () => {
 
     // Only show Join Tournament button if user is not already a participant
     const isParticipant = playerAddress ? tournament.participants.includes(playerAddress) : false;
+    const isCreator = playerAddress === tournament.creator;
     const canJoin = tournament.status === 'Joining' &&
         tournament.current_players < tournament.max_players &&
         !isParticipant &&
-        !!playerAddress; // Ensure wallet is connected
+        !!playerAddress && // Ensure wallet is connected
+        timeRemaining.remaining > 0; // Ensure tournament is still open
+
+    const getJoinButtonText = () => {
+        if (!playerAddress) return 'Connect Wallet to Join';
+        if (isParticipant) {
+            return isCreator ? 'You Created This Tournament' : 'Already Joined';
+        }
+        if (timeRemaining.remaining <= 0) return 'Registration Closed';
+        return 'Join Tournament';
+    };
 
     return (
         <Box maxW="7xl" mx="auto" py={10} px={4}>
@@ -219,7 +256,7 @@ export const TournamentDetails = () => {
                 <Box>
                     <HStack justify="space-between" align="start" mb={4}>
                         <VStack align="start" spacing={2}>
-                            <Heading size="xl">{tournament.name}</Heading>
+                            <Heading size="xl">{tournament.name || `Tournament #${id}`}</Heading>
                             <Badge colorScheme={statusColors[tournament.status] || 'gray'} fontSize="md" px={3} py={1} borderRadius="md">
                                 {tournament.status}
                             </Badge>
@@ -233,8 +270,7 @@ export const TournamentDetails = () => {
                             loadingText="Joining..."
                             isDisabled={!canJoin}
                         >
-                            {!playerAddress ? 'Connect Wallet to Join' :
-                                isParticipant ? 'Already Joined' : 'Join Tournament'}
+                            {getJoinButtonText()}
                         </Button>
                     </HStack>
                     <Text color="gray.300" fontSize="lg" lineHeight="tall">
@@ -251,12 +287,18 @@ export const TournamentDetails = () => {
                         <CardBody>
                             <VStack spacing={4} align="stretch">
                                 <HStack justify="space-between">
-                                    <Text color="gray.300" fontWeight="bold">Prize Pool:</Text>
+                                    <Text color="gray.300" fontWeight="bold">Current Prize Pool:</Text>
                                     <Text color="gray.100">{tournament.prize_pool}</Text>
                                 </HStack>
                                 <HStack justify="space-between">
+                                    <Text color="gray.300" fontWeight="bold">Max Prize Pool:</Text>
+                                    <Text color="gray.100">
+                                        {(parseFloat(tournament.entry_fee_egld) * tournament.max_players).toFixed(4)} EGLD
+                                    </Text>
+                                </HStack>
+                                <HStack justify="space-between">
                                     <Text color="gray.300" fontWeight="bold">Entry Fee:</Text>
-                                    <Text color="gray.100">{tournamentFeeEGLD} EGLD</Text>
+                                    <Text color="gray.100">{tournament.entry_fee_egld} EGLD</Text>
                                 </HStack>
                                 <HStack justify="space-between">
                                     <Text color="gray.300" fontWeight="bold">Players:</Text>
@@ -264,13 +306,47 @@ export const TournamentDetails = () => {
                                 </HStack>
                                 <HStack justify="space-between">
                                     <Text color="gray.300" fontWeight="bold">Creator:</Text>
-                                    <Text color="blue.400" fontWeight="bold" fontSize="sm">{tournament.creator}</Text>
+                                    <Text color="blue.400" fontWeight="bold" fontSize="sm">{shortenAddress(tournament.creator)}</Text>
+                                </HStack>
+                                <HStack justify="space-between">
+                                    <Text color="gray.300" fontWeight="bold">Duration:</Text>
+                                    <Text color="gray.100">{formatDuration(Number(tournament.duration))}</Text>
                                 </HStack>
                             </VStack>
                         </CardBody>
                     </Card>
 
-
+                    {/* Registration Status Card */}
+                    <Card bg="gray.800" border="1px solid" borderColor="gray.700">
+                        <CardHeader>
+                            <Heading size="md" color="white" fontWeight="bold">Registration Status</Heading>
+                        </CardHeader>
+                        <CardBody>
+                            <VStack spacing={4} align="stretch">
+                                {timeRemaining.remaining > 0 ? (
+                                    <>
+                                        <HStack justify="space-between">
+                                            <Text color="gray.300" fontWeight="bold">Time Remaining:</Text>
+                                            <Text color="gray.100">{formatDuration(timeRemaining.remaining)}</Text>
+                                        </HStack>
+                                        <Progress
+                                            value={timeRemaining.percentage}
+                                            colorScheme="blue"
+                                            size="sm"
+                                            borderRadius="md"
+                                        />
+                                        <Text color="gray.400" fontSize="sm" textAlign="center">
+                                            Registration closes in {formatDuration(timeRemaining.remaining)}
+                                        </Text>
+                                    </>
+                                ) : (
+                                    <Text color="red.400" fontWeight="bold" textAlign="center">
+                                        Registration Period Has Ended
+                                    </Text>
+                                )}
+                            </VStack>
+                        </CardBody>
+                    </Card>
                 </SimpleGrid>
 
                 {/* Participants List - Compact UI */}
@@ -298,8 +374,13 @@ export const TournamentDetails = () => {
                                     boxShadow={playerAddress === player ? "0 0 0 2px #3182ce" : undefined}
                                 >
                                     <HStack spacing={2}>
-                                        <Badge colorScheme="blue" borderRadius="full" px={2} fontSize="xs">
-                                            {index + 1}
+                                        <Badge
+                                            colorScheme={player === tournament.creator ? "purple" : "blue"}
+                                            borderRadius="full"
+                                            px={2}
+                                            fontSize="xs"
+                                        >
+                                            {player === tournament.creator ? "Creator" : index + 1}
                                         </Badge>
                                         <Text
                                             fontWeight={playerAddress === player ? "bold" : "medium"}
@@ -390,7 +471,7 @@ export const TournamentDetails = () => {
                 )}
 
                 {/* Start Game Button for Participants */}
-                {isParticipant && tournament.participants.length >= 1 && tournament.status !== 'Completed' && (
+                {isParticipant && tournament.participants.length >= 1 && tournament.status === 'Joining' && (
                     <Button
                         colorScheme="green"
                         size="md"
