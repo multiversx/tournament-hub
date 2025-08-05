@@ -64,6 +64,125 @@ CONTRACT_ADDRESS = "erd1qqqqqqqqqqqqqpgqh040ajuxhrf642mmqlaf0jys58cjn0fcd8ssr0v2
 PEM_PATH = os.path.join(os.path.dirname(__file__), "..", "signing", "ed25519_private.pem")  # Path to Ed25519 private key
 CHAIN_ID = "D"
 
+# --- Helper function to sign results for tournament ---
+def sign_results_for_tournament(tournament_id: int, podium: list[str]) -> str:
+    """
+    Signs the results for a tournament and returns the signature as hex string.
+    This function can be called from the game server to get the signature.
+    """
+    from multiversx_sdk import UserSecretKey
+    import base64
+    
+    # Read the PEM file and extract the private key
+    with open(PEM_PATH, 'r') as f:
+        pem_content = f.read()
+    
+    lines = pem_content.strip().split('\n')
+    if len(lines) >= 2:
+        # Get the base64 encoded key (second line)
+        base64_key = lines[1]
+        # Decode the base64 key to get the raw bytes
+        private_key_bytes = base64.b64decode(base64_key)
+    else:
+        raise Exception("Invalid PEM file format")
+    
+    # Create UserSecretKey from the decoded bytes
+    secret_key = UserSecretKey(private_key_bytes)
+    
+    # Construct message as required by contract
+    message = construct_result_message(tournament_id, podium)
+    
+    # Sign the result message using the MultiversX SDK
+    signature = secret_key.sign(message)
+    signature_hex = signature.hex()
+    
+    print(f"Signed results for tournament {tournament_id}: {signature_hex}")
+    return signature_hex
+
+# --- Submit results with pre-signed signature ---
+def submit_results_to_contract_with_signature(tournament_id: int, podium: list[str], signature_hex: str):
+    """
+    Submits results to the contract using a pre-signed signature.
+    This function can be called from the game server with a signature from sign_results_for_tournament.
+    """
+    from multiversx_sdk import UserSecretKey, Account, Transaction, DevnetEntrypoint, Address
+    import base64
+    
+    # Read the PEM file and extract the private key
+    with open(PEM_PATH, 'r') as f:
+        pem_content = f.read()
+    
+    lines = pem_content.strip().split('\n')
+    if len(lines) >= 2:
+        # Get the base64 encoded key (second line)
+        base64_key = lines[1]
+        # Decode the base64 key to get the raw bytes
+        private_key_bytes = base64.b64decode(base64_key)
+    else:
+        raise Exception("Invalid PEM file format")
+    
+    # Create UserSecretKey from the decoded bytes
+    secret_key = UserSecretKey(private_key_bytes)
+    
+    # Create account with the secret key
+    account = Account(secret_key)
+    print("Loaded account address:", account.address.bech32())
+    
+    # Prepare contract call data
+    data = encode_submit_results_args(tournament_id, podium, signature_hex)
+    
+    # Sign transaction with the same secret key
+    try:
+        from multiversx_sdk import ProxyNetworkProvider
+        
+        # Use ProxyNetworkProvider instead of DevnetEntrypoint
+        provider = ProxyNetworkProvider(API_URL)
+        
+        # Get account info
+        account_info = provider.get_account(account.address)
+        account.nonce = account_info.nonce
+        
+        print(f"Account nonce: {account.nonce}")
+        print(f"Account address: {account.address}")
+        
+        # Create transaction with proper format
+        tx = Transaction(
+            nonce=account.nonce,
+            value=0,
+            sender=account.address,
+            receiver=Address.from_bech32(CONTRACT_ADDRESS),
+            gas_price=1000000000,
+            gas_limit=60000000,
+            data=data.encode(),
+            chain_id=CHAIN_ID,
+            version=1,
+        )
+        
+        # Sign the transaction using the account's secret key
+        tx.signature = account.sign_transaction(tx)
+        
+        print(f"Transaction signed successfully")
+        print(f"Transaction signature: {tx.signature.hex()}")
+        
+        # Send the signed transaction
+        print(f"Sending transaction to blockchain...")
+        tx_hash_result = provider.send_transaction(tx)
+        
+        if isinstance(tx_hash_result, bytes):
+            tx_hash_result = tx_hash_result.hex()
+        
+        print(f"Transaction sent successfully!")
+        print(f"Transaction hash: {tx_hash_result}")
+        print(f"View on explorer: https://devnet-explorer.multiversx.com/transactions/{tx_hash_result}")
+        
+        return tx_hash_result
+        
+    except Exception as e:
+        print(f"Error during transaction signing/sending: {e}")
+        print(f"Transaction data: {data}")
+        print(f"Signature: {signature_hex}")
+        raise
+
 # --- Main submission function ---
 def submit_results_to_contract(tournament_id: int, podium: list[str], private_key=None):
     # Load Ed25519 private key using MultiversX SDK format
