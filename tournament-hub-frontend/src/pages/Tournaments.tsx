@@ -167,7 +167,7 @@ const TournamentCard = React.memo(({ tournament, onLoadDetails }: { tournament: 
                 <HStack color="gray.400" fontSize="sm" justify="space-between" w="full" align="flex-start">
                     <HStack align="center" minW="0" flex="1">
                         <Users size={16} />
-                        <Text>{tournament.players?.length || 0} players</Text>
+                        <Text>{tournament.participants?.length || 0} players</Text>
                     </HStack>
                     <Box w="32px" display="flex" justifyContent="center" alignItems="center" h="20px">
                         {/* Empty space for alignment */}
@@ -379,6 +379,7 @@ export const Tournaments = () => {
         return deduplicateRequest(cacheKey, async () => {
             try {
                 const details = await getTournamentDetailsFromContract(id);
+                console.log(`Tournament ${id} details:`, details);
                 if (details) {
                     // Load prize pool and result TX in parallel for better performance
                     const [prizePool, resultTxHash] = await Promise.allSettled([
@@ -390,7 +391,7 @@ export const Tournaments = () => {
                         id,
                         name: `Tournament #${id}`,
                         status: details.status,
-                        players: details.participants || [],
+                        participants: details.participants || [],
                         description: getGameName(Number(details.game_id)),
                         creator: details.creator,
                         final_podium: details.final_podium || [],
@@ -715,7 +716,12 @@ export const Tournaments = () => {
                         onClick={() => {
                             tournamentCache.clear();
                             localStorage.removeItem(PERSISTENT_CACHE_KEY);
-                            window.location.reload();
+                            setTournaments([]);
+                            setLoading(true);
+                            // Trigger a fresh fetch
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 100);
                         }}
                         size="sm"
                         colorScheme="blue"
