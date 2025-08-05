@@ -101,9 +101,8 @@ export const TournamentDetails = () => {
                     name: `Tournament #${id}`,
                     status: ['Joining', 'ProcessingResults', 'Completed'][details.status] || 'unknown',
                     current_players: details.participants.length,
-                    max_players: 2, // Force max_players to 2 for now
+                    max_players: 8, // Support up to 8 players
                     description: getGameName(Number(details.game_id)),
-                    players: details.participants,
                     resultTxHash,
                 });
                 // Fetch global tournament fee
@@ -207,7 +206,7 @@ export const TournamentDetails = () => {
     }
 
     // Only show Join Tournament button if user is not already a participant
-    const isParticipant = playerAddress ? tournament.players.includes(playerAddress) : false;
+    const isParticipant = playerAddress ? tournament.participants.includes(playerAddress) : false;
     const canJoin = tournament.status === 'Joining' &&
         tournament.current_players < tournament.max_players &&
         !isParticipant &&
@@ -284,12 +283,12 @@ export const TournamentDetails = () => {
                 >
                     <CardHeader pb={2}>
                         <Heading size="md" color="white" fontWeight="bold">
-                            Participants ({tournament.players.length})
+                            Participants ({tournament.participants.length})
                         </Heading>
                     </CardHeader>
                     <CardBody py={2} px={3}>
                         <VStack spacing={2} align="stretch">
-                            {tournament.players.map((player: string, index: number) => (
+                            {tournament.participants.map((player: string, index: number) => (
                                 <HStack
                                     key={player}
                                     p={2}
@@ -391,7 +390,7 @@ export const TournamentDetails = () => {
                 )}
 
                 {/* Start Game Button for Participants */}
-                {isParticipant && tournament.players.length === tournament.max_players && tournament.status !== 'Completed' && (
+                {isParticipant && tournament.participants.length >= 1 && tournament.status !== 'Completed' && (
                     <Button
                         colorScheme="green"
                         size="md"
@@ -401,7 +400,7 @@ export const TournamentDetails = () => {
                         onClick={async () => {
                             setStartingGame(true);
                             try {
-                                const res = await startGameSession(Number(id).toString(), Number(tournament.game_id), tournament.players);
+                                const res = await startGameSession(Number(id).toString(), Number(tournament.game_id), tournament.participants);
                                 if (res.session_id) {
                                     navigate(`/game/${res.session_id}`);
                                 } else {
@@ -427,7 +426,7 @@ export const TournamentDetails = () => {
                             }
                         }}
                     >
-                        Start Game
+                        {tournament.participants.length === 1 ? 'Start Solo Game' : 'Start Game'}
                     </Button>
                 )}
 
