@@ -1,6 +1,7 @@
 import { getContractAddress } from '../config/contract';
 
-// Game configurations
+const CONTRACT_ADDRESS = getContractAddress();
+
 export const GAME_CONFIGS = {
   1: {
     name: "Tic Tac Toe",
@@ -29,6 +30,13 @@ export const GAME_CONFIGS = {
     maxPlayers: 8,
     gameType: "real_time",
     description: "Elimination tournament"
+  },
+  5: {
+    name: "CryptoBubbles",
+    minPlayers: 2,
+    maxPlayers: 2,
+    gameType: "real_time_duel",
+    description: "Real-time cell battle game"
   }
 };
 
@@ -66,51 +74,57 @@ export interface StartSessionRequest {
   player_address: string;
 }
 
-const BACKEND_URL = 'http://localhost:8000';
+export const startTournamentSession = async (tournamentId: number, gameType: number) => {
+  try {
+    const response = await fetch(`http://localhost:8000/start_session`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        tournament_id: tournamentId,
+        game_type: gameType
+      }),
+    });
 
-// Tournament session management
-export async function startTournamentSession(tournamentId: number, playerAddress: string): Promise<TournamentSession> {
-  const response = await fetch(`${BACKEND_URL}/start_session`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      tournament_id: tournamentId,
-      player: playerAddress
-    })
-  });
+    if (!response.ok) {
+      throw new Error('Failed to start tournament session');
+    }
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to start tournament session');
+    return await response.json();
+  } catch (error) {
+    console.error('Error starting tournament session:', error);
+    throw error;
   }
+};
 
-  return response.json();
-}
+export const startGameSession = async (tournamentId: string, gameType: number, playerAddresses?: string[]) => {
+  try {
+    const response = await fetch(`http://localhost:8000/start_session`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        tournamentId: tournamentId,
+        game_type: gameType,
+        playerAddresses: playerAddresses
+      }),
+    });
 
-export async function startGameSession(tournamentId: number, playerAddress: string): Promise<GameSession> {
-  const response = await fetch(`${BACKEND_URL}/start_session`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      tournament_id: tournamentId,
-      player: playerAddress
-    })
-  });
+    if (!response.ok) {
+      throw new Error('Failed to start game session');
+    }
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to start game session');
+    return await response.json();
+  } catch (error) {
+    console.error('Error starting game session:', error);
+    throw error;
   }
-
-  return response.json();
-}
+};
 
 export async function getGameState(sessionId: string): Promise<GameSession> {
-  const response = await fetch(`${BACKEND_URL}/game_state?sessionId=${sessionId}`);
+  const response = await fetch(`http://localhost:8000/game_state?session_id=${sessionId}`);
 
   if (!response.ok) {
     throw new Error('Failed to fetch game state');
@@ -120,7 +134,7 @@ export async function getGameState(sessionId: string): Promise<GameSession> {
 }
 
 export async function makeMove(sessionId: string, playerAddress: string, moveData: any): Promise<GameSession> {
-  const response = await fetch(`${BACKEND_URL}/move`, {
+  const response = await fetch(`http://localhost:8000/move`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -141,7 +155,7 @@ export async function makeMove(sessionId: string, playerAddress: string, moveDat
 }
 
 export async function submitTournamentResults(sessionId: string, winner: string): Promise<any> {
-  const response = await fetch(`${BACKEND_URL}/submit_results`, {
+  const response = await fetch(`http://localhost:8000/submit_results`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -161,7 +175,7 @@ export async function submitTournamentResults(sessionId: string, winner: string)
 }
 
 export async function getGameConfigs(): Promise<any> {
-  const response = await fetch(`${BACKEND_URL}/game-configs`);
+  const response = await fetch(`http://localhost:8000/game-configs`);
 
   if (!response.ok) {
     throw new Error('Failed to fetch game configs');
@@ -171,10 +185,10 @@ export async function getGameConfigs(): Promise<any> {
 }
 
 // Legacy functions for backward compatibility
-export async function startSession(tournamentId: number, playerAddress: string): Promise<{ sessionId: string }> {
+export async function startSession(tournamentId: number, playerAddress: string, gameType?: number): Promise<{ sessionId: string }> {
   try {
-    const result = await startGameSession(tournamentId, playerAddress);
-    return { sessionId: result.sessionId };
+    const result = await startTournamentSession(tournamentId, gameType || 1);
+    return { sessionId: result.session_id };
   } catch (error) {
     console.error('Error starting session:', error);
     throw error;
