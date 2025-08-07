@@ -35,6 +35,7 @@ interface FormData {
     name: string;
     gameType: string;
     maxPlayers: string;
+    minPlayers: string;
     entryFee: string;
     duration: string;
 }
@@ -43,6 +44,7 @@ interface FormErrors {
     name?: string;
     gameType?: string;
     maxPlayers?: string;
+    minPlayers?: string;
     entryFee?: string;
     duration?: string;
 }
@@ -67,6 +69,7 @@ export const CreateTournament: React.FC = () => {
         name: '',
         gameType: '1', // Default to TicTacToe
         maxPlayers: '4',
+        minPlayers: '2', // Default to 2 players
         entryFee: '0.1',
         duration: '24', // Default to 1 day
     });
@@ -90,6 +93,11 @@ export const CreateTournament: React.FC = () => {
         const maxPlayers = parseInt(formData.maxPlayers);
         if (!maxPlayers || maxPlayers < 2 || maxPlayers > 8) {
             newErrors.maxPlayers = 'Max players must be between 2 and 8';
+        }
+
+        const minPlayers = parseInt(formData.minPlayers);
+        if (!minPlayers || minPlayers < 2 || minPlayers > maxPlayers) {
+            newErrors.minPlayers = 'Min players must be between 2 and max players';
         }
 
         const entryFee = parseFloat(formData.entryFee);
@@ -140,6 +148,7 @@ export const CreateTournament: React.FC = () => {
             const sessionId = await createTournament({
                 gameId: parseInt(formData.gameType),
                 maxPlayers: parseInt(formData.maxPlayers),
+                minPlayers: parseInt(formData.minPlayers),
                 entryFee: formData.entryFee,
                 duration: durationInSeconds,
                 name: formData.name.trim(),
@@ -147,7 +156,7 @@ export const CreateTournament: React.FC = () => {
 
             toast({
                 title: 'Tournament created successfully!',
-                description: `Transaction: ${sessionId}`,
+                description: `Tournament created! Entry fee paid and creator joined. Session ID: ${sessionId.createSessionId}`,
                 status: 'success',
                 duration: 5000,
                 isClosable: true,
@@ -158,6 +167,7 @@ export const CreateTournament: React.FC = () => {
                 name: '',
                 gameType: '1',
                 maxPlayers: '4',
+                minPlayers: '2',
                 entryFee: '0.1',
                 duration: '24',
             });
@@ -274,7 +284,7 @@ export const CreateTournament: React.FC = () => {
                                 <Divider borderColor="gray.600" />
 
                                 {/* Tournament Settings */}
-                                <SimpleGrid columns={{ base: 1, md: 3 }} spacing={6} w="full">
+                                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6} w="full">
                                     <FormControl isInvalid={!!errors.maxPlayers}>
                                         <FormLabel color="gray.300">
                                             <FontAwesomeIcon icon={faUsers} style={{ marginRight: '8px' }} />
@@ -290,6 +300,25 @@ export const CreateTournament: React.FC = () => {
                                         </NumberInput>
                                         {errors.maxPlayers && <Text color="red.400" fontSize="sm">{errors.maxPlayers}</Text>}
                                     </FormControl>
+
+                                    <FormControl isInvalid={!!errors.minPlayers}>
+                                        <FormLabel color="gray.300">
+                                            <FontAwesomeIcon icon={faUsers} style={{ marginRight: '8px' }} />
+                                            Min Players (2-Max)
+                                        </FormLabel>
+                                        <NumberInput
+                                            value={formData.minPlayers}
+                                            onChange={(value) => handleInputChange('minPlayers', value)}
+                                            min={2}
+                                            max={parseInt(formData.maxPlayers)}
+                                        >
+                                            <NumberInputField sx={{ color: 'white !important' }} />
+                                        </NumberInput>
+                                        {errors.minPlayers && <Text color="red.400" fontSize="sm">{errors.minPlayers}</Text>}
+                                    </FormControl>
+                                </SimpleGrid>
+
+                                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6} w="full">
 
                                     <FormControl isInvalid={!!errors.entryFee}>
                                         <FormLabel color="gray.300">

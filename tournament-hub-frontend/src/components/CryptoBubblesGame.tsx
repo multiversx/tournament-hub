@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Box,
     Text,
@@ -65,6 +66,7 @@ export const CryptoBubblesGame: React.FC<CryptoBubblesGameProps> = ({ sessionId,
     const joinGameAttemptedRef = useRef(false);
 
     const toast = useToast();
+    const navigate = useNavigate();
     const bgColor = useColorModeValue('gray.800', 'gray.900');
     const borderColor = useColorModeValue('gray.700', 'gray.600');
 
@@ -594,7 +596,7 @@ export const CryptoBubblesGame: React.FC<CryptoBubblesGameProps> = ({ sessionId,
                             size="md"
                             colorScheme="red"
                             variant="solid"
-                            onClick={() => window.history.back()}
+                            onClick={() => navigate('/tournaments')}
                             leftIcon={<RotateCcw size={16} />}
                         >
                             Exit Game

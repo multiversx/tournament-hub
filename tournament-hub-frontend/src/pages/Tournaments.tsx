@@ -121,14 +121,23 @@ function formatEgld(biguint: bigint) {
 }
 
 function getGameName(gameId: number): string {
-    switch (gameId) {
-        case 1:
-            return 'Tic-Tac-Toe';
-        case 5:
-            return 'CryptoBubbles';
-        default:
-            return `Game ID: ${gameId}`;
-    }
+    // Import the game configs to get all game names
+    const gameConfigs = {
+        1: "Tic Tac Toe",
+        2: "Chess",
+        3: "4-Player Card Game",
+        4: "8-Player Battle Royale",
+        5: "CryptoBubbles",
+        6: "Checkers",
+        7: "Connect Four",
+        8: "Memory Match",
+        9: "Word Scramble",
+        10: "Math Challenge",
+        11: "Puzzle Race",
+        12: "Trivia Master"
+    };
+
+    return gameConfigs[gameId as keyof typeof gameConfigs] || `Game ID: ${gameId}`;
 }
 
 // Optimized tournament card component
@@ -362,11 +371,9 @@ export const Tournaments = () => {
         const persistentCache = getPersistentCache();
         if (persistentCache[cacheKey]) {
             const cachedData = persistentCache[cacheKey];
-            console.log(`Loading tournament ${id} from persistent cache, resultTxLoaded: ${cachedData.resultTxLoaded}, resultTxHash: ${cachedData.resultTxHash}`);
 
             // If this is a completed tournament but result TX is missing, mark it as not loaded
             if (cachedData.status === 2 && cachedData.resultTxLoaded && !cachedData.resultTxHash) {
-                console.log(`Tournament ${id} is completed but missing result TX, will retry loading`);
                 cachedData.resultTxLoaded = false;
                 cachedData.resultTxHash = null;
             }
@@ -379,7 +386,6 @@ export const Tournaments = () => {
         return deduplicateRequest(cacheKey, async () => {
             try {
                 const details = await getTournamentDetailsFromContract(id);
-                console.log(`Tournament ${id} details:`, details);
                 if (details) {
                     // Load prize pool and result TX in parallel for better performance
                     const [prizePool, resultTxHash] = await Promise.allSettled([
@@ -425,11 +431,9 @@ export const Tournaments = () => {
         const cacheKey = `basic_${id}`;
         const tournament = tournamentCache.get(cacheKey);
         if (!tournament || loadingDetails.has(id.toString())) {
-            console.log(`Skipping loadTournamentDetails for ${id}: tournament=${!!tournament}, loadingDetails=${loadingDetails.has(id.toString())}`);
             return;
         }
 
-        console.log(`Loading tournament details for ${id}, status: ${tournament.status}, resultTxLoaded: ${tournament.resultTxLoaded}, resultTxHash: ${tournament.resultTxHash}`);
         setLoadingDetails(prev => new Set(prev).add(id.toString()));
 
         try {
@@ -513,14 +517,10 @@ export const Tournaments = () => {
                 }
 
                 if (tournamentIds.length === 0) {
-                    console.log('No tournaments found by any method');
                     setTournaments([]);
                     setLoading(false);
                     return;
                 }
-
-                console.log(`Found ${tournamentIds.length} tournaments, loading data...`);
-                console.log('Tournament IDs:', tournamentIds);
 
                 // Load basic data for all tournaments in parallel with better error handling
                 const basicDataPromises = tournamentIds.map(async (id) => {
@@ -537,7 +537,6 @@ export const Tournaments = () => {
                     .filter(result => result.status === 'fulfilled' && result.value !== null)
                     .map(result => (result as PromiseFulfilledResult<any>).value);
 
-                console.log(`Successfully loaded ${validTournaments.length} tournaments out of ${tournamentIds.length} found`);
                 setTournaments(validTournaments);
             } catch (err) {
                 console.error('Error fetching tournaments:', err);
@@ -564,7 +563,6 @@ export const Tournaments = () => {
         const autoLoadMissingResultTX = async () => {
             for (const tournament of tournaments) {
                 if (tournament.status === 2 && !tournament.resultTxLoaded && !loadingDetails.has(tournament.id.toString())) {
-                    console.log(`Auto-loading result TX for completed tournament ${tournament.id}`);
                     await loadTournamentDetails(tournament.id);
                 }
             }

@@ -98,7 +98,10 @@ function hexToBech32(hex: string): string {
 export function parseTournamentHex(hex: string) {
     let offset = 0;
     function logField(name: string, raw: string, value: any) {
-        // Debug logging removed
+        // Only log in development mode or when explicitly debugging
+        if (process.env.NODE_ENV === 'development' && false) { // Disabled for now
+            console.log(`parseTournamentHex: ${name}: ${value} (raw: ${raw})`);
+        }
     }
     function readHex(len: number) {
         const out = hex.slice(offset, offset + len);
@@ -331,7 +334,6 @@ export async function findTournamentsByTesting() {
             const details = await getTournamentDetailsFromContract(i);
             if (details) {
                 foundTournaments.push(BigInt(i));
-                console.log(`Found tournament ${i}`);
             }
         } catch (err) {
             // Ignore errors
@@ -385,12 +387,6 @@ export async function getPrizePoolFromContract(tournamentId: number | bigint) {
         if (!base64Result) return BigInt(0);
         const hex = Buffer.from(base64Result, 'base64').toString('hex');
         const prizePool = BigInt('0x' + hex);
-
-        // Debug logging
-        console.log(`getPrizePoolFromContract: Tournament ${tournamentId} prize pool: ${prizePool} (hex: ${hex})`);
-        console.log(`getPrizePoolFromContract: Raw hex value: ${hex}`);
-        console.log(`getPrizePoolFromContract: As decimal: ${BigInt('0x' + hex)}`);
-        console.log(`getPrizePoolFromContract: As EGLD: ${Number(BigInt('0x' + hex)) / 1e18}`);
 
         return prizePool;
     } catch (err) {

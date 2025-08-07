@@ -12,6 +12,12 @@ import uvicorn
 # Import CryptoBubbles game engine
 from cryptobubbles_game_engine import create_cryptobubbles_game, get_cryptobubbles_game, remove_cryptobubbles_game, CryptoBubblesGameEngine
 
+# Import Chess game engine
+from chess_game_engine import create_chess_game, get_chess_game, remove_chess_game, ChessGameEngine
+
+# Import Tic Tac Toe game engine
+from tictactoe_game_engine import create_tictactoe_game, get_tictactoe_game, remove_tictactoe_game, TicTacToeGameEngine
+
 # Import contract interaction
 from contract.submit_results import sign_results_for_tournament, submit_results_to_contract_with_signature
 
@@ -32,6 +38,47 @@ app.add_middleware(
 
 # Global session storage
 sessions: Dict[str, Dict] = {}
+
+# Helper function to determine game type
+def determine_game_type(game_type_id: Optional[int]) -> str:
+    """Determine game type string from game type ID"""
+    if game_type_id == 1:  # Tic Tac Toe
+        return "tictactoe"
+    elif game_type_id == 2:  # Chess
+        return "chess"
+    elif game_type_id == 3:  # 4-Player Card Game
+        return "cardgame"
+    elif game_type_id == 4:  # 8-Player Battle Royale
+        return "battleroyale"
+    elif game_type_id == 5:  # CryptoBubbles
+        return "cryptobubbles"
+    elif game_type_id == 6:  # Checkers
+        return "checkers"
+    elif game_type_id == 7:  # Connect Four
+        return "connectfour"
+    elif game_type_id == 8:  # Memory Match
+        return "memorymatch"
+    elif game_type_id == 9:  # Word Scramble
+        return "wordscramble"
+    elif game_type_id == 10:  # Math Challenge
+        return "mathchallenge"
+    elif game_type_id == 11:  # Puzzle Race
+        return "puzzlerace"
+    elif game_type_id == 12:  # Trivia Master
+        return "triviamaster"
+    else:
+        return "cryptobubbles"  # Default fallback
+
+# Helper function to create game instances
+def create_game_instance(game_type: str, session_id: str, players: List[str]):
+    """Create a game instance based on game type"""
+    if game_type == "chess":
+        create_chess_game(session_id, players)
+    elif game_type == "tictactoe":
+        create_tictactoe_game(session_id, players)
+    else:  # All other games default to CryptoBubbles for now
+        logger.info(f"Game type '{game_type}' not implemented yet, using CryptoBubbles as fallback")
+        create_cryptobubbles_game(session_id, players)
 
 # Pydantic models for requests
 class StartSessionRequest(BaseModel):
@@ -63,6 +110,20 @@ class CryptoBubblesMoveRequest(BaseModel):
     x: float
     y: float
 
+# Pydantic models for Chess endpoints
+class ChessMoveRequest(BaseModel):
+    sessionId: str
+    player: str
+    from_pos: str  # Format: "x,y" (e.g., "0,1")
+    to_pos: str    # Format: "x,y" (e.g., "0,3")
+
+# Pydantic models for Tic Tac Toe endpoints
+class TicTacToeMoveRequest(BaseModel):
+    sessionId: str
+    player: str
+    row: int
+    col: int
+
 def error_response(message: str, status_code: int = 400):
     return {"error": message, "status_code": status_code}
 
@@ -75,7 +136,8 @@ async def start_session(request: StartSessionRequest):
         
         # Handle new format (tournament-based sessions)
         if request.tournamentId:
-            game_type = "cryptobubbles"
+            # Determine game type based on request.game_type
+            game_type = determine_game_type(request.game_type)
             
             # Check if a session already exists for this tournament
             existing_session_id = None
@@ -109,8 +171,8 @@ async def start_session(request: StartSessionRequest):
             
             sessions[session_id] = session
             
-            # Create CryptoBubbles game instance
-            create_cryptobubbles_game(session_id, players)
+            # Create game instance based on game type
+            create_game_instance(game_type, session_id, players)
             
             logger.info(f"Started {game_type} session: {session_id} with players: {players}")
             return {"session_id": session_id, "game_type": game_type}
@@ -118,7 +180,9 @@ async def start_session(request: StartSessionRequest):
         # Handle sessionId format (legacy)
         elif request.sessionId:
             session_id = request.sessionId
-            game_type = "cryptobubbles"
+            
+            # Determine game type based on request.game_type
+            game_type = determine_game_type(request.game_type)
             
             # For tournament-based sessions, we need to get the players from the tournament
             # For now, we'll create a placeholder session with the sessionId as the player list
@@ -135,8 +199,8 @@ async def start_session(request: StartSessionRequest):
             
             sessions[session_id] = session
             
-            # Create CryptoBubbles game instance
-            create_cryptobubbles_game(session_id, players)
+            # Create game instance based on game type
+            create_game_instance(game_type, session_id, players)
             
             logger.info(f"Started {game_type} session: {session_id}")
             return {"session_id": session_id, "game_type": game_type}
@@ -144,7 +208,7 @@ async def start_session(request: StartSessionRequest):
         # Handle old format (direct players list)
         elif request.players:
             session_id = f"session_{int(time.time() * 1000)}"
-            game_type = "cryptobubbles"
+            game_type = determine_game_type(request.game_type)
             
             session = {
                 "id": session_id,
@@ -156,8 +220,8 @@ async def start_session(request: StartSessionRequest):
             
             sessions[session_id] = session
             
-            # Create CryptoBubbles game instance
-            create_cryptobubbles_game(session_id, request.players)
+            # Create game instance based on game type
+            create_game_instance(game_type, session_id, request.players)
             
             logger.info(f"Started {game_type} session: {session_id}")
             return {"session_id": session_id, "game_type": game_type}
@@ -196,8 +260,9 @@ async def join_session(session_id: str, request: JoinSessionRequest):
         if len(session["joined_players"]) == len(session["players"]):
             session["status"] = "ready"
             
-            # Create CryptoBubbles game instance
-            create_cryptobubbles_game(session_id, [player])
+            # Create game instance based on session's game type
+            game_type = session.get("game_type", "cryptobubbles")
+            create_game_instance(game_type, session_id, session["players"])
         
         logger.info(f"Player {player} joined session {session_id}")
         return {"status": "joined", "session_status": session["status"]}
@@ -208,13 +273,21 @@ async def join_session(session_id: str, request: JoinSessionRequest):
 
 @app.get("/game_state")
 async def get_game_state(session_id: str):
-    """Get current game state - redirects to CryptoBubbles"""
+    """Get current game state - handles both chess and CryptoBubbles"""
     try:
         if session_id not in sessions:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        # Redirect to CryptoBubbles game state
-        return await get_cryptobubbles_game_state(sessionId=session_id)
+        session = sessions[session_id]
+        game_type = session.get("game_type", "cryptobubbles")
+        
+        # Redirect to appropriate game state endpoint
+        if game_type == "chess":
+            return await get_chess_game_state(sessionId=session_id)
+        elif game_type == "tictactoe":
+            return await get_tictactoe_game_state(sessionId=session_id)
+        else:  # cryptobubbles
+            return await get_cryptobubbles_game_state(sessionId=session_id)
         
     except Exception as e:
         logger.error(f"Error getting game state: {e}")
@@ -222,19 +295,31 @@ async def get_game_state(session_id: str):
 
 @app.post("/move")
 async def submit_move(session_id: str, request: MoveRequest):
-    """Submit a move in the game - redirects to CryptoBubbles"""
+    """Submit a move in the game - handles both chess and CryptoBubbles"""
     try:
         if session_id not in sessions:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        # Redirect to CryptoBubbles move
-        cryptobubbles_request = CryptoBubblesMoveRequest(
-            sessionId=session_id,
-            player=request.player,
-            x=request.x or 0,
-            y=request.y or 0
-        )
-        return await submit_cryptobubbles_move(cryptobubbles_request)
+        session = sessions[session_id]
+        game_type = session.get("game_type", "cryptobubbles")
+        
+        # Redirect to appropriate move endpoint
+        if game_type == "chess":
+            # For chess, we need from_pos and to_pos, but MoveRequest only has x,y
+            # This is a limitation - chess moves should use the chess-specific endpoint
+            raise HTTPException(status_code=400, detail="Chess moves must use /chess_move endpoint with from_pos and to_pos")
+        elif game_type == "tictactoe":
+            # For Tic Tac Toe, we need row and col, but MoveRequest only has x,y
+            # This is a limitation - Tic Tac Toe moves should use the tictactoe-specific endpoint
+            raise HTTPException(status_code=400, detail="Tic Tac Toe moves must use /tictactoe_move endpoint with row and col")
+        else:  # cryptobubbles
+            cryptobubbles_request = CryptoBubblesMoveRequest(
+                sessionId=session_id,
+                player=request.player,
+                x=request.x or 0,
+                y=request.y or 0
+            )
+            return await submit_cryptobubbles_move(cryptobubbles_request)
         
     except Exception as e:
         logger.error(f"Error submitting move: {e}")
@@ -255,11 +340,12 @@ async def start_game(session_id: str):
         session["status"] = "playing"
         session["started_at"] = time.time()
         
-        # Clean up existing game if exists
-        remove_cryptobubbles_game(session_id)
+        # Clean up existing game if exists (for all game types)
+        remove_cryptobubbles_game(session_id)  # TODO: Make this generic for all game types
         
-        # Create new CryptoBubbles game instance
-        create_cryptobubbles_game(session_id, session["players"])
+        # Create game instance based on session's game type
+        game_type = session.get("game_type", "cryptobubbles")
+        create_game_instance(game_type, session_id, session["players"])
         
         logger.info(f"Started game for session {session_id}")
         return {"status": "started"}
@@ -349,6 +435,107 @@ async def join_cryptobubbles_session(sessionId: str, player: str):
         logger.error(f"Error joining CryptoBubbles session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# Chess-specific endpoints
+@app.get("/chess_game_state")
+async def get_chess_game_state(sessionId: str):
+    """Get the current state of a chess game"""
+    try:
+        game = get_chess_game(sessionId)
+        if not game:
+            raise HTTPException(status_code=404, detail="Chess game not found")
+        
+        return game.get_game_state()
+    except Exception as e:
+        logger.error(f"Error getting chess game state: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/chess_move")
+async def submit_chess_move(request: ChessMoveRequest):
+    """Submit a move in a chess game"""
+    try:
+        game = get_chess_game(request.sessionId)
+        if not game:
+            raise HTTPException(status_code=404, detail="Chess game not found")
+        
+        # Parse position strings
+        try:
+            from_x, from_y = map(int, request.from_pos.split(','))
+            to_x, to_y = map(int, request.to_pos.split(','))
+            from_pos = (from_x, from_y)
+            to_pos = (to_x, to_y)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid position format. Use 'x,y' (e.g., '0,1')")
+        
+        # Make the move
+        success = game.make_move(from_pos, to_pos, request.player)
+        if not success:
+            raise HTTPException(status_code=400, detail="Invalid move")
+        
+        return {"status": "moved", "game_state": game.get_game_state()}
+    except Exception as e:
+        logger.error(f"Error making chess move: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/start_chess_game")
+async def start_chess_game(sessionId: str):
+    """Start a chess game (games start automatically when created)"""
+    try:
+        game = get_chess_game(sessionId)
+        if not game:
+            raise HTTPException(status_code=404, detail="Chess game not found")
+        
+        # Chess games start automatically when created
+        return {"status": "started", "game_state": game.get_game_state()}
+    except Exception as e:
+        logger.error(f"Error starting chess game: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Tic Tac Toe specific endpoints
+@app.get("/tictactoe_game_state")
+async def get_tictactoe_game_state(sessionId: str):
+    """Get the current state of a Tic Tac Toe game"""
+    try:
+        game = get_tictactoe_game(sessionId)
+        if not game:
+            raise HTTPException(status_code=404, detail="Tic Tac Toe game not found")
+        
+        return game.get_game_state()
+    except Exception as e:
+        logger.error(f"Error getting Tic Tac Toe game state: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/tictactoe_move")
+async def submit_tictactoe_move(request: TicTacToeMoveRequest):
+    """Submit a move in a Tic Tac Toe game"""
+    try:
+        game = get_tictactoe_game(request.sessionId)
+        if not game:
+            raise HTTPException(status_code=404, detail="Tic Tac Toe game not found")
+        
+        # Make the move
+        success = game.make_move(request.row, request.col, request.player)
+        if not success:
+            raise HTTPException(status_code=400, detail="Invalid move")
+        
+        return {"status": "moved", "game_state": game.get_game_state()}
+    except Exception as e:
+        logger.error(f"Error making Tic Tac Toe move: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/start_tictactoe_game")
+async def start_tictactoe_game(sessionId: str):
+    """Start a Tic Tac Toe game (games start automatically when created)"""
+    try:
+        game = get_tictactoe_game(sessionId)
+        if not game:
+            raise HTTPException(status_code=404, detail="Tic Tac Toe game not found")
+        
+        # Tic Tac Toe games start automatically when created
+        return {"status": "started", "game_state": game.get_game_state()}
+    except Exception as e:
+        logger.error(f"Error starting Tic Tac Toe game: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/game_config")
 async def get_game_config(game_type: str):
     """Get game configuration"""
@@ -359,6 +546,13 @@ async def get_game_config(game_type: str):
             "max_players": 8,
             "min_players": 1,
             "game_duration": 600
+        },
+        "chess": {
+            "name": "Chess",
+            "description": "Strategic board game",
+            "max_players": 2,
+            "min_players": 2,
+            "game_duration": 1800
         }
     }
     
@@ -371,6 +565,13 @@ async def get_game_config(game_type: str):
 async def get_game_configs():
     """Get available game configurations"""
     return {
+        "2": {
+            "name": "Chess",
+            "minPlayers": 2,
+            "maxPlayers": 2,
+            "gameType": "turn_based",
+            "description": "Strategic board game"
+        },
         "5": {
             "name": "CryptoBubbles",
             "minPlayers": 1,
