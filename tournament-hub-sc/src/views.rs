@@ -29,6 +29,11 @@ pub trait ViewsModule: crate::storage::StorageModule {
         self.active_tournaments().len()
     }
 
+    #[view(getNumberOfGames)]
+    fn get_number_of_games(&self) -> usize {
+        self.registered_games().len()
+    }
+
     #[view(getActiveTournamentIds)]
     fn get_active_tournament_ids(&self) -> ManagedVec<u64> {
         let mut ids = ManagedVec::new();
