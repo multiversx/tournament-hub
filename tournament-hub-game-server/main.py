@@ -639,9 +639,102 @@ def update_cryptobubbles_games():
             logger.error(f"Error updating CryptoBubbles games: {e}")
             time.sleep(5)  # Wait longer on error
 
+def check_and_submit_game_results():
+    """Background task to check if Chess and TicTacToe games are finished and submit results"""
+    while True:
+        try:
+            from chess_game_engine import chess_games
+            from tictactoe_game_engine import tictactoe_games
+            
+            # Check Chess games
+            for session_id, game in chess_games.items():
+                if not getattr(game, 'results_submitted', False):
+                    game_state = game.get_game_state()
+                    if game_state.get('game_over', False) and game_state.get('winner'):
+                        logger.info(f"Chess game {session_id} finished! Winner: {game_state['winner']}")
+                        
+                        # Mark as submitted to prevent repeated processing
+                        game.results_submitted = True
+                        
+                        # Extract tournament_id from session_id
+                        try:
+                            if session_id.startswith('session_'):
+                                parts = session_id.split('_')
+                                if len(parts) >= 3:
+                                    tournament_id = int(parts[2])
+                                else:
+                                    logger.warning(f"Could not extract tournament_id from session_id: {session_id}")
+                                    continue
+                            else:
+                                tournament_id = int(session_id)
+                                
+                            # Create podium list with only the winner
+                            podium = [game_state['winner']]
+                            
+                            # Sign and submit results
+                            signature = sign_results_for_tournament(tournament_id, podium)
+                            if signature:
+                                tx_hash = submit_results_to_contract_with_signature(tournament_id, podium, signature)
+                                if tx_hash:
+                                    logger.info(f"Chess results submitted for tournament {tournament_id}: {tx_hash}")
+                                else:
+                                    logger.error(f"Failed to submit Chess results for tournament {tournament_id}")
+                            else:
+                                logger.error(f"Failed to sign Chess results for tournament {tournament_id}")
+                        except Exception as e:
+                            logger.error(f"Error processing Chess game results for {session_id}: {e}")
+            
+            # Check TicTacToe games
+            for session_id, game in tictactoe_games.items():
+                if not getattr(game, 'results_submitted', False):
+                    game_state = game.get_game_state()
+                    if game_state.get('game_over', False) and game_state.get('winner'):
+                        logger.info(f"TicTacToe game {session_id} finished! Winner: {game_state['winner']}")
+                        
+                        # Mark as submitted to prevent repeated processing
+                        game.results_submitted = True
+                        
+                        # Extract tournament_id from session_id
+                        try:
+                            if session_id.startswith('session_'):
+                                parts = session_id.split('_')
+                                if len(parts) >= 3:
+                                    tournament_id = int(parts[2])
+                                else:
+                                    logger.warning(f"Could not extract tournament_id from session_id: {session_id}")
+                                    continue
+                            else:
+                                tournament_id = int(session_id)
+                                
+                            # Create podium list with only the winner
+                            podium = [game_state['winner']]
+                            
+                            # Sign and submit results
+                            signature = sign_results_for_tournament(tournament_id, podium)
+                            if signature:
+                                tx_hash = submit_results_to_contract_with_signature(tournament_id, podium, signature)
+                                if tx_hash:
+                                    logger.info(f"TicTacToe results submitted for tournament {tournament_id}: {tx_hash}")
+                                else:
+                                    logger.error(f"Failed to submit TicTacToe results for tournament {tournament_id}")
+                            else:
+                                logger.error(f"Failed to sign TicTacToe results for tournament {tournament_id}")
+                        except Exception as e:
+                            logger.error(f"Error processing TicTacToe game results for {session_id}: {e}")
+            
+            time.sleep(1)  # Check every second
+            
+        except Exception as e:
+            logger.error(f"Error checking game results: {e}")
+            time.sleep(5)  # Wait longer on error
+
 # Start background update thread
 update_thread = threading.Thread(target=update_cryptobubbles_games, daemon=True)
 update_thread.start()
+
+# Start background thread for checking game results
+results_thread = threading.Thread(target=check_and_submit_game_results, daemon=True)
+results_thread.start()
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000) 

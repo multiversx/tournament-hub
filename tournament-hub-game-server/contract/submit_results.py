@@ -60,7 +60,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 # Config - hardcoded values since config directory was removed
 API_URL = "https://devnet-api.multiversx.com"
-CONTRACT_ADDRESS = "erd1qqqqqqqqqqqqqpgqh040ajuxhrf642mmqlaf0jys58cjn0fcd8ssr0v2vw"
+CONTRACT_ADDRESS = "erd1qqqqqqqqqqqqqpgq9zhclje8g8n6xlsaj0ds6xj87lt4rgtzd8sspxwzu7"
 PEM_PATH = os.path.join(os.path.dirname(__file__), "..", "signing", "ed25519_private.pem")  # Path to Ed25519 private key
 CHAIN_ID = "D"
 
