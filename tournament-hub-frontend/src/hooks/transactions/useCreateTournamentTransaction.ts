@@ -38,8 +38,8 @@ export const useCreateTournamentTransaction = () => {
         const entryFeeWei = egldToWei(params.entryFee);
         console.log('createTournament: Entry fee conversion:', {
             original: params.entryFee,
-            wei: entryFeeWei.toString(),
-            weiHex: entryFeeWei.toString(16)
+            wei: entryFeeWei,
+            weiHex: BigInt(entryFeeWei).toString(16)
         });
 
         // Encode arguments per MultiversX serialization rules

@@ -34,6 +34,7 @@ import { useGetAccount } from 'lib';
 import { useJoinTournamentTransaction } from 'hooks/transactions';
 import { Tooltip } from '@chakra-ui/react';
 import { TournamentBracket } from '../components/TournamentBracket';
+import { useStartGameTransaction } from 'hooks/transactions';
 
 const statusColors: Record<string, string> = {
     Joining: 'yellow',
@@ -66,6 +67,7 @@ function formatDuration(seconds: number): string {
 }
 
 function getTimeRemaining(createdAt: number, duration: number): { remaining: number; percentage: number } {
+    // createdAt is in seconds, so we need to convert current time to seconds
     const now = Math.floor(Date.now() / 1000);
     const endTime = createdAt + duration;
     const remaining = Math.max(0, endTime - now);
@@ -87,14 +89,20 @@ export const TournamentDetails = () => {
     const [tournamentSession, setTournamentSession] = useState<TournamentSession | null>(null);
     const [timeRemaining, setTimeRemaining] = useState<{ remaining: number; percentage: number }>({ remaining: 0, percentage: 100 });
 
+    // Add start game transaction hook
+    const { startGame } = useStartGameTransaction();
+
     useEffect(() => {
         async function fetchTournament() {
             setLoading(true);
             setError(null);
             try {
                 if (!id) throw new Error('No tournament id');
-                const details = await getTournamentDetailsFromContract(BigInt(id));
+
+                // Try to get tournament details from contract first
+                let details = await getTournamentDetailsFromContract(BigInt(id));
                 if (!details) throw new Error('Tournament not found');
+
                 const gameConfig = await getGameConfig(details.game_id);
                 const prizePool = await getPrizePoolFromContract(BigInt(id));
 
@@ -116,7 +124,7 @@ export const TournamentDetails = () => {
                     ...details,
                     gameConfig,
                     prize_pool: prizePool ? (Number(prizePool) / 1e18).toFixed(4) + ' EGLD' : '-',
-                    status: ['Joining', 'ProcessingResults', 'Completed'][details.status] || 'unknown',
+                    status: ['Joining', 'ReadyToStart', 'Active', 'ProcessingResults', 'Completed'][details.status] || 'unknown',
                     current_players: details.participants.length,
                     description: details.name || getGameName(Number(details.game_id)),
                     resultTxHash,
@@ -197,6 +205,52 @@ export const TournamentDetails = () => {
         }
     };
 
+    const handleStartGame = async () => {
+        if (!playerAddress) {
+            toast({
+                title: 'Wallet not connected',
+                description: 'Please connect your wallet first',
+                status: 'warning',
+                duration: 3000,
+                isClosable: true,
+            });
+            return;
+        }
+
+        setStartingGame(true);
+        try {
+            await startGame({
+                tournamentId: parseInt(id || '0'),
+                gameId: Number(tournament.game_id),
+                participants: tournament.participants,
+            });
+
+            toast({
+                title: 'Success!',
+                description: 'Game started successfully!',
+                status: 'success',
+                duration: 5000,
+                isClosable: true,
+            });
+
+            // Refetch tournament details to show updated status
+            if (typeof window !== 'undefined') {
+                window.location.reload();
+            }
+        } catch (err) {
+            console.error('Error starting game:', err);
+            toast({
+                title: 'Error',
+                description: 'Failed to start game. Please try again.',
+                status: 'error',
+                duration: 5000,
+                isClosable: true,
+            });
+        } finally {
+            setStartingGame(false);
+        }
+    };
+
     const columns = useBreakpointValue({ base: 1, md: 2 });
 
     if (loading) {
@@ -234,11 +288,17 @@ export const TournamentDetails = () => {
     // Only show Join Tournament button if user is not already a participant
     const isParticipant = playerAddress ? tournament.participants.includes(playerAddress) : false;
     const isCreator = playerAddress === tournament.creator;
-    const canJoin = tournament.status === 'Joining' &&
+    const canJoin = (tournament.status === 'Joining' || tournament.status === 'ReadyToStart') &&
         tournament.current_players < tournament.max_players &&
         !isParticipant &&
         !!playerAddress && // Ensure wallet is connected
         timeRemaining.remaining > 0; // Ensure tournament is still open
+
+    // Show Start Game button if tournament is ready to start and user is a participant
+    const canStartGame = tournament.status === 'ReadyToStart' &&
+        isParticipant &&
+        isCreator && // Only creator can start the game
+        !!playerAddress;
 
     const getJoinButtonText = () => {
         if (!playerAddress) return 'Connect Wallet to Join';
@@ -261,17 +321,30 @@ export const TournamentDetails = () => {
                                 {tournament.status}
                             </Badge>
                         </VStack>
-                        <Button
-                            leftIcon={<Play size={20} />}
-                            colorScheme="blue"
-                            size="lg"
-                            onClick={handleJoinTournament}
-                            isLoading={joining}
-                            loadingText="Joining..."
-                            isDisabled={!canJoin}
-                        >
-                            {getJoinButtonText()}
-                        </Button>
+                        {canStartGame ? (
+                            <Button
+                                leftIcon={<Play size={20} />}
+                                colorScheme="green"
+                                size="lg"
+                                onClick={handleStartGame}
+                                isLoading={startingGame}
+                                loadingText="Starting Game..."
+                            >
+                                Start Game
+                            </Button>
+                        ) : (
+                            <Button
+                                leftIcon={<Play size={20} />}
+                                colorScheme="blue"
+                                size="lg"
+                                onClick={handleJoinTournament}
+                                isLoading={joining}
+                                loadingText="Joining..."
+                                isDisabled={!canJoin}
+                            >
+                                {getJoinButtonText()}
+                            </Button>
+                        )}
                     </HStack>
                     <Text color="gray.300" fontSize="lg" lineHeight="tall">
                         {tournament.description}
@@ -408,6 +481,41 @@ export const TournamentDetails = () => {
                     </CardBody>
                 </Card>
 
+                {/* Game Interface for Active Tournaments */}
+                {tournament.status === 'Active' && (
+                    <Card bg="gray.800" border="1px solid" borderColor="gray.700" maxW="800px" mx="auto">
+                        <CardHeader>
+                            <Heading size="md" color="white" fontWeight="bold">
+                                Game Session
+                            </Heading>
+                        </CardHeader>
+                        <CardBody>
+                            <VStack spacing={4} align="stretch">
+                                <Text color="gray.300" textAlign="center">
+                                    Tournament is now active! The game should be starting...
+                                </Text>
+                                <Button
+                                    colorScheme="green"
+                                    size="lg"
+                                    onClick={() => {
+                                        // Navigate to the game session
+                                        const gameType = getGameName(Number(tournament.game_id));
+                                        if (gameType === 'Chess') {
+                                            navigate(`/game/chess/${id}`);
+                                        } else if (gameType === 'Tic Tac Toe') {
+                                            navigate(`/game/tictactoe/${id}`);
+                                        } else {
+                                            navigate(`/game/cryptobubbles/${id}`);
+                                        }
+                                    }}
+                                >
+                                    Launch Game
+                                </Button>
+                            </VStack>
+                        </CardBody>
+                    </Card>
+                )}
+
                 {/* Winner and Transaction Hash for Completed Tournaments */}
                 {tournament.status === 'Completed' && tournament.final_podium && tournament.final_podium.length > 0 && (
                     <Card bg="gray.800" border="1px solid" borderColor="gray.700" maxW="400px" mx="auto">
@@ -478,44 +586,14 @@ export const TournamentDetails = () => {
                         mt={4}
                         isLoading={startingGame}
                         loadingText="Starting Game..."
-                        onClick={async () => {
-                            setStartingGame(true);
-                            try {
-                                const res = await startGameSession(Number(id).toString(), Number(tournament.game_id), tournament.participants);
-                                if (res.session_id) {
-                                    navigate(`/game/${res.session_id}`);
-                                } else {
-                                    toast({
-                                        title: 'Error',
-                                        description: 'Could not start game session.',
-                                        status: 'error',
-                                        duration: 5000,
-                                        isClosable: true,
-                                    });
-                                }
-                            } catch (err) {
-                                console.error('Error starting game:', err);
-                                toast({
-                                    title: 'Error',
-                                    description: 'Could not start game session.',
-                                    status: 'error',
-                                    duration: 5000,
-                                    isClosable: true,
-                                });
-                            } finally {
-                                setStartingGame(false);
-                            }
-                        }}
+                        onClick={handleStartGame}
                     >
-                        {tournament.participants.length === 1 ? 'Start Solo Game' : 'Start Game'}
+                        Start Game
                     </Button>
                 )}
-
-                {/* Example usage of TicTacToeGame */}
-                {/* Remove or comment out the TicTacToeGame component here */}
             </VStack>
         </Box>
     );
 };
 
-export default TournamentDetails; 
+export default TournamentDetails;
