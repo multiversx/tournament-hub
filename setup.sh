@@ -155,19 +155,27 @@ run_frontend() {
     kill_port 3000
     
     # Start the development server
-    print_status "Starting Vite dev server on port 3000..."
+    print_status "Starting Vite dev server on port 3000 (HTTPS)..."
     npm run dev &
     FRONTEND_PID=$!
     
-    # Wait a moment for server to start
-    sleep 5
-    
-    # Check if server is running
-    if curl -s http://localhost:3000 >/dev/null 2>&1; then
+    # Wait for server to become ready (retry for up to 30 seconds)
+    READY=false
+    for i in {1..30}; do
+        # Vite is configured with HTTPS; -k ignores self-signed cert
+        if curl -k -s https://localhost:3000 >/dev/null 2>&1; then
+            READY=true
+            break
+        fi
+        sleep 1
+    done
+
+    if [ "$READY" = true ]; then
         print_success "Frontend server started successfully!"
-        print_status "Frontend URL: http://localhost:3000"
+        print_status "Frontend URL: https://localhost:3000"
     else
         print_error "Failed to start frontend server"
+        print_status "Tip: If you just changed ports or certificates, try running: npm run dev inside tournament-hub-frontend to see logs."
         exit 1
     fi
     
@@ -239,7 +247,7 @@ case "${1:-help}" in
         run_backend
         run_frontend
         print_success "Tournament Hub is now running!"
-        print_status "Frontend: http://localhost:3000"
+        print_status "Frontend: https://localhost:3000"
         print_status "Backend API: http://localhost:8000"
         print_status "Backend Docs: http://localhost:8000/docs"
         print_status "Press Ctrl+C to stop all services"
