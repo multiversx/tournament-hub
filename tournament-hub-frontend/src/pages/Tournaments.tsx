@@ -179,7 +179,7 @@ const TournamentCard = React.memo(({ tournament, onLoadDetails }: { tournament: 
                         <Award size={16} />
                         <Text>
                             Prize Pool: {tournament.prizePool !== null ?
-                                (Number(tournament.prizePool) / 1e18).toFixed(2) + ' EGLD' :
+                                formatEgld(tournament.prizePool) + ' EGLD' :
                                 tournament.prizePoolLoaded ? 'Loading...' : '0.00 EGLD'
                             }
                         </Text>
@@ -389,7 +389,7 @@ export const Tournaments = () => {
 
                     const basicData = {
                         id,
-                        name: `Tournament #${id}`,
+                        name: details.name || `Tournament #${id}`,
                         status: details.status,
                         participants: details.participants || [],
                         description: getGameName(Number(details.game_id)),
@@ -489,7 +489,9 @@ export const Tournaments = () => {
             setError(null);
             try {
                 // Try to get active tournament IDs from smart contract first
+                console.log('Fetching tournaments: Starting with getActiveTournamentIds...');
                 let tournamentIds = await getActiveTournamentIds();
+                console.log(`getActiveTournamentIds returned ${tournamentIds.length} tournaments`);
 
                 // If no tournaments found, try events (but limit the search)
                 if (tournamentIds.length === 0) {
@@ -499,22 +501,26 @@ export const Tournaments = () => {
                         .filter((t): t is NonNullable<typeof t> => t !== null)
                         .map(t => BigInt(t.id || 0))
                         .filter(id => id > 0n)
-                        .slice(0, 20); // Limit to first 20 to avoid too many queries
+                        .slice(0, 50); // Increased limit to 50
+                    console.log(`Events returned ${tournamentIds.length} tournaments`);
                 }
 
                 // Only use testing fallback if we have no tournaments at all
                 if (tournamentIds.length === 0) {
                     console.log('No tournaments found in events, trying testing fallback...');
                     tournamentIds = await findTournamentsByTesting();
+                    console.log(`Testing fallback returned ${tournamentIds.length} tournaments`);
                 }
 
                 if (tournamentIds.length === 0) {
+                    console.log('No tournaments found by any method');
                     setTournaments([]);
                     setLoading(false);
                     return;
                 }
 
                 console.log(`Found ${tournamentIds.length} tournaments, loading data...`);
+                console.log('Tournament IDs:', tournamentIds);
 
                 // Load basic data for all tournaments in parallel with better error handling
                 const basicDataPromises = tournamentIds.map(async (id) => {
@@ -531,7 +537,7 @@ export const Tournaments = () => {
                     .filter(result => result.status === 'fulfilled' && result.value !== null)
                     .map(result => (result as PromiseFulfilledResult<any>).value);
 
-                console.log(`Successfully loaded ${validTournaments.length} tournaments`);
+                console.log(`Successfully loaded ${validTournaments.length} tournaments out of ${tournamentIds.length} found`);
                 setTournaments(validTournaments);
             } catch (err) {
                 console.error('Error fetching tournaments:', err);

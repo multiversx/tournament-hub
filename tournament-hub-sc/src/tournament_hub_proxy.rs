@@ -165,14 +165,26 @@ where
 
     pub fn create_tournament<
         Arg0: ProxyArg<u64>,
+        Arg1: ProxyArg<u32>,
+        Arg2: ProxyArg<BigUint<Env::Api>>,
+        Arg3: ProxyArg<u64>,
+        Arg4: ProxyArg<ManagedBuffer<Env::Api>>,
     >(
         self,
         game_index: Arg0,
+        max_players: Arg1,
+        entry_fee: Arg2,
+        duration: Arg3,
+        name: Arg4,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("createTournament")
             .argument(&game_index)
+            .argument(&max_players)
+            .argument(&entry_fee)
+            .argument(&duration)
+            .argument(&name)
             .original_result()
     }
 
@@ -330,6 +342,11 @@ where
     pub participants: ManagedVec<Api, ManagedAddress<Api>>,
     pub final_podium: ManagedVec<Api, ManagedAddress<Api>>,
     pub creator: ManagedAddress<Api>,
+    pub max_players: u32,
+    pub entry_fee: BigUint<Api>,
+    pub duration: u64,
+    pub name: ManagedBuffer<Api>,
+    pub created_at: u64,
 }
 
 #[type_abi]
@@ -341,9 +358,7 @@ pub enum TournamentStatus {
 }
 
 #[type_abi]
-#[derive(
-    TopEncode, TopDecode, ManagedVecItem, NestedEncode, NestedDecode, Clone, Debug, PartialEq,
-)]
+#[derive(TopEncode, TopDecode, ManagedVecItem, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
 pub struct SpectatorBet<Api>
 where
     Api: ManagedTypeApi,

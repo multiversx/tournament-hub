@@ -37,6 +37,55 @@ export const GAME_CONFIGS = {
     maxPlayers: 2,
     gameType: "real_time_duel",
     description: "Real-time cell battle game"
+  },
+  6: {
+    name: "Checkers",
+    minPlayers: 2,
+    maxPlayers: 2,
+    gameType: "turn_based",
+    description: "Classic checkers game"
+  },
+  7: {
+    name: "Connect Four",
+    minPlayers: 2,
+    maxPlayers: 2,
+    gameType: "turn_based",
+    description: "Connect 4 pieces in a row"
+  },
+  8: {
+    name: "Memory Match",
+    minPlayers: 2,
+    maxPlayers: 4,
+    gameType: "turn_based",
+    description: "Find matching card pairs"
+  },
+  9: {
+    name: "Word Scramble",
+    minPlayers: 2,
+    maxPlayers: 6,
+    gameType: "real_time",
+    description: "Unscramble words against time"
+  },
+  10: {
+    name: "Math Challenge",
+    minPlayers: 2,
+    maxPlayers: 8,
+    gameType: "real_time",
+    description: "Solve math problems quickly"
+  },
+  11: {
+    name: "Puzzle Race",
+    minPlayers: 2,
+    maxPlayers: 4,
+    gameType: "real_time",
+    description: "Complete puzzles fastest"
+  },
+  12: {
+    name: "Trivia Master",
+    minPlayers: 2,
+    maxPlayers: 8,
+    gameType: "turn_based",
+    description: "Answer trivia questions"
   }
 };
 

@@ -12,7 +12,18 @@ export function toHex(value: string | number, padding: number = 16): string {
  * Convert EGLD amount to wei (1 EGLD = 10^18 wei)
  */
 export function egldToWei(egldAmount: string): string {
-    return (parseFloat(egldAmount) * Math.pow(10, 18)).toString();
+    // Split the EGLD amount into whole and decimal parts
+    const parts = egldAmount.split('.');
+    const wholePart = parts[0] || '0';
+    const decimalPart = parts[1] || '0';
+
+    // Pad the decimal part to 18 digits
+    const paddedDecimal = decimalPart.padEnd(18, '0').slice(0, 18);
+
+    // Combine and convert to BigInt
+    const weiBigInt = BigInt(wholePart + paddedDecimal);
+
+    return weiBigInt.toString();
 }
 
 /**

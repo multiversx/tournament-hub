@@ -253,6 +253,10 @@ impl ContractInteract {
 
     pub async fn create_tournament(&mut self) {
         let game_index = 5u64;
+        let max_players = 4u32;
+        let entry_fee = BigUint::from(1u64).mul(10u64.pow(17)); // 0.1 EGLD
+        let duration = 86400u64; // 24 hours in seconds
+        let name = ManagedBuffer::new_from_bytes(b"Test Tournament (Creator Auto-Joined)");
 
         let response = self
             .interactor
@@ -261,7 +265,7 @@ impl ContractInteract {
             .to(self.state.current_address())
             .gas(100_000_000u64)
             .typed(proxy::TournamentHubProxy)
-            .create_tournament(game_index)
+            .create_tournament(game_index, max_players, entry_fee, duration, name)
             .returns(ReturnsResultUnmanaged)
             .run()
             .await;
