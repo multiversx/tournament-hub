@@ -28,6 +28,11 @@ pub struct Tournament<M: ManagedTypeApi> {
     pub participants: ManagedVec<M, ManagedAddress<M>>,
     pub final_podium: ManagedVec<M, ManagedAddress<M>>,
     pub creator: ManagedAddress<M>,
+    pub max_players: u32,
+    pub entry_fee: BigUint<M>,
+    pub duration: u64, // duration in seconds
+    pub name: ManagedBuffer<M>,
+    pub created_at: u64,
 }
 
 #[type_abi]

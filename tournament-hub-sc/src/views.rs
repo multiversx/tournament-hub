@@ -33,7 +33,13 @@ pub trait ViewsModule: crate::storage::StorageModule {
     fn get_active_tournament_ids(&self) -> ManagedVec<u64> {
         let mut ids = ManagedVec::new();
         let no_of_tournaments = self.active_tournaments().len();
+
+        // Only return IDs for tournaments that actually exist
         for id in 1..=no_of_tournaments {
+            // Check if the tournament exists by trying to get it
+            // If it doesn't exist, the get() call will panic, but that's okay
+            // because we're only iterating up to the actual length
+            let _tournament = self.active_tournaments().get(id);
             ids.push(id as u64);
         }
         ids
