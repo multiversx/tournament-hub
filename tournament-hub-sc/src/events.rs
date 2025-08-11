@@ -44,4 +44,17 @@ pub trait EventsModule {
 
     #[event("debugMessageLength")]
     fn debug_message_length_event(&self, #[indexed] message_length: usize);
+
+    #[event("tournamentsCleared")]
+    fn tournaments_cleared_event(&self);
+
+    #[event("tournamentReadyToStart")]
+    fn tournament_ready_to_start_event(&self, #[indexed] tournament_id: &u64);
+
+    #[event("gameStarted")]
+    fn game_started_event(
+        &self,
+        #[indexed] tournament_id: &u64,
+        #[indexed] starter: &ManagedAddress,
+    );
 }

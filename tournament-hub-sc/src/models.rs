@@ -15,9 +15,11 @@ pub struct GameConfig<M: ManagedTypeApi> {
 #[type_abi]
 #[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
 pub enum TournamentStatus {
-    Joining,
-    ProcessingResults,
-    Completed,
+    Joining,           // Players can join, waiting for minimum players
+    ReadyToStart,      // Minimum players reached, ready to start
+    Active,            // Game is active and running
+    ProcessingResults, // Game finished, processing results
+    Completed,         // Results processed, prizes distributed
 }
 
 #[type_abi]
@@ -29,6 +31,7 @@ pub struct Tournament<M: ManagedTypeApi> {
     pub final_podium: ManagedVec<M, ManagedAddress<M>>,
     pub creator: ManagedAddress<M>,
     pub max_players: u32,
+    pub min_players: u32, // Minimum players required to start the game
     pub entry_fee: BigUint<M>,
     pub duration: u64, // duration in seconds
     pub name: ManagedBuffer<M>,

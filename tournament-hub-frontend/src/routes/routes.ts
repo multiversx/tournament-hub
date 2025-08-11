@@ -42,6 +42,21 @@ export const routes: RouteWithTitleType[] = [
     component: GameSession
   },
   {
+    path: '/game/chess/:tournamentId',
+    title: 'Chess Game',
+    component: GameSession
+  },
+  {
+    path: '/game/tictactoe/:tournamentId',
+    title: 'Tic Tac Toe Game',
+    component: GameSession
+  },
+  {
+    path: '/game/cryptobubbles/:tournamentId',
+    title: 'CryptoBubbles Game',
+    component: GameSession
+  },
+  {
     path: RouteNamesEnum.disclaimer,
     title: 'Disclaimer',
     component: Disclaimer

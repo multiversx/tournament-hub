@@ -11,6 +11,8 @@ export { TournamentBracket } from './TournamentBracket';
 export { TransactionsTable } from './TransactionsTable';
 export { WalletConnect } from './WalletConnect';
 export { CryptoBubblesGame } from './CryptoBubblesGame';
+export { ChessGame } from './ChessGame';
+export { TicTacToeGame } from './TicTacToeGame';
 
 // Export OutputContainer components
 export { TransactionsOutput } from './OutputContainer/components/TransactionsOutput';
