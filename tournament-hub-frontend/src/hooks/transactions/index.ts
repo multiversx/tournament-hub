@@ -1,3 +1,3 @@
-export * from './useCreateTournamentTransaction';
-export * from './useJoinTournamentTransaction';
-export * from './useSendPingPongTransaction';
+export { useCreateTournamentTransaction } from './useCreateTournamentTransaction';
+export { useJoinTournamentTransaction } from './useJoinTournamentTransaction';
+export { useStartGameTransaction } from './useStartGameTransaction';
