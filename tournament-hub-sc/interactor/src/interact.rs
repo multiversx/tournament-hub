@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use std::{
     io::{Read, Write},
     path::Path,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 const STATE_FILE: &str = "state.toml";
@@ -33,6 +32,8 @@ pub async fn tournament_hub_cli() {
         "claimSpectatorWinnings" => interact.claim_spectator_winnings().await,
         "createTournament" => interact.create_tournament().await,
         "joinTournament" => interact.join_tournament().await,
+        "startGame" => interact.start_game().await,
+        "clearAllTournaments" => interact.clear_all_tournaments().await,
         "getGameConfig" => interact.get_game_config().await,
         "getTournament" => interact.get_tournament().await,
         "getSpectatorBets" => interact.get_spectator_bets().await,
@@ -254,6 +255,7 @@ impl ContractInteract {
     pub async fn create_tournament(&mut self) {
         let game_index = 5u64;
         let max_players = 4u32;
+        let min_players = 2u32;
         let entry_fee = BigUint::from(1u64).mul(10u64.pow(17)); // 0.1 EGLD
         let duration = 86400u64; // 24 hours in seconds
         let name = ManagedBuffer::new_from_bytes(b"Test Tournament (Creator Auto-Joined)");
@@ -265,7 +267,32 @@ impl ContractInteract {
             .to(self.state.current_address())
             .gas(100_000_000u64)
             .typed(proxy::TournamentHubProxy)
-            .create_tournament(game_index, max_players, entry_fee, duration, name)
+            .create_tournament(
+                game_index,
+                max_players,
+                min_players,
+                entry_fee,
+                duration,
+                name,
+            )
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Result: {response:?}");
+    }
+
+    pub async fn start_game(&mut self) {
+        let tournament_id = 1u64;
+
+        let response = self
+            .interactor
+            .tx()
+            .from(&self.wallet_address)
+            .to(self.state.current_address())
+            .gas(100_000_000u64)
+            .typed(proxy::TournamentHubProxy)
+            .start_game(tournament_id)
             .returns(ReturnsResultUnmanaged)
             .run()
             .await;
@@ -407,5 +434,21 @@ impl ContractInteract {
             .await;
 
         println!("Result: {result_value:?}");
+    }
+
+    pub async fn clear_all_tournaments(&mut self) {
+        let response = self
+            .interactor
+            .tx()
+            .from(&self.wallet_address)
+            .to(self.state.current_address())
+            .gas(100_000_000u64)
+            .typed(proxy::TournamentHubProxy)
+            .clear_all_tournaments()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Result: {response:?}");
     }
 }
