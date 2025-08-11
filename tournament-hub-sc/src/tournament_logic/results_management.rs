@@ -33,8 +33,8 @@ pub trait ResultsManagementModule:
         let game_config = self.registered_games().get(game_index).clone();
 
         require!(
-            tournament.status == TournamentStatus::Joining,
-            "Tournament is not in joining phase"
+            tournament.status == TournamentStatus::Active,
+            "Tournament is not active"
         );
 
         self.verify_result_signature(

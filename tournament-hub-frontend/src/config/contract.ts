@@ -3,7 +3,7 @@
 
 export const CONTRACT_CONFIG = {
     // Smart Contract Address - Update this when you deploy a new contract
-    ADDRESS: 'erd1qqqqqqqqqqqqqpgqh040ajuxhrf642mmqlaf0jys58cjn0fcd8ssr0v2vw',
+    ADDRESS: 'erd1qqqqqqqqqqqqqpgq9zhclje8g8n6xlsaj0ds6xj87lt4rgtzd8sspxwzu7',
 
     // Network Configuration
     NETWORK: 'devnet', // 'devnet', 'testnet', 'mainnet'

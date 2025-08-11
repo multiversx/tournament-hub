@@ -30,7 +30,18 @@ export function egldToWei(egldAmount: string): string {
  * Convert wei to EGLD
  */
 export function weiToEgld(weiAmount: string): string {
-    return (parseFloat(weiAmount) / Math.pow(10, 18)).toString();
+    // Use BigInt for precision with large numbers
+    const weiBigInt = BigInt(weiAmount);
+    const egldBigInt = weiBigInt / BigInt(10 ** 18);
+    const remainder = weiBigInt % BigInt(10 ** 18);
+
+    if (remainder === BigInt(0)) {
+        return egldBigInt.toString();
+    } else {
+        // Convert remainder to decimal part
+        const decimalPart = remainder.toString().padStart(18, '0').replace(/0+$/, '');
+        return `${egldBigInt}.${decimalPart}`;
+    }
 }
 
 /**

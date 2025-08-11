@@ -166,22 +166,24 @@ where
     pub fn create_tournament<
         Arg0: ProxyArg<u64>,
         Arg1: ProxyArg<u32>,
-        Arg2: ProxyArg<BigUint<Env::Api>>,
-        Arg3: ProxyArg<u64>,
-        Arg4: ProxyArg<ManagedBuffer<Env::Api>>,
+        Arg2: ProxyArg<u32>,
+        Arg3: ProxyArg<BigUint<Env::Api>>,
+        Arg4: ProxyArg<u64>,
+        Arg5: ProxyArg<ManagedBuffer<Env::Api>>,
     >(
         self,
         game_index: Arg0,
         max_players: Arg1,
-        entry_fee: Arg2,
-        duration: Arg3,
-        name: Arg4,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        min_players: Arg2,
+        entry_fee: Arg3,
+        duration: Arg4,
+        name: Arg5,
+    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
-            .payment(NotPayable)
             .raw_call("createTournament")
             .argument(&game_index)
             .argument(&max_players)
+            .argument(&min_players)
             .argument(&entry_fee)
             .argument(&duration)
             .argument(&name)
@@ -196,6 +198,19 @@ where
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("joinTournament")
+            .argument(&tournament_index)
+            .original_result()
+    }
+
+    pub fn start_game<
+        Arg0: ProxyArg<u64>,
+    >(
+        self,
+        tournament_index: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("startGame")
             .argument(&tournament_index)
             .original_result()
     }
@@ -223,6 +238,15 @@ where
             .payment(NotPayable)
             .raw_call("getPrizePool")
             .argument(&tournament_index)
+            .original_result()
+    }
+
+    pub fn clear_all_tournaments(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("clearAllTournaments")
             .original_result()
     }
 
@@ -258,6 +282,15 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getNumberOfTournaments")
+            .original_result()
+    }
+
+    pub fn get_number_of_games(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, usize> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getNumberOfGames")
             .original_result()
     }
 
@@ -343,6 +376,7 @@ where
     pub final_podium: ManagedVec<Api, ManagedAddress<Api>>,
     pub creator: ManagedAddress<Api>,
     pub max_players: u32,
+    pub min_players: u32,
     pub entry_fee: BigUint<Api>,
     pub duration: u64,
     pub name: ManagedBuffer<Api>,
@@ -353,6 +387,8 @@ where
 #[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
 pub enum TournamentStatus {
     Joining,
+    ReadyToStart,
+    Active,
     ProcessingResults,
     Completed,
 }
