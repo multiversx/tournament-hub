@@ -11,6 +11,14 @@ export default defineConfig({
         strictPort: true,
         host: true,
         https: true,
+        proxy: {
+            '/api': {
+                target: 'http://localhost:8000',
+                changeOrigin: true,
+                secure: false,
+                rewrite: (path) => path.replace(/^\/api/, '')
+            }
+        },
         watch: {
             usePolling: false,
             useFsEvents: false

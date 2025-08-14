@@ -27,7 +27,7 @@ import {
     TournamentSession,
     GAME_CONFIGS
 } from '../services/tournamentService';
-import { getTournamentDetailsFromContract, getGameConfig, getPrizePoolFromContract } from '../helpers';
+import { getTournamentDetailsFromContract, getGameConfig, getPrizePoolFromContract, getRecentJoins, getRecentGameStart } from '../helpers';
 import { getSubmitResultsTransactionHash } from '../helpers';
 import { weiToEgld } from '../utils/contractUtils';
 import { useGetAccount } from 'lib';
@@ -88,6 +88,7 @@ export const TournamentDetails = () => {
     const [startingGame, setStartingGame] = useState(false);
     const [tournamentSession, setTournamentSession] = useState<TournamentSession | null>(null);
     const [timeRemaining, setTimeRemaining] = useState<{ remaining: number; percentage: number }>({ remaining: 0, percentage: 100 });
+    const [lastJoinSeenAt, setLastJoinSeenAt] = useState<number>(0);
 
     // Add start game transaction hook
     const { startGame } = useStartGameTransaction();
@@ -152,6 +153,95 @@ export const TournamentDetails = () => {
         return () => clearInterval(interval);
     }, [tournament]);
 
+    // Periodically refresh participants/status to reflect joins and game start without reload
+    useEffect(() => {
+        if (!id) return;
+        let mounted = true;
+        const interval = setInterval(async () => {
+            try {
+                const latest = await getTournamentDetailsFromContract(BigInt(id));
+                if (!mounted || !latest) return;
+                setTournament((prev: any) => {
+                    if (!prev) return prev;
+                    const changed = (
+                        JSON.stringify(prev.participants) !== JSON.stringify(latest.participants) ||
+                        Number(prev.statusIndex) !== Number(latest.status)
+                    );
+                    if (!changed) return prev;
+                    return {
+                        ...prev,
+                        participants: latest.participants,
+                        current_players: latest.participants.length,
+                        statusIndex: latest.status,
+                        status: ['Joining', 'ReadyToStart', 'Active', 'ProcessingResults', 'Completed'][latest.status] || prev.status
+                    };
+                });
+            } catch { }
+        }, 2000);
+        return () => { mounted = false; clearInterval(interval); };
+    }, [id]);
+
+    // Notify creator when a player joins (poll recent joins)
+    useEffect(() => {
+        if (!id || !tournament) return;
+        if (!playerAddress || playerAddress !== tournament.creator) return; // only creator
+        let mounted = true;
+        let prevCount = 0;
+        const interval = setInterval(async () => {
+            try {
+                const joins = await getRecentJoins(id);
+                if (!mounted || !Array.isArray(joins)) return;
+                if (joins.length > prevCount) {
+                    // Fetch latest participants and diff to be robust against encoding differences
+                    const latest = await getTournamentDetailsFromContract(BigInt(id));
+                    if (latest && Array.isArray(latest.participants)) {
+                        const prevSet = new Set<string>(tournament.participants);
+                        const newOnes = latest.participants.filter((p: string) => !prevSet.has(p));
+                        newOnes.forEach((addr: string) => {
+                            if (!addr || addr === tournament.creator) return;
+                            toast({
+                                title: 'New player joined',
+                                description: `${addr.slice(0, 8)}...${addr.slice(-6)} joined your tournament`,
+                                status: 'info',
+                                duration: 4000,
+                                isClosable: true,
+                            });
+                        });
+                        setTournament({ ...tournament, participants: latest.participants, current_players: latest.participants.length });
+                    }
+                    prevCount = joins.length;
+                }
+            } catch { /* ignore */ }
+        }, 3000);
+        return () => { mounted = false; clearInterval(interval); };
+    }, [id, tournament, playerAddress, toast]);
+
+    // Notify non-creator participants when the creator starts the game
+    useEffect(() => {
+        if (!id || !tournament) return;
+        if (!playerAddress || playerAddress === tournament.creator) return; // only notify others
+        if (!tournament.participants.includes(playerAddress)) return; // only participants
+        let mounted = true;
+        let lastNotified = 0;
+        const interval = setInterval(async () => {
+            try {
+                const { started, ts } = await getRecentGameStart(id);
+                if (!mounted) return;
+                if (started && ts > lastNotified) {
+                    lastNotified = ts;
+                    toast({
+                        title: 'Game starting',
+                        description: 'The creator started the game. Get ready!',
+                        status: 'success',
+                        duration: 4000,
+                        isClosable: true,
+                    });
+                }
+            } catch { /* ignore */ }
+        }, 3000);
+        return () => { mounted = false; clearInterval(interval); };
+    }, [id, tournament, playerAddress, toast]);
+
     const handleJoinTournament = async () => {
         if (!playerAddress) {
             toast({
@@ -170,15 +260,6 @@ export const TournamentDetails = () => {
                 tournamentId: parseInt(id || '0'),
                 entryFee: tournament.entry_fee.toString()
             });
-
-            // Start tournament session on backend
-            try {
-                const session = await startTournamentSession(parseInt(id || '0'), Number(tournament.game_id));
-                setTournamentSession(session);
-            } catch (sessionError) {
-                console.error('Error starting tournament session:', sessionError);
-                // Continue anyway - session can be started later
-            }
 
             toast({
                 title: 'Success!',
@@ -295,10 +376,12 @@ export const TournamentDetails = () => {
         timeRemaining.remaining > 0; // Ensure tournament is still open
 
     // Show Start Game button if tournament is ready to start and user is a participant
+    const minPlayersRequired = Number((tournament as any).min_players ?? 2);
+    const hasEnoughPlayers = Number(tournament.current_players) >= minPlayersRequired;
     const canStartGame = tournament.status === 'ReadyToStart' &&
         isParticipant &&
         isCreator && // Only creator can start the game
-        !!playerAddress;
+        !!playerAddress && hasEnoughPlayers;
 
     const getJoinButtonText = () => {
         if (!playerAddress) return 'Connect Wallet to Join';
@@ -332,6 +415,8 @@ export const TournamentDetails = () => {
                             >
                                 Start Game
                             </Button>
+                        ) : (tournament.status === 'ReadyToStart' && isParticipant && isCreator && !hasEnoughPlayers) ? (
+                            <Button size="lg" isDisabled variant="outline">Waiting for opponents...</Button>
                         ) : (
                             <Button
                                 leftIcon={<Play size={20} />}
@@ -578,18 +663,24 @@ export const TournamentDetails = () => {
                     />
                 )}
 
-                {/* Start Game Button for Participants */}
-                {isParticipant && tournament.participants.length >= 1 && tournament.status === 'Joining' && (
-                    <Button
-                        colorScheme="green"
-                        size="md"
-                        mt={4}
-                        isLoading={startingGame}
-                        loadingText="Starting Game..."
-                        onClick={handleStartGame}
-                    >
-                        Start Game
-                    </Button>
+                {/* Start Game or Waiting message while in Joining status */}
+                {isParticipant && tournament.status === 'Joining' && (
+                    hasEnoughPlayers ? (
+                        <Button
+                            colorScheme="green"
+                            size="md"
+                            mt={4}
+                            isLoading={startingGame}
+                            loadingText="Starting Game..."
+                            onClick={handleStartGame}
+                        >
+                            Start Game
+                        </Button>
+                    ) : (
+                        <Text color="gray.400" textAlign="center" mt={4}>
+                            Waiting for opponents... ({tournament.current_players}/{minPlayersRequired})
+                        </Text>
+                    )
                 )}
             </VStack>
         </Box>
