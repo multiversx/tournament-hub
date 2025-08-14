@@ -4,3 +4,6 @@ requests
 cryptography 
 pynacl
 multiversx-sdk 
+websockets
+pika
+bech32

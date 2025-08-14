@@ -11,6 +11,9 @@ export { TournamentBracket } from './TournamentBracket';
 export { TransactionsTable } from './TransactionsTable';
 export { WalletConnect } from './WalletConnect';
 export { CryptoBubblesGame } from './CryptoBubblesGame';
+export { CryptoBubblesGamePhaser } from './CryptoBubblesGamePhaser';
+export { ChessGamePro } from './ChessGamePro';
+export { default as DodgeDash } from './DodgeDash';
 export { ChessGame } from './ChessGame';
 export { TicTacToeGame } from './TicTacToeGame';
 

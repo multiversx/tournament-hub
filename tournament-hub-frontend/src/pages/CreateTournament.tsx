@@ -67,15 +67,23 @@ export const CreateTournament: React.FC = () => {
 
     const [formData, setFormData] = useState<FormData>({
         name: '',
-        gameType: '1', // Default to TicTacToe
-        maxPlayers: '4',
-        minPlayers: '2', // Default to 2 players
+        gameType: '1', // Default to TicTacToe (PvP)
+        maxPlayers: '2',
+        minPlayers: '2', // PvP locked to 2
         entryFee: '0.1',
         duration: '24', // Default to 1 day
     });
 
     const [errors, setErrors] = useState<FormErrors>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Ensure PvP games (TicTacToe=1, Chess=2) always show 2/2 even on initial load
+    React.useEffect(() => {
+        const gameId = parseInt(formData.gameType);
+        if ((gameId === 1 || gameId === 2) && (formData.maxPlayers !== '2' || formData.minPlayers !== '2')) {
+            setFormData(prev => ({ ...prev, maxPlayers: '2', minPlayers: '2' }));
+        }
+    }, [formData.gameType]);
 
     const validateForm = (): boolean => {
         const newErrors: FormErrors = {};
@@ -186,7 +194,15 @@ export const CreateTournament: React.FC = () => {
     };
 
     const handleInputChange = (field: keyof FormData, value: string) => {
-        setFormData(prev => ({ ...prev, [field]: value }));
+        // Force PvP (Chess) to 2 players only
+        const gameId = field === 'gameType' ? parseInt(value) : parseInt(formData.gameType);
+        const isPvpTwoPlayer = gameId === 2 || gameId === 1; // 2 = Chess, 1 = TicTacToe
+        let next = { ...formData, [field]: value } as FormData;
+        if (isPvpTwoPlayer) {
+            next.maxPlayers = '2';
+            next.minPlayers = '2';
+        }
+        setFormData(next);
         // Clear error when user starts typing
         if (errors[field]) {
             setErrors(prev => ({ ...prev, [field]: undefined }));
@@ -295,6 +311,7 @@ export const CreateTournament: React.FC = () => {
                                             onChange={(value) => handleInputChange('maxPlayers', value)}
                                             min={2}
                                             max={8}
+                                            isDisabled={parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1}
                                         >
                                             <NumberInputField sx={{ color: 'white !important' }} />
                                         </NumberInput>
@@ -311,11 +328,20 @@ export const CreateTournament: React.FC = () => {
                                             onChange={(value) => handleInputChange('minPlayers', value)}
                                             min={2}
                                             max={parseInt(formData.maxPlayers)}
+                                            isDisabled={parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1}
                                         >
                                             <NumberInputField sx={{ color: 'white !important' }} />
                                         </NumberInput>
                                         {errors.minPlayers && <Text color="red.400" fontSize="sm">{errors.minPlayers}</Text>}
                                     </FormControl>
+                                    {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1) && (
+                                        <Box gridColumn={{ base: '1', md: '1 / span 2' }}>
+                                            <Alert status="info" variant="left-accent" borderRadius="md">
+                                                <AlertIcon />
+                                                <Text fontSize="sm">This is a PvP game. Min and Max players are fixed to 2.</Text>
+                                            </Alert>
+                                        </Box>
+                                    )}
                                 </SimpleGrid>
 
                                 <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6} w="full">

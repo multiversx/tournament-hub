@@ -4,13 +4,20 @@ import logging
 import threading
 import time
 from typing import Dict, List, Optional
+import os
+import base64
+import re
+from collections import deque
 from fastapi import FastAPI, HTTPException, BackgroundTasks
+import requests
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from bech32 import bech32_encode, convertbits
 import uvicorn
 
 # Import CryptoBubbles game engine
 from cryptobubbles_game_engine import create_cryptobubbles_game, get_cryptobubbles_game, remove_cryptobubbles_game, CryptoBubblesGameEngine
+from dodgedash_game_engine import create_dodgedash_game, get_dodgedash_game, remove_dodgedash_game, dodgedash_games
 
 # Import Chess game engine
 from chess_game_engine import create_chess_game, get_chess_game, remove_chess_game, ChessGameEngine
@@ -20,6 +27,8 @@ from tictactoe_game_engine import create_tictactoe_game, get_tictactoe_game, rem
 
 # Import contract interaction
 from contract.submit_results import sign_results_for_tournament, submit_results_to_contract_with_signature
+from notifier_subscriber import start_notifier_subscriber
+from notifier_rabbitmq_subscriber import RabbitNotifierSubscriber
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +47,72 @@ app.add_middleware(
 
 # Global session storage
 sessions: Dict[str, Dict] = {}
+sessions_lock = threading.Lock()
+recent_notifier_events = deque(maxlen=200)
+recent_events_lock = threading.Lock()
+
+# Recent joins per tournament (session_id string -> deque of addresses)
+recent_joins_by_tid: Dict[str, deque] = {}
+recent_joins_lock = threading.Lock()
+recent_game_starts_by_tid: Dict[str, float] = {}
+recent_game_starts_lock = threading.Lock()
+last_global_join_ts: float = 0.0
+
+# -------- Chain helpers (simple, resilient) --------
+def _vm_query(func: str, args: list[str]) -> Optional[dict]:
+    try:
+        sc_addr = os.getenv("MX_TOURNAMENT_CONTRACT", "")
+        if not sc_addr:
+            return None
+        resp = requests.post(
+            "https://devnet-api.multiversx.com/vm-values/query",
+            json={"scAddress": sc_addr, "funcName": func, "args": args},
+            timeout=10,
+        )
+        return resp.json()
+    except Exception:
+        return None
+
+def _hex_pad_u64(value: int) -> str:
+    return format(int(value), 'x').zfill(16)
+
+def fetch_num_tournaments() -> Optional[int]:
+    data = _vm_query("getNumberOfTournaments", [])
+    if not data:
+        return None
+    # Try data.value hex
+    try:
+        hex_val = (data.get("data", {}) or {}).get("value")
+        if hex_val:
+            return int(hex_val, 16)
+    except Exception:
+        pass
+    # Try returnData[0] base64 -> hex
+    try:
+        ret = (data.get("data", {}).get("data", {}) or {}).get("returnData")
+        if isinstance(ret, list) and ret:
+            b64 = ret[0]
+            hx = base64.b64decode(b64 + ("=" * ((4 - len(b64) % 4) % 4))).hex()
+            return int(hx or '0', 16)
+    except Exception:
+        pass
+    return None
+
+def fetch_game_id_from_sc(tournament_id: int) -> Optional[int]:
+    data = _vm_query("getTournament", [_hex_pad_u64(tournament_id)])
+    if not data:
+        return None
+    try:
+        ret = (data.get("data", {}).get("data", {}) or {}).get("returnData")
+        if isinstance(ret, list) and ret:
+            b64 = ret[0]
+            hx = base64.b64decode(b64 + ("=" * ((4 - len(b64) % 4) % 4))).hex()
+            # First u64 (16 hex chars) is game_id per frontend parser
+            if len(hx) >= 16:
+                return int(hx[:16] or '0', 16)
+    except Exception:
+        pass
+    return None
 
 # Helper function to determine game type
 def determine_game_type(game_type_id: Optional[int]) -> str:
@@ -46,14 +121,14 @@ def determine_game_type(game_type_id: Optional[int]) -> str:
         return "tictactoe"
     elif game_type_id == 2:  # Chess
         return "chess"
-    elif game_type_id == 3:  # 4-Player Card Game
-        return "cardgame"
-    elif game_type_id == 4:  # 8-Player Battle Royale
-        return "battleroyale"
+    elif game_type_id == 3:  # Deprecated
+        return "cryptobubbles"
+    elif game_type_id == 4:  # Deprecated
+        return "cryptobubbles"
     elif game_type_id == 5:  # CryptoBubbles
         return "cryptobubbles"
-    elif game_type_id == 6:  # Checkers
-        return "checkers"
+    elif game_type_id == 6:  # DodgeDash
+        return "dodgedash"
     elif game_type_id == 7:  # Connect Four
         return "connectfour"
     elif game_type_id == 8:  # Memory Match
@@ -76,9 +151,379 @@ def create_game_instance(game_type: str, session_id: str, players: List[str]):
         create_chess_game(session_id, players)
     elif game_type == "tictactoe":
         create_tictactoe_game(session_id, players)
+    elif game_type == "dodgedash":
+        create_dodgedash_game(session_id, players)
     else:  # All other games default to CryptoBubbles for now
         logger.info(f"Game type '{game_type}' not implemented yet, using CryptoBubbles as fallback")
         create_cryptobubbles_game(session_id, players)
+
+# Helper: decode topics coming from notifier
+def _maybe_hex_string(value: str) -> bool:
+    return bool(re.fullmatch(r"[0-9a-fA-F]+", value))
+
+def _decode_topic_to_int(topic) -> Optional[int]:
+    """Best-effort decoder for u64-like integers from various encodings.
+    Tries multiple interpretations (hex/base64 big- and little-endian, ascii decimal),
+    then chooses a reasonable candidate (small positive values preferred).
+    """
+    try:
+        candidates = []
+        if isinstance(topic, int):
+            candidates.append(topic)
+        s = str(topic)
+        # 1) Decimal string
+        try:
+            if s.isdigit():
+                candidates.append(int(s))
+        except Exception:
+            pass
+        # 2) Hex with 0x prefix
+        try:
+            if s.startswith("0x"):
+                val = int(s, 16)
+                candidates.append(val)
+                if len(s) >= 2 + 64:
+                    candidates.append(int(s[-16:], 16))
+        except Exception:
+            pass
+        # 3) Raw hex (possibly 32-byte padded)
+        try:
+            if _maybe_hex_string(s) and len(s) % 2 == 0:
+                candidates.append(int(s, 16))
+                if len(s) == 64:
+                    # last 8 bytes big-endian
+                    candidates.append(int(s[-16:], 16))
+                    # little-endian from last 8 bytes
+                    tail_bytes = bytes.fromhex(s[-16:])
+                    candidates.append(int.from_bytes(tail_bytes, byteorder="little"))
+        except Exception:
+            pass
+        # 4) base64
+        try:
+            raw = base64.b64decode(s + ("=" * ((4 - len(s) % 4) % 4)))
+            if raw:
+                # Prefer ASCII digits if present (e.g. '0' or '1')
+                try:
+                    txt = raw.decode("utf-8", errors="ignore").strip()
+                    if txt.isdigit():
+                        candidates.append(int(txt))
+                except Exception:
+                    pass
+                # Also try numeric value of bytes
+                candidates.append(int.from_bytes(raw, byteorder="big"))
+                if len(raw) >= 8:
+                    tail = raw[-8:]
+                    candidates.append(int.from_bytes(tail, byteorder="big"))
+                    candidates.append(int.from_bytes(tail, byteorder="little"))
+        except Exception:
+            pass
+
+        # Choose the most reasonable candidate
+        candidates = [c for c in candidates if isinstance(c, int) and c >= 0]
+        if not candidates:
+            return None
+
+        def score(x: int) -> tuple:
+            # Prefer small positive numbers typical for ids (<= 1e6), then <= 1e9, then others
+            if 0 < x <= 1_000_000:
+                return (0, x)
+            if 0 < x <= 1_000_000_000:
+                return (1, x)
+            return (2, x)
+
+        candidates.sort(key=score)
+        return candidates[0]
+    except Exception:
+        return None
+
+def _decode_topic_to_str(topic) -> str:
+    """Decode topic to a human-readable string.
+    Prefer base64->utf8 if possible, even when the input is a plain string.
+    """
+    try:
+        s = topic if isinstance(topic, str) else str(topic)
+        # Try base64 decode first
+        try:
+            raw = base64.b64decode(s + ("=" * ((4 - len(s) % 4) % 4)))
+            text = raw.decode("utf-8", errors="ignore")
+            # If the decoded text looks meaningful, use it
+            if text:
+                return text
+        except Exception:
+            pass
+        return s
+    except Exception:
+        return str(topic)
+
+def _get_or_create_session(session_id: str, game_type: Optional[str] = None) -> Dict:
+    with sessions_lock:
+        if session_id not in sessions:
+            sessions[session_id] = {
+                "id": session_id,
+                "players": [],
+                "game_type": game_type or "cryptobubbles",
+                "status": "waiting",
+                "created_at": time.time(),
+            }
+        else:
+            if game_type and sessions[session_id].get("game_type") != game_type:
+                sessions[session_id]["game_type"] = game_type
+        return sessions[session_id]
+
+def _b64_to_ascii(value: str) -> str:
+    try:
+        raw = base64.b64decode(value + ("=" * ((4 - len(value) % 4) % 4)))
+        return raw.decode("utf-8", errors="ignore")
+    except Exception:
+        return ""
+
+def _decode_u64_from_b64_topic(topic_str: str) -> Optional[int]:
+    try:
+        # Try ASCII digits first
+        ascii_txt = _b64_to_ascii(topic_str).strip()
+        if ascii_txt.isdigit():
+            return int(ascii_txt)
+        # Fallback: use last 8 bytes (u64, big-endian) from raw bytes
+        raw = base64.b64decode(topic_str + ("=" * ((4 - len(topic_str) % 4) % 4)))
+        if len(raw) >= 8:
+            return int.from_bytes(raw[-8:], byteorder="big")
+        # Fallback: interpret hex
+        hx = raw.hex()
+        if len(hx) >= 16:
+            return int(hx[-16:], 16)
+    except Exception:
+        pass
+    return None
+
+def handle_notifier_event(event: Dict):
+    try:
+        identifier = event.get("identifier")
+        # Normalize some common variants coming from different sources
+        alias_map = {
+            "createTournament": "tournamentCreated",
+            "CreateTournament": "tournamentCreated",
+            "startTournament": "tournamentStarted",
+            "StartTournament": "tournamentStarted",
+            "startGame": "gameStarted",
+            "submitResults": "resultsSubmitted",
+            "SubmitResults": "resultsSubmitted",
+            "joinTournament": "playerJoined",
+        }
+        identifier = alias_map.get(identifier, identifier)
+        topics = event.get("topics") or []
+        # Some notifier payloads set identifier to writeLog; first topic contains the real event name.
+        if len(topics) > 0:
+            first_topic_as_str = _decode_topic_to_str(topics[0])
+            known_names = {
+                "tournamentCreated",
+                "playerJoined",
+                "tournamentStarted",
+                "resultsSubmitted",
+                "prizesDistributed",
+                "tournamentReadyToStart",
+                "gameStarted",
+                "startTournament",
+                "createTournament",
+                "startGame",
+                "joinTournament",
+            }
+            if first_topic_as_str in known_names:
+                # Normalize identifier from topic name for writeLog cases
+                identifier = alias_map.get(first_topic_as_str, first_topic_as_str)
+                topics = topics[1:]
+
+        tournament_id = _decode_topic_to_int(topics[0]) if len(topics) >= 1 else None
+        # Fallback: if tournament_id is implausible, query SC for latest id
+        def is_implausible(value: Optional[int]) -> bool:
+            return value is None or value <= 0 or value > 10**12
+        if identifier == "tournamentCreated":
+            # Use helper that properly reads data.data.data.returnData[0]
+            count = fetch_num_tournaments()
+            if count and count > 0:
+                tournament_id = count
+        if tournament_id is None:
+            return
+        session_id = str(tournament_id)
+        event_for_ui = {"identifier": identifier, "tournament_id": tournament_id, "ts": time.time()}
+        try:
+            event_for_ui["topics"] = [str(t) for t in topics]
+            raw = event.get("raw") or {}
+            raw_data_b64 = raw.get("data")
+            if raw_data_b64:
+                raw_hex = base64.b64decode(raw_data_b64 + ("=" * ((4 - len(raw_data_b64) % 4) % 4))).hex()
+                event_for_ui["raw_head"] = raw_hex[:128]
+        except Exception:
+            pass
+
+        if identifier == "tournamentCreated":
+            # If topics are base64 ASCII digits, decode tournament_id and game_id directly
+            try:
+                if len(topics) >= 1:
+                    txt = base64.b64decode(str(topics[0]) + ("=" * ((4 - len(str(topics[0])) % 4) % 4))).decode("utf-8", errors="ignore").strip()
+                    if txt.isdigit():
+                        tournament_id = int(txt)
+            except Exception:
+                pass
+            # Determine game_id: prefer topic[2] if topics are [eventName, tournament_id, game_id]
+            game_id = None
+            try:
+                if len(topics) >= 2:
+                    txt_gid = base64.b64decode(str(topics[1]) + ("=" * ((4 - len(str(topics[1])) % 4) % 4))).decode("utf-8", errors="ignore").strip()
+                    if txt_gid.isdigit():
+                        game_id = int(txt_gid)
+            except Exception:
+                pass
+            if game_id is None:
+                if len(topics) >= 3:
+                    game_id = _decode_topic_to_int(topics[2])
+                if game_id is None and len(topics) >= 2:
+                    game_id = _decode_topic_to_int(topics[1])
+            # As a final fallback, query chain state for the tournament's game_id
+            if game_id is None:
+                gid = fetch_game_id_from_sc(tournament_id)
+                if gid is not None:
+                    game_id = gid
+            game_type = determine_game_type(game_id) if game_id is not None else "cryptobubbles"
+            sess = _get_or_create_session(session_id, game_type)
+            logger.info(f"Session created from event: {session_id} game_type={sess['game_type']}")
+            # Do NOT create engine here; wait for tournamentStarted/gameStarted
+            event_for_ui["game_id"] = game_id
+
+        elif identifier == "playerJoined":
+            # Topics ordering per SC: [tournament_id (indexed u64)], [player (indexed address)]
+            # First topic should be the tournament_id
+            if len(topics) >= 1:
+                tid = _decode_u64_from_b64_topic(str(topics[0]))
+                if tid and tid > 0:
+                    tournament_id = tid
+                    session_id = str(tournament_id)
+            # 2) Decode player from base64 -> hex -> bech32 (prefe  r topic with 32-byte pubkey)
+            player_addr = ""
+            for t in topics:
+                try:
+                    b64s = str(t)
+                    hx = base64.b64decode(b64s + ("=" * ((4 - len(b64s) % 4) % 4))).hex()
+                    if len(hx) >= 64:
+                        data_bytes = bytes.fromhex(hx[-64:])
+                        five_bits = convertbits(list(data_bytes), 8, 5, True)
+                        addr = bech32_encode("erd", five_bits)
+                        if addr and addr.startswith("erd"):
+                            player_addr = addr
+                            break
+                except Exception:
+                    continue
+            if not player_addr and len(topics) >= 2:
+                player_addr = _decode_topic_to_str(topics[1])
+            sess = _get_or_create_session(session_id)
+            with sessions_lock:
+                if player_addr and player_addr not in sess["players"]:
+                    sess["players"].append(player_addr)
+            # Try to reflect in game engine where applicable
+            try:
+                if sess.get("game_type") == "dodgedash":
+                    from dodgedash_game_engine import get_dodgedash_game, create_dodgedash_game
+                    g = get_dodgedash_game(session_id)
+                    if not g:
+                        create_dodgedash_game(session_id, sess["players"])
+                    else:
+                        if player_addr:
+                            g.add_player(player_addr)
+            except Exception as e:
+                logger.debug(f"Ignoring engine add player error: {e}")
+            logger.info(f"Player joined from event: {player_addr} -> session {session_id}")
+            event_for_ui["player"] = player_addr
+            # Record recent joins for UI polling
+            if player_addr:
+                with recent_joins_lock:
+                    dq = recent_joins_by_tid.get(session_id)
+                    if dq is None:
+                        dq = deque(maxlen=50)
+                        recent_joins_by_tid[session_id] = dq
+                    dq.append(player_addr)
+            # Bump global join timestamp regardless of mapping
+            global last_global_join_ts
+            last_global_join_ts = time.time()
+
+        elif identifier in ("tournamentReadyToStart", "tournamentStarted", "gameStarted"):
+            sess = _get_or_create_session(session_id)
+            # Mark session ready/playing and ensure engine exists
+            if identifier == "tournamentReadyToStart":
+                with sessions_lock:
+                    sess["status"] = "ready"
+                # Do NOT create engine on ready; wait for explicit start
+            else:
+                with sessions_lock:
+                    sess["status"] = "playing"
+                # Ensure session has correct game_type before creating engine
+                resolved_game_type = sess.get("game_type")
+                if not resolved_game_type or resolved_game_type == "cryptobubbles":
+                    gid = fetch_game_id_from_sc(int(session_id))
+                    if gid is not None:
+                        resolved_game_type = determine_game_type(gid)
+                        with sessions_lock:
+                            sessions[session_id]["game_type"] = resolved_game_type
+                create_game_instance(resolved_game_type or "cryptobubbles", session_id, sess["players"])
+            logger.info(f"Session {session_id} status from event {identifier}: {sessions[session_id]['status']}")
+            if identifier in ("tournamentStarted", "gameStarted"):
+                with recent_game_starts_lock:
+                    recent_game_starts_by_tid[session_id] = time.time()
+
+        elif identifier == "resultsSubmitted":
+            with sessions_lock:
+                sess = _get_or_create_session(session_id)
+                sess["results_submitted"] = True
+            logger.info(f"Results submitted for session {session_id}")
+
+        elif identifier == "prizesDistributed":
+            # Cleanup session and engines
+            with sessions_lock:
+                sess = sessions.get(session_id)
+                game_type = sess.get("game_type") if sess else None
+            try:
+                if game_type == "chess":
+                    remove_chess_game(session_id)
+                elif game_type == "tictactoe":
+                    remove_tictactoe_game(session_id)
+                elif game_type == "dodgedash":
+                    remove_dodgedash_game(session_id)
+                else:
+                    remove_cryptobubbles_game(session_id)
+            except Exception:
+                pass
+            with sessions_lock:
+                sessions.pop(session_id, None)
+            logger.info(f"Cleaned up session {session_id} after prizes distribution")
+
+        # store compact event for UI polling
+        with recent_events_lock:
+            recent_notifier_events.append(event_for_ui)
+
+    except Exception as e:
+        logger.error(f"Notifier event handling error: {e}")
+
+@app.get("/notifier/recent")
+async def get_recent_notifier_events():
+    with recent_events_lock:
+        return list(recent_notifier_events)
+
+@app.get("/notifier/joins")
+async def get_recent_joins(tournamentId: str):
+    # Return recent join addresses for a tournament (session id)
+    sid = str(tournamentId)
+    with recent_joins_lock:
+        dq = recent_joins_by_tid.get(sid)
+        return list(dq) if dq else []
+
+@app.get("/notifier/game-start")
+async def get_recent_game_start(tournamentId: str):
+    sid = str(tournamentId)
+    with recent_game_starts_lock:
+        ts = recent_game_starts_by_tid.get(sid)
+        return {"started": ts is not None, "ts": ts or 0}
+
+@app.get("/notifier/joins-any")
+async def get_recent_any_join():
+    return {"ts": last_global_join_ts}
 
 # Pydantic models for requests
 class StartSessionRequest(BaseModel):
@@ -116,6 +561,12 @@ class ChessMoveRequest(BaseModel):
     player: str
     from_pos: str  # Format: "x,y" (e.g., "0,1")
     to_pos: str    # Format: "x,y" (e.g., "0,3")
+    promotion: Optional[str] = None  # 'q','r','b','n'
+
+class ChessEmojiRequest(BaseModel):
+    sessionId: str
+    player: str
+    emoji: str
 
 # Pydantic models for Tic Tac Toe endpoints
 class TicTacToeMoveRequest(BaseModel):
@@ -139,20 +590,32 @@ async def start_session(request: StartSessionRequest):
             # Determine game type based on request.game_type
             game_type = determine_game_type(request.game_type)
             
-            # Check if a session already exists for this tournament
-            existing_session_id = None
-            for session_id, session_data in sessions.items():
-                if session_id.endswith(f"_{request.tournamentId}"):
-                    existing_session_id = session_id
-                    break
+            # Use deterministic session id per tournament so all players join same game
+            existing_session_id = str(request.tournamentId) if str(request.tournamentId) in sessions else None
             
             if existing_session_id:
-                # Return existing session
+                # Ensure engine exists and includes provided players
+                try:
+                    if game_type == 'dodgedash':
+                        from dodgedash_game_engine import get_dodgedash_game, create_dodgedash_game
+                        g = get_dodgedash_game(existing_session_id)
+                        if not g:
+                            logger.info(f"Creating DodgeDash engine for existing session {existing_session_id}")
+                            create_dodgedash_game(existing_session_id, request.playerAddresses or [])
+                        else:
+                            if request.playerAddresses:
+                                for p in request.playerAddresses:
+                                    g.add_player(p)
+                    elif game_type == 'cryptobubbles':
+                        # Engines for other games are created on demand elsewhere; skip for now
+                        pass
+                except Exception as e:
+                    logger.warning(f"Failed to ensure engine for existing session: {e}")
                 logger.info(f"Returning existing session: {existing_session_id} for tournament: {request.tournamentId}")
                 return {"session_id": existing_session_id, "game_type": game_type}
             
             # Create new session if none exists
-            session_id = f"session_{int(time.time() * 1000)}_{request.tournamentId}"
+            session_id = str(request.tournamentId)
             
             # Use actual player addresses if provided, otherwise use placeholder
             if request.playerAddresses:
@@ -173,6 +636,16 @@ async def start_session(request: StartSessionRequest):
             
             # Create game instance based on game type
             create_game_instance(game_type, session_id, players)
+            # Ensure the engine reflects latest provided players (idempotent)
+            try:
+                if game_type == 'dodgedash' and request.playerAddresses:
+                    from dodgedash_game_engine import get_dodgedash_game
+                    g = get_dodgedash_game(session_id)
+                    if g:
+                        for p in request.playerAddresses:
+                            g.add_player(p)
+            except Exception as e:
+                logger.warning(f"Failed to sync engine players: {e}")
             
             logger.info(f"Started {game_type} session: {session_id} with players: {players}")
             return {"session_id": session_id, "game_type": game_type}
@@ -286,6 +759,8 @@ async def get_game_state(session_id: str):
             return await get_chess_game_state(sessionId=session_id)
         elif game_type == "tictactoe":
             return await get_tictactoe_game_state(sessionId=session_id)
+        elif game_type == "dodgedash":
+            return await get_dodgedash_game_state(sessionId=session_id)
         else:  # cryptobubbles
             return await get_cryptobubbles_game_state(sessionId=session_id)
         
@@ -312,6 +787,8 @@ async def submit_move(session_id: str, request: MoveRequest):
             # For Tic Tac Toe, we need row and col, but MoveRequest only has x,y
             # This is a limitation - Tic Tac Toe moves should use the tictactoe-specific endpoint
             raise HTTPException(status_code=400, detail="Tic Tac Toe moves must use /tictactoe_move endpoint with row and col")
+        elif game_type == "dodgedash":
+            raise HTTPException(status_code=400, detail="Use /dodgedash_move endpoint with ax, ay, dash")
         else:  # cryptobubbles
             cryptobubbles_request = CryptoBubblesMoveRequest(
                 sessionId=session_id,
@@ -364,6 +841,44 @@ async def get_cryptobubbles_game_state(sessionId: str):
         raise HTTPException(status_code=404, detail="CryptoBubbles game not found")
     
     return game.get_game_state()
+@app.get("/dodgedash_game_state")
+async def get_dodgedash_game_state(sessionId: str):
+    game = get_dodgedash_game(sessionId)
+    if not game:
+        raise HTTPException(status_code=404, detail="DodgeDash game not found")
+    return game.get_game_state()
+
+class DodgeDashMoveRequest(BaseModel):
+    sessionId: str
+    player: str
+    ax: float = 0
+    ay: float = 0
+    dash: bool = False
+
+@app.post("/dodgedash_move")
+async def dodgedash_move(req: DodgeDashMoveRequest):
+    game = get_dodgedash_game(req.sessionId)
+    if not game:
+        # Auto-create engine for this session to avoid race on first inputs
+        try:
+            game = create_dodgedash_game(req.sessionId, [req.player])
+            sessions.setdefault(req.sessionId, {"id": req.sessionId, "players": [req.player], "game_type": "dodgedash", "status": "waiting", "created_at": time.time()})
+            logger.info(f"Auto-created DodgeDash game for session {req.sessionId}")
+        except Exception:
+            raise HTTPException(status_code=404, detail="DodgeDash game not found")
+    game.move_player(req.player, req.ax, req.ay, req.dash)
+    return { 'status': 'ok' }
+
+@app.post("/join_dodgedash_session")
+async def join_dodgedash_session(sessionId: str, player: str):
+    game = get_dodgedash_game(sessionId)
+    if not game:
+        # Create engine if missing and add player
+        game = create_dodgedash_game(sessionId, [player])
+        sessions.setdefault(sessionId, {"id": sessionId, "players": [player], "game_type": "dodgedash", "status": "waiting", "created_at": time.time()})
+    game.add_player(player)
+    logger.info(f"Player {player} joined DodgeDash session {sessionId}")
+    return { 'status': 'joined' }
 
 @app.post("/start_cryptobubbles_game")
 async def start_cryptobubbles_game(request: StartCryptoBubblesGameRequest):
@@ -443,8 +958,14 @@ async def get_chess_game_state(sessionId: str):
         game = get_chess_game(sessionId)
         if not game:
             raise HTTPException(status_code=404, detail="Chess game not found")
-        
-        return game.get_game_state()
+        data = game.get_game_state()
+        # Attach recent emojis (last 10 in past 60s)
+        sess = sessions.get(sessionId, {})
+        now = time.time()
+        emojis = [e for e in sess.get('emojis', []) if now - e.get('ts', 0) < 60]
+        sess['emojis'] = emojis
+        data['emojis'] = emojis[-10:]
+        return data
     except Exception as e:
         logger.error(f"Error getting chess game state: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -466,8 +987,28 @@ async def submit_chess_move(request: ChessMoveRequest):
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid position format. Use 'x,y' (e.g., '0,1')")
         
+        # Helpful validation before making the move
+        current_player = game.state.white_player if game.state.current_turn.value == 'white' else game.state.black_player
+        if request.player != current_player:
+            raise HTTPException(status_code=400, detail="Not your turn")
+        piece = game.state.board.get(from_pos)
+        if not piece:
+            raise HTTPException(status_code=400, detail="No piece on the origin square")
+        if piece.color.value != game.state.current_turn.value:
+            raise HTTPException(status_code=400, detail="That's not your piece")
+        dest = game.state.board.get(to_pos)
+        if dest and dest.color.value == piece.color.value:
+            raise HTTPException(status_code=400, detail="Destination occupied by your piece")
+        if not game.is_valid_move(from_pos, to_pos, game.state.current_turn):
+            try:
+                if game._would_move_leave_king_in_check(from_pos, to_pos, game.state.current_turn):
+                    raise HTTPException(status_code=400, detail="Move leaves your king in check")
+            except Exception:
+                pass
+            raise HTTPException(status_code=400, detail="Illegal move for that piece or path is blocked")
+
         # Make the move
-        success = game.make_move(from_pos, to_pos, request.player)
+        success = game.make_move(from_pos, to_pos, request.player, request.promotion)
         if not success:
             raise HTTPException(status_code=400, detail="Invalid move")
         
@@ -489,6 +1030,35 @@ async def start_chess_game(sessionId: str):
     except Exception as e:
         logger.error(f"Error starting chess game: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# Emojis for chess sessions
+@app.post("/chess_emoji")
+async def post_chess_emoji(req: ChessEmojiRequest):
+    try:
+        if req.sessionId not in sessions:
+            raise HTTPException(status_code=404, detail="Session not found")
+        # Allow short emojis or text messages (up to 200 chars)
+        if req.emoji and len(req.emoji) <= 200:
+            sess = sessions[req.sessionId]
+            if 'emojis' not in sess:
+                sess['emojis'] = []
+            sess['emojis'].append({ 'player': req.player, 'emoji': req.emoji, 'ts': time.time() })
+            # Limit size
+            if len(sess['emojis']) > 50:
+                sess['emojis'] = sess['emojis'][-50:]
+        return { 'status': 'ok' }
+    except Exception as e:
+        logger.error(f"Error posting chess emoji: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Aliases for compatibility
+@app.post("/chess-emoji")
+async def post_chess_emoji_dash(req: ChessEmojiRequest):
+    return await post_chess_emoji(req)
+
+@app.post("/emoji")
+async def post_emoji(req: ChessEmojiRequest):
+    return await post_chess_emoji(req)
 
 # Tic Tac Toe specific endpoints
 @app.get("/tictactoe_game_state")
@@ -690,37 +1260,33 @@ def check_and_submit_game_results():
                     game_state = game.get_game_state()
                     if game_state.get('game_over', False) and game_state.get('winner'):
                         logger.info(f"TicTacToe game {session_id} finished! Winner: {game_state['winner']}")
-                        
-                        # Mark as submitted to prevent repeated processing
                         game.results_submitted = True
-                        
-                        # Extract tournament_id from session_id
                         try:
-                            if session_id.startswith('session_'):
-                                parts = session_id.split('_')
-                                if len(parts) >= 3:
-                                    tournament_id = int(parts[2])
-                                else:
-                                    logger.warning(f"Could not extract tournament_id from session_id: {session_id}")
-                                    continue
-                            else:
-                                tournament_id = int(session_id)
-                                
-                            # Create podium list with only the winner
+                            tournament_id = int(session_id.split('_')[-1]) if session_id.startswith('session_') else int(session_id)
                             podium = [game_state['winner']]
-                            
-                            # Sign and submit results
                             signature = sign_results_for_tournament(tournament_id, podium)
                             if signature:
                                 tx_hash = submit_results_to_contract_with_signature(tournament_id, podium, signature)
                                 if tx_hash:
                                     logger.info(f"TicTacToe results submitted for tournament {tournament_id}: {tx_hash}")
-                                else:
-                                    logger.error(f"Failed to submit TicTacToe results for tournament {tournament_id}")
-                            else:
-                                logger.error(f"Failed to sign TicTacToe results for tournament {tournament_id}")
                         except Exception as e:
                             logger.error(f"Error processing TicTacToe game results for {session_id}: {e}")
+
+            # Update DodgeDash games and submit results
+            for session_id, game in dodgedash_games.items():
+                game.update_game_state()
+                if not getattr(game, 'results_submitted', False) and game.game_over and game.winner:
+                    try:
+                        tournament_id = int(session_id.split('_')[-1]) if session_id.startswith('session_') else int(session_id)
+                        podium = [game.winner]
+                        signature = sign_results_for_tournament(tournament_id, podium)
+                        if signature:
+                            tx_hash = submit_results_to_contract_with_signature(tournament_id, podium, signature)
+                            if tx_hash:
+                                logger.info(f"DodgeDash results submitted for tournament {tournament_id}: {tx_hash}")
+                                game.results_submitted = True
+                    except Exception as e:
+                        logger.error(f"Error submitting DodgeDash results for {session_id}: {e}")
             
             time.sleep(1)  # Check every second
             
@@ -735,6 +1301,36 @@ update_thread.start()
 # Start background thread for checking game results
 results_thread = threading.Thread(target=check_and_submit_game_results, daemon=True)
 results_thread.start()
+
+# Start notifier subscriber on startup
+@app.on_event("startup")
+async def startup_event():
+    # Prefer RabbitMQ notifier if AMQP config provided, else fallback to WS
+    use_amqp = any([
+        os.getenv("MX_AMQP_URL"),
+        os.getenv("MX_AMQP_HOST"),
+        os.getenv("MX_AMQP_USER"),
+        os.getenv("MX_AMQP_PASS"),
+    ])
+    if use_amqp:
+        try:
+            # Start RabbitMQ subscriber in background thread
+            subscriber = RabbitNotifierSubscriber(
+                amqp_host=os.getenv("MX_AMQP_HOST", "devnet-external-k8s-proxy.multiversx.com"),
+                amqp_port=int(os.getenv("MX_AMQP_PORT", "30006")),
+                amqp_vhost=os.getenv("MX_AMQP_VHOST", "devnet2"),
+                amqp_user=os.getenv("MX_AMQP_USER", ""),
+                amqp_pass=os.getenv("MX_AMQP_PASS", ""),
+                exchange=os.getenv("MX_AMQP_EXCHANGE", "all_events"),
+                event_callback=handle_notifier_event,
+            )
+            subscriber.start()
+            logger.info("Started RabbitMQ notifier subscriber")
+        except Exception as e:
+            logger.warning(f"Failed to start RabbitMQ notifier subscriber: {e}. Falling back to WS.")
+            asyncio.create_task(start_notifier_subscriber(handle_notifier_event))
+    else:
+        asyncio.create_task(start_notifier_subscriber(handle_notifier_event))
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000) 
