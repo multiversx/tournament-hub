@@ -29,6 +29,37 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Load env config if present
+load_env_config() {
+    if [ -f "config.sh" ]; then
+        print_status "Loading environment from config.sh"
+        # shellcheck disable=SC1091
+        source ./config.sh
+    else
+        print_warning "config.sh not found. Using current shell environment."
+    fi
+}
+
+# Show notifier configuration summary
+show_notifier_config() {
+    if [ -n "${MX_AMQP_USER:-}" ] || [ -n "${MX_AMQP_URL:-}" ]; then
+        print_status "Event Notifier subscriber: RabbitMQ (AMQP)"
+        echo "  Host: ${MX_AMQP_HOST:-devnet-external-k8s-proxy.multiversx.com}"
+        echo "  Port: ${MX_AMQP_PORT:-30006}"
+        echo "  VHost: ${MX_AMQP_VHOST:-devnet2}"
+        echo "  Exchange: ${MX_AMQP_EXCHANGE:-all_events}"
+        echo "  Queue: ${MX_AMQP_QUEUE:-costin_queue_temporary}"
+    else
+        print_status "Event Notifier subscriber: WebSocket"
+        echo "  WS URL: ${MX_NOTIFIER_WS_URL:-ws://localhost:5000/hub/ws}"
+    fi
+    if [ -n "${MX_TOURNAMENT_CONTRACT:-}" ]; then
+        echo "  Contract filter: ${MX_TOURNAMENT_CONTRACT}"
+    else
+        echo "  Contract filter: (none)"
+    fi
+}
+
 # Function to check if a command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -122,8 +153,18 @@ run_backend() {
     # Kill existing process on port 8000
     kill_port 8000
     
+    # Ensure virtual environment exists
+    if [ ! -d "venv" ]; then
+        print_status "Creating Python virtual environment..."
+        python3 -m venv venv
+    fi
+
     # Activate virtual environment
     source venv/bin/activate
+
+    # Ensure dependencies (update in case requirements changed)
+    print_status "Installing/updating Python dependencies..."
+    pip install -r requirements.txt
     
     # Start the server
     print_status "Starting FastAPI server on port 8000..."
@@ -218,7 +259,7 @@ show_help() {
     echo ""
     echo "Commands:"
     echo "  setup       - Set up the entire project (backend, frontend, contract)"
-    echo "  run         - Run both backend and frontend servers"
+    echo "  run         - Run backend (with notifier subscriber) and frontend servers"
     echo "  backend     - Set up and run only the backend server"
     echo "  frontend    - Set up and run only the frontend server"
     echo "  contract    - Build the smart contract"
@@ -237,6 +278,7 @@ show_help() {
 case "${1:-help}" in
     "setup")
         print_status "Setting up Tournament Hub project..."
+        load_env_config
         setup_backend
         setup_frontend
         build_contract
@@ -244,6 +286,8 @@ case "${1:-help}" in
         ;;
     "run")
         print_status "Starting Tournament Hub application..."
+        load_env_config
+        show_notifier_config
         run_backend
         run_frontend
         print_success "Tournament Hub is now running!"
@@ -256,6 +300,7 @@ case "${1:-help}" in
         wait
         ;;
     "backend")
+        load_env_config
         setup_backend
         run_backend
         print_status "Backend is running. Press Ctrl+C to stop."

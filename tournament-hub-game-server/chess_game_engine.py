@@ -50,6 +50,13 @@ class GameState:
     en_passant_target: Optional[Tuple[int, int]] = None
     captured_by_white: List[Piece] = None  # Pieces captured by white player
     captured_by_black: List[Piece] = None  # Pieces captured by black player
+    # Clocks (seconds remaining)
+    white_time_left: int = 300
+    black_time_left: int = 300
+    last_turn_ts: Optional[float] = None
+    white_time_left: int = 300
+    black_time_left: int = 300
+    last_turn_ts: Optional[float] = None
 
     def __post_init__(self):
         if self.move_history is None:
@@ -109,8 +116,10 @@ class ChessGameEngine:
         self.state.board[(6, 7)] = Piece(PieceType.KNIGHT, Color.BLACK, (6, 7))
         self.state.board[(7, 7)] = Piece(PieceType.ROOK, Color.BLACK, (7, 7))
         
-        # Set start time
+        # Set start time and initialize turn timestamp
         self.state.start_time = time.time()
+        self.state.last_turn_ts = self.state.start_time
+        self.state.last_turn_ts = self.state.start_time
     
     def is_valid_move(self, from_pos: Tuple[int, int], to_pos: Tuple[int, int], color: Color) -> bool:
         """Check if a move is valid for the given piece and color"""
@@ -125,9 +134,7 @@ class ChessGameEngine:
         if to_pos in self.state.board and self.state.board[to_pos].color == color:
             return False
         
-        # CHESS RULE: Cannot capture the king directly
-        if to_pos in self.state.board and self.state.board[to_pos].type == PieceType.KING:
-            return False
+        # Allow moves that attack the king; game termination handled after move
         
         # Check piece-specific move validation
         is_valid_piece_move = False
@@ -257,8 +264,13 @@ class ChessGameEngine:
         
         return False
     
-    def make_move(self, from_pos: Tuple[int, int], to_pos: Tuple[int, int], player: str) -> bool:
+    def make_move(self, from_pos: Tuple[int, int], to_pos: Tuple[int, int], player: str, promotion: Optional[str] = None) -> bool:
         """Make a move on the board"""
+        # Update clock for side to move
+        self._tick_clock()
+        # Do not allow moves after game is over
+        if self.state.game_over:
+            return False
         # Validate player turn
         current_player = self.state.white_player if self.state.current_turn == Color.WHITE else self.state.black_player
         if player != current_player:
@@ -268,38 +280,15 @@ class ChessGameEngine:
         if not self.is_valid_move(from_pos, to_pos, self.state.current_turn):
             return False
         
-        # Create move record
+        # Prepare move flags
         piece = self.state.board[from_pos]
-        is_capture = to_pos in self.state.board
-        captured_piece = None
-        
-        # If capturing, save the captured piece
-        if is_capture:
-            captured_piece = self.state.board[to_pos]
-            # Add to appropriate captured pieces list
-            if piece.color == Color.WHITE:
-                self.state.captured_by_white.append(captured_piece)
-            else:
-                self.state.captured_by_black.append(captured_piece)
-        
+        captured_before = self.state.board.get(to_pos)
+        is_capture = captured_before is not None
+        is_castle = False
+        is_en_passant = False
         is_promotion = (piece.type == PieceType.PAWN and 
                        ((piece.color == Color.WHITE and to_pos[1] == 7) or 
                         (piece.color == Color.BLACK and to_pos[1] == 0)))
-        
-        move = Move(
-            from_pos=from_pos,
-            to_pos=to_pos,
-            piece_type=piece.type,
-            color=piece.color,
-            is_capture=is_capture,
-            is_castle=is_castle,
-            is_en_passant=is_en_passant,
-            is_promotion=is_promotion
-        )
-        
-        # Handle special moves
-        is_castle = False
-        is_en_passant = False
         
         # Check for castling
         if (piece.type == PieceType.KING and 
@@ -308,7 +297,7 @@ class ChessGameEngine:
             is_castle = True
             self._execute_castle(from_pos, to_pos)
         else:
-            # Regular move execution
+            # Regular move execution (capture handled below)
             self.state.board[to_pos] = piece
             piece.position = to_pos
             piece.has_moved = True
@@ -329,10 +318,24 @@ class ChessGameEngine:
                 else:
                     self.state.captured_by_black.append(captured_piece)
                 del self.state.board[captured_pawn_pos]
+
+        # If normal capture, add captured piece to lists
+        if captured_before and not is_en_passant:
+            if piece.color == Color.WHITE:
+                self.state.captured_by_white.append(captured_before)
+            else:
+                self.state.captured_by_black.append(captured_before)
         
         # Handle pawn promotion (simplified - always promote to queen)
         if is_promotion:
-            self.state.board[to_pos] = Piece(PieceType.QUEEN, piece.color, to_pos, True)
+            promo_map = {
+                'q': PieceType.QUEEN,
+                'r': PieceType.ROOK,
+                'b': PieceType.BISHOP,
+                'n': PieceType.KNIGHT
+            }
+            target = promo_map.get((promotion or 'q').lower(), PieceType.QUEEN)
+            self.state.board[to_pos] = Piece(target, piece.color, to_pos, True)
         
         # Update king position
         if piece.type == PieceType.KING:
@@ -348,11 +351,16 @@ class ChessGameEngine:
         else:
             self.state.en_passant_target = None
         
-        # Add move to history
-        self.state.move_history.append(move)
+        # If normal capture, add captured piece to lists
+        if is_capture and not is_en_passant:
+            captured_piece = self.state.board.get(to_pos)  # After move piece is at to_pos; infer by history
+            # We already moved piece to to_pos; captured_piece was overwritten, so reconstruct from earlier
+            # Instead, track captured prior to overwriting:
+        
         
         # Switch turns
         self.state.current_turn = Color.BLACK if self.state.current_turn == Color.WHITE else Color.WHITE
+        self.state.last_turn_ts = time.time()
         
         # Check for game end conditions
         self._check_game_end()
@@ -376,6 +384,15 @@ class ChessGameEngine:
         elif time.time() - self.state.start_time > self.game_duration:
             # Determine winner based on material advantage (simplified)
             self._determine_winner_by_material()
+            self.state.game_over = True
+        # Timeout check
+        if self.state.white_time_left <= 0 or self.state.black_time_left <= 0:
+            if self.state.white_time_left <= 0 and self.state.black_time_left <= 0:
+                self.state.winner = None
+            elif self.state.white_time_left <= 0:
+                self.state.winner = self.state.black_player
+            else:
+                self.state.winner = self.state.white_player
             self.state.game_over = True
     
     def _is_in_check(self, color: Color) -> bool:
@@ -503,12 +520,20 @@ class ChessGameEngine:
         return True
     
     def _is_square_under_attack(self, square: Tuple[int, int], by_color: Color) -> bool:
-        """Check if a square is under attack by the given color"""
+        """Check if a square is under attack by the given color.
+        Pawns attack diagonally one forward square regardless of occupancy."""
         opponent_color = Color.BLACK if by_color == Color.WHITE else Color.WHITE
         for pos, piece in self.state.board.items():
-            if piece.color == opponent_color:
-                if self._is_valid_piece_move(piece, pos, square):
+            if piece.color != opponent_color:
+                continue
+            if piece.type == PieceType.PAWN:
+                px, py = pos
+                direction = 1 if piece.color == Color.WHITE else -1
+                if square in [(px - 1, py + direction), (px + 1, py + direction)]:
                     return True
+                continue
+            if self._is_valid_piece_move(piece, pos, square):
+                return True
         return False
     
     def _execute_castle(self, from_pos: Tuple[int, int], to_pos: Tuple[int, int]):
@@ -557,19 +582,17 @@ class ChessGameEngine:
         return not self._has_legal_moves()
     
     def _has_legal_moves(self) -> bool:
-        """Check if the current player has any legal moves"""
+        """Check if the current player has any legal moves.
+        Iterate over a snapshot of own pieces to avoid interference from
+        temporary board mutations during validation."""
         current_color = self.state.current_turn
-        
-        # Check all pieces of the current color
-        for from_pos, piece in self.state.board.items():
-            if piece.color == current_color:
-                # Check all possible destination squares
-                for to_x in range(8):
-                    for to_y in range(8):
-                        to_pos = (to_x, to_y)
-                        if self.is_valid_move(from_pos, to_pos, current_color):
-                            return True
-        
+        own_positions = [pos for pos, p in list(self.state.board.items()) if p.color == current_color]
+        for from_pos in own_positions:
+            for to_x in range(8):
+                for to_y in range(8):
+                    to_pos = (to_x, to_y)
+                    if self.is_valid_move(from_pos, to_pos, current_color):
+                        return True
         return False
     
     def _determine_winner_by_material(self):
@@ -612,6 +635,18 @@ class ChessGameEngine:
                 "has_moved": piece.has_moved
             }
         
+        # Live clocks for current tick
+        now = time.time()
+        white_live = self.state.white_time_left
+        black_live = self.state.black_time_left
+        if not self.state.game_over and self.state.last_turn_ts:
+            elapsed = int(now - self.state.last_turn_ts)
+            if elapsed > 0:
+                if self.state.current_turn == Color.WHITE:
+                    white_live = max(0, white_live - elapsed)
+                else:
+                    black_live = max(0, black_live - elapsed)
+
         return {
             "session_id": self.session_id,
             "board": board_state,
@@ -645,8 +680,29 @@ class ChessGameEngine:
                 }
                 for move in self.state.move_history
             ],
-            "game_type": "chess"
+            "game_type": "chess",
+            "white_time_left": white_live,
+            "black_time_left": black_live
         }
+
+    def _tick_clock(self):
+        if self.state.game_over or not self.state.last_turn_ts:
+            return
+        now = time.time()
+        elapsed = int(now - self.state.last_turn_ts)
+        if elapsed <= 0:
+            return
+        if self.state.current_turn == Color.WHITE:
+            self.state.white_time_left = max(0, self.state.white_time_left - elapsed)
+        else:
+            self.state.black_time_left = max(0, self.state.black_time_left - elapsed)
+        self.state.last_turn_ts = now
+        if self.state.white_time_left <= 0:
+            self.state.winner = self.state.black_player
+            self.state.game_over = True
+        if self.state.black_time_left <= 0:
+            self.state.winner = self.state.white_player
+            self.state.game_over = True
 
 # Global game storage
 chess_games: Dict[str, ChessGameEngine] = {}

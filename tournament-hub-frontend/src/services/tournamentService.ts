@@ -17,20 +17,6 @@ export const GAME_CONFIGS = {
     gameType: "turn_based",
     description: "Strategic board game"
   },
-  3: {
-    name: "4-Player Card Game",
-    minPlayers: 4,
-    maxPlayers: 4,
-    gameType: "turn_based",
-    description: "Multiplayer card game"
-  },
-  4: {
-    name: "8-Player Battle Royale",
-    minPlayers: 4,
-    maxPlayers: 8,
-    gameType: "real_time",
-    description: "Elimination tournament"
-  },
   5: {
     name: "CryptoBubbles",
     minPlayers: 2,
@@ -39,54 +25,12 @@ export const GAME_CONFIGS = {
     description: "Real-time cell battle game"
   },
   6: {
-    name: "Checkers",
-    minPlayers: 2,
-    maxPlayers: 2,
-    gameType: "turn_based",
-    description: "Classic checkers game"
-  },
-  7: {
-    name: "Connect Four",
-    minPlayers: 2,
-    maxPlayers: 2,
-    gameType: "turn_based",
-    description: "Connect 4 pieces in a row"
-  },
-  8: {
-    name: "Memory Match",
-    minPlayers: 2,
-    maxPlayers: 4,
-    gameType: "turn_based",
-    description: "Find matching card pairs"
-  },
-  9: {
-    name: "Word Scramble",
-    minPlayers: 2,
-    maxPlayers: 6,
-    gameType: "real_time",
-    description: "Unscramble words against time"
-  },
-  10: {
-    name: "Math Challenge",
-    minPlayers: 2,
-    maxPlayers: 8,
-    gameType: "real_time",
-    description: "Solve math problems quickly"
-  },
-  11: {
-    name: "Puzzle Race",
+    name: "DodgeDash",
     minPlayers: 2,
     maxPlayers: 4,
     gameType: "real_time",
-    description: "Complete puzzles fastest"
+    description: "Dodge waves of projectiles – last alive wins"
   },
-  12: {
-    name: "Trivia Master",
-    minPlayers: 2,
-    maxPlayers: 8,
-    gameType: "turn_based",
-    description: "Answer trivia questions"
-  }
 };
 
 export interface TournamentSession {
@@ -131,7 +75,7 @@ export const startTournamentSession = async (tournamentId: number, gameType: num
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        tournament_id: tournamentId,
+        tournamentId: String(tournamentId),
         game_type: gameType
       }),
     });
