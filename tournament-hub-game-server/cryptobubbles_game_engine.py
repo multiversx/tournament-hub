@@ -146,8 +146,8 @@ class CryptoBubblesGameEngine:
         # Scale pellet count: base 100 per player, minimum 200
         self.pellet_count = max(200, 100 * num_players)
         
-        # Scale bot count: 1 bot per 2 players, minimum 2, maximum 6
-        self.bot_count = max(2, min(6, num_players // 2))
+        # Use exactly 2 semi-smart bots for more predictable gameplay pacing
+        self.bot_count = 2
     
     def _generate_pellets(self):
         """Generate pellets randomly across the arena"""
@@ -395,13 +395,8 @@ class CryptoBubblesGameEngine:
         alive_human_players = [cell for cell in self.state.cells.values() 
                               if cell.state == CellState.ALIVE and not cell.player.startswith("Bot_")]
         
-        # Game only ends when there are multiple players and only one remains
-        # Don't end game if there's only 1 player (waiting for others to join)
-        if len(alive_human_players) == 0:
-            # No human players alive - end game with no winner
-            self._end_game_by_elimination()
-        elif len(alive_human_players) == 1 and len(self.players) > 1:
-            # Only one player remains and there were originally multiple players - end game
+        # End game as soon as a single human remains or none remain
+        if len(alive_human_players) <= 1:
             self._end_game_by_elimination()
     
     def _end_game_by_elimination(self):
