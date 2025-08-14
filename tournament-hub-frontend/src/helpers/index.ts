@@ -216,6 +216,52 @@ export async function getTournamentsFromBlockchain() {
     });
 }
 
+export async function getRecentNotifierEvents(): Promise<Array<{ identifier: string; tournament_id: number; ts: number; game_id?: number; player?: string }>> {
+    try {
+        const res = await fetch('/api/notifier/recent');
+        if (!res.ok) return [];
+        const data = await res.json();
+        if (!Array.isArray(data)) return [];
+        return data;
+    } catch {
+        return [];
+    }
+}
+
+export async function getRecentJoins(tournamentId: string | number): Promise<string[]> {
+    try {
+        const res = await fetch(`/api/notifier/joins?tournamentId=${tournamentId}`);
+        if (!res.ok) return [];
+        const data = await res.json();
+        if (!Array.isArray(data)) return [];
+        return data as string[];
+    } catch {
+        return [];
+    }
+}
+
+export async function getRecentGameStart(tournamentId: string | number): Promise<{ started: boolean; ts: number }> {
+    try {
+        const res = await fetch(`/api/notifier/game-start?tournamentId=${tournamentId}`);
+        if (!res.ok) return { started: false, ts: 0 };
+        const data = await res.json();
+        return { started: !!data.started, ts: Number(data.ts || 0) };
+    } catch {
+        return { started: false, ts: 0 };
+    }
+}
+
+export async function getAnyJoinTs(): Promise<number> {
+    try {
+        const res = await fetch(`/api/notifier/joins-any`);
+        if (!res.ok) return 0;
+        const data = await res.json();
+        return Number(data.ts || 0);
+    } catch {
+        return 0;
+    }
+}
+
 function hexToBech32(hex: string): string {
     try {
         return Address.fromHex(hex).bech32();

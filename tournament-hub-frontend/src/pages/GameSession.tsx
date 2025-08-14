@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { CryptoBubblesGame } from '../components/CryptoBubblesGame';
-import { ChessGame } from '../components/ChessGame';
+import { CryptoBubblesGamePhaser } from '../components/CryptoBubblesGamePhaser';
+import { ChessGamePro } from '../components/ChessGamePro';
 import { TicTacToeGame } from '../components/TicTacToeGame';
-import { Box, Text, VStack, Spinner, useToast } from '@chakra-ui/react';
+import DodgeDash from '../components/DodgeDash';
+import { Box, Text, VStack, Spinner, useToast, Button } from '@chakra-ui/react';
 import { useGetAccount } from 'lib';
 import { getTournamentDetailsFromContract } from '../helpers';
 
@@ -14,6 +16,7 @@ export const GameSession: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [actualSessionId, setActualSessionId] = useState<string | null>(null);
     const toast = useToast();
+    const navigate = useNavigate();
 
     useEffect(() => {
         const initializeGameSession = async () => {
@@ -40,7 +43,7 @@ export const GameSession: React.FC = () => {
                             3: 'cryptobubbles'
                         };
 
-                        const gameType = gameTypeMap[gameId] || 'cryptobubbles';
+                        const gameType = gameTypeMap[gameId] || (gameId === 6 ? 'dodgedash' : 'cryptobubbles');
                         setGameType(gameType);
 
                         // Use actual tournament participants
@@ -53,7 +56,7 @@ export const GameSession: React.FC = () => {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                tournamentId: tournamentId,
+                                tournamentId: String(tournamentId),
                                 game_type: gameId,
                                 playerAddresses: players
                             })
@@ -139,9 +142,37 @@ export const GameSession: React.FC = () => {
             {gameType === 'tictactoe' ? (
                 <TicTacToeGame sessionId={actualSessionId!} playerAddress={playerAddress} />
             ) : gameType === 'chess' ? (
-                <ChessGame sessionId={actualSessionId!} playerAddress={playerAddress} />
+                <ChessGamePro sessionId={actualSessionId!} playerAddress={playerAddress} />
             ) : gameType === 'cryptobubbles' ? (
-                <CryptoBubblesGame sessionId={actualSessionId!} playerAddress={playerAddress} />
+                <Box position="relative">
+                    <CryptoBubblesGamePhaser sessionId={actualSessionId!} playerAddress={playerAddress} />
+                    <Button
+                        position="absolute"
+                        top={2}
+                        right={2}
+                        size="sm"
+                        colorScheme="red"
+                        onClick={() => navigate('/tournaments')}
+                        zIndex={200}
+                    >
+                        Exit Game
+                    </Button>
+                </Box>
+            ) : gameType === 'dodgedash' ? (
+                <Box position="relative">
+                    <DodgeDash sessionId={actualSessionId!} playerAddress={playerAddress} />
+                    <Button
+                        position="absolute"
+                        top={2}
+                        right={2}
+                        size="sm"
+                        colorScheme="red"
+                        onClick={() => navigate('/tournaments')}
+                        zIndex={200}
+                    >
+                        Exit Game
+                    </Button>
+                </Box>
             ) : (
                 <Box textAlign="center" py={8}>
                     <Text>Unknown game type</Text>

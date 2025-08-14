@@ -31,7 +31,7 @@ import {
     Progress,
 } from '@chakra-ui/react';
 import { Users, Award, Calendar, Plus, Search, Filter, ChevronDown, ChevronUp, Trophy, Clock, Copy, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
-import { getActiveTournamentIds, getTournamentDetailsFromContract, getGameConfig, getPrizePoolFromContract, getTournamentsFromBlockchain, findTournamentsByTesting, getSubmitResultsTransactionHash, debugContractResponse, clearApiCaches } from '../helpers';
+import { getActiveTournamentIds, getTournamentDetailsFromContract, getGameConfig, getPrizePoolFromContract, getTournamentsFromBlockchain, findTournamentsByTesting, getSubmitResultsTransactionHash, debugContractResponse, clearApiCaches, getRecentNotifierEvents, getAnyJoinTs } from '../helpers';
 
 // Using helper to clear caches instead of accessing internals
 
@@ -168,16 +168,8 @@ function getGameName(gameId: number): string {
     const gameConfigs = {
         1: "Tic Tac Toe",
         2: "Chess",
-        3: "4-Player Card Game",
-        4: "8-Player Battle Royale",
         5: "CryptoBubbles",
-        6: "Checkers",
-        7: "Connect Four",
-        8: "Memory Match",
-        9: "Word Scramble",
-        10: "Math Challenge",
-        11: "Puzzle Race",
-        12: "Trivia Master"
+        6: "DodgeDash"
     };
 
     return gameConfigs[gameId as keyof typeof gameConfigs] || `Game ID: ${gameId}`;
@@ -621,6 +613,48 @@ export const Tournaments = () => {
             autoLoadMissingResultTX();
         }
     }, [tournaments, loadTournamentDetails, loadingDetails]);
+
+    // Poll Notifier events and auto-add tournaments upon tournamentCreated
+    useEffect(() => {
+        let mounted = true;
+        let lastSeenTs = 0;
+        let lastJoinTs = 0;
+        const interval = setInterval(async () => {
+            try {
+                // quick refresh on any join (players list often updated)
+                const anyJoinTs = await getAnyJoinTs();
+                if (anyJoinTs > lastJoinTs) {
+                    lastJoinTs = anyJoinTs;
+                    // light refresh: refetch visible tournaments' basic data
+                    setTournaments(prev => [...prev]);
+                }
+                const events = await getRecentNotifierEvents();
+                if (!mounted || events.length === 0) return;
+                // Process only new events
+                const newEvents = events.filter(e => e.ts > lastSeenTs);
+                if (newEvents.length === 0) return;
+                lastSeenTs = Math.max(lastSeenTs, ...newEvents.map(e => e.ts));
+                // For tournamentCreated, fetch details and add to list if not present
+                const created = newEvents.filter(e => e.identifier === 'tournamentCreated');
+                if (created.length === 0) return;
+                const uniqueIds = Array.from(new Set(created.map(e => BigInt(e.tournament_id))));
+                for (const id of uniqueIds) {
+                    // Skip if already present
+                    if (tournaments.some(t => BigInt(t.id) === id)) continue;
+                    const basic = await loadBasicTournamentData(id);
+                    if (basic) {
+                        setTournaments(prev => [basic, ...prev].sort((a, b) => Number(b.id) - Number(a.id)));
+                    }
+                }
+            } catch {
+                // ignore polling errors
+            }
+        }, 3000);
+        return () => {
+            mounted = false;
+            clearInterval(interval);
+        };
+    }, [tournaments, loadBasicTournamentData]);
 
     const columns = useBreakpointValue({ base: 1, md: 2, lg: 3 });
 
