@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { BACKEND_BASE_URL } from '../config/backend';
 import {
     Box,
     Text,
@@ -69,7 +70,7 @@ export const CryptoBubblesGame: React.FC<CryptoBubblesGameProps> = ({ sessionId,
         startGameAttemptedRef.current = true;
 
         try {
-            const response = await fetch('http://localhost:8000/start_cryptobubbles_game', {
+            const response = await fetch(`${BACKEND_BASE_URL}/start_cryptobubbles_game`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -98,7 +99,7 @@ export const CryptoBubblesGame: React.FC<CryptoBubblesGameProps> = ({ sessionId,
     // Fetch game state
     const fetchGameState = useCallback(async () => {
         try {
-            const response = await fetch(`http://localhost:8000/cryptobubbles_game_state?sessionId=${sessionId}`);
+            const response = await fetch(`${BACKEND_BASE_URL}/cryptobubbles_game_state?sessionId=${sessionId}`);
             if (response.ok) {
                 const data = await response.json();
                 setGameState(data);
@@ -134,7 +135,7 @@ export const CryptoBubblesGame: React.FC<CryptoBubblesGameProps> = ({ sessionId,
         if (!gameStarted || gameEnded) return;
 
         try {
-            await fetch('http://localhost:8000/cryptobubbles_move', {
+            await fetch(`${BACKEND_BASE_URL}/cryptobubbles_move`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

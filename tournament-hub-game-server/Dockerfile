@@ -45,6 +45,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -fsS http://127.0.0.1:${PORT}/openapi.json > /dev/null || exit 1
 
 # IMPORTANT: keep a single worker because the app starts background threads on import
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT} --proxy-headers --log-level info"]
+# Optional ROOT_PATH is honored if provided (useful when served under a subpath like /tournament-hub)
+ENV ROOT_PATH=""
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT} --proxy-headers ${ROOT_PATH:+--root-path ${ROOT_PATH}} --log-level info"]
 
 

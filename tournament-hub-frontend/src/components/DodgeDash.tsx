@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { BACKEND_BASE_URL } from '../config/backend';
 // @ts-ignore
 import Phaser from 'phaser';
 
@@ -36,7 +37,7 @@ class DDScene extends Phaser.Scene {
             .setAlpha(0.95)
             .setDepth(10);
         // draw circle texture dynamically
-        const g = this.make.graphics({ x: 0, y: 0, add: false });
+        const g = this.make.graphics({ x: 0, y: 0 });
         g.fillStyle(0xffffff, 1);
         g.fillCircle(12, 12, 12);
         g.generateTexture('dd-dot', 24, 24);
@@ -52,7 +53,7 @@ class DDScene extends Phaser.Scene {
 
         this.time.addEvent({ delay: 1200, loop: true, callback: this.spawnHazard, callbackScope: this });
         // Join server-side shared session
-        fetch(`http://localhost:8000/join_dodgedash_session?sessionId=${encodeURIComponent(this.sessionId)}&player=${encodeURIComponent(this.playerAddress)}`, { method: 'POST' }).catch(() => { });
+        fetch(`${BACKEND_BASE_URL}/join_dodgedash_session?sessionId=${encodeURIComponent(this.sessionId)}&player=${encodeURIComponent(this.playerAddress)}`, { method: 'POST' }).catch(() => { });
 
         this.physics.add.overlap(this.player, this.hazards, this.onHit, undefined, this);
     }
@@ -74,7 +75,7 @@ class DDScene extends Phaser.Scene {
         dot.setCollideWorldBounds(true);
     }
 
-    onHit = (_p: Phaser.GameObjects.GameObject, hazard: Phaser.GameObjects.GameObject) => {
+    onHit = (_p: any, hazard: any) => {
         if (this.gameOver) return;
         const img = hazard as Phaser.Physics.Arcade.Image;
         img.disableBody(true, true);
@@ -108,7 +109,7 @@ class DDScene extends Phaser.Scene {
 
         // Dash with cooldown
         if (this.dashKey.isDown && this.dashCooldown <= 0) {
-            const v = new Phaser.Math.Vector2(this.player.body.velocity.x, this.player.body.velocity.y);
+            const v = new Phaser.Math.Vector2(this.player.body?.velocity.x || 0, this.player.body?.velocity.y || 0);
             if (v.lengthSq() > 1) v.normalize().scale(400);
             else v.set(0, -400);
             this.player.setVelocity(v.x, v.y);
@@ -122,7 +123,7 @@ class DDScene extends Phaser.Scene {
         const netAx = (this.cursors.left?.isDown ? -600 : 0) + (this.cursors.right?.isDown ? 600 : 0);
         const netAy = (this.cursors.up?.isDown ? -600 : 0) + (this.cursors.down?.isDown ? 600 : 0);
         const wantDash = this.dashKey.isDown && this.dashCooldown <= 0;
-        fetch('http://localhost:8000/dodgedash_move', {
+        fetch(`${BACKEND_BASE_URL}/dodgedash_move`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sessionId: this.sessionId, player: this.playerAddress, ax: netAx, ay: netAy, dash: wantDash })
         }).catch(() => { });
@@ -139,7 +140,7 @@ const DodgeDash: React.FC<Props> = ({ sessionId, playerAddress }) => {
             type: Phaser.AUTO,
             backgroundColor: '#0b1220',
             scale: { parent: ref.current, mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH, width: '100%', height: 600 },
-            physics: { default: 'arcade', arcade: { gravity: { y: 0 }, fps: 60 } },
+            physics: { default: 'arcade', arcade: { gravity: { x: 0, y: 0 }, fps: 60 } },
             scene: [DDScene]
         };
         const game = new Phaser.Game(config);
