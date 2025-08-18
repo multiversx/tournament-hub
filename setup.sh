@@ -29,12 +29,21 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Environment presets
+# local      -> Frontend local (Vite), Backend local (uvicorn on 8000)
+# devnet     -> Frontend local (Vite), Backend remote (https://devnet-tools.multiversx.com/tournament-hub)
+# cloudflare -> Frontend built for Cloudflare, Backend remote (https://devnet-tools.multiversx.com/tournament-hub)
+ENV_PRESET="${ENV_PRESET:-local}"
+
 # Load env config if present
 load_env_config() {
     if [ -f "config.sh" ]; then
         print_status "Loading environment from config.sh"
         # shellcheck disable=SC1091
         source ./config.sh
+        if [ -n "${ENV_PRESET:-}" ]; then
+            print_status "Using ENV_PRESET='${ENV_PRESET}' from environment/config"
+        fi
     else
         print_warning "config.sh not found. Using current shell environment."
     fi
@@ -58,6 +67,33 @@ show_notifier_config() {
     else
         echo "  Contract filter: (none)"
     fi
+}
+
+# Configure frontend environment for a given preset
+configure_frontend_env() {
+    local preset="$1"
+    print_status "Configuring frontend env for preset: ${preset}"
+    pushd tournament-hub-frontend >/dev/null
+    case "$preset" in
+        local)
+            # Use local backend via Vite proxy
+            echo "VITE_BACKEND_URL=/api" > .env.local
+            ;;
+        devnet|remote)
+            # Use remote devnet backend
+            echo "VITE_BACKEND_URL=https://devnet-tools.multiversx.com/tournament-hub" > .env.local
+            ;;
+        cloudflare)
+            # Cloudflare build targets remote backend
+            echo "VITE_BACKEND_URL=https://devnet-tools.multiversx.com/tournament-hub" > .env.local
+            ;;
+        *)
+            print_warning "Unknown preset '$preset'. Falling back to local."
+            echo "VITE_BACKEND_URL=/api" > .env.local
+            ;;
+    esac
+    print_success "Wrote tournament-hub-frontend/.env.local"
+    popd >/dev/null
 }
 
 # Function to check if a command exists
@@ -195,6 +231,21 @@ run_frontend() {
     # Kill existing process on port 3000
     kill_port 3000
     
+    # Export VITE_BACKEND_URL based on preset to ensure dev server picks it up
+    case "${ENV_PRESET}" in
+      devnet|remote)
+        export VITE_BACKEND_URL="https://devnet-tools.multiversx.com/tournament-hub"
+        ;;
+      cloudflare)
+        export VITE_BACKEND_URL="https://devnet-tools.multiversx.com/tournament-hub"
+        ;;
+      *)
+        export VITE_BACKEND_URL="/api"
+        ;;
+    esac
+
+    print_status "VITE_BACKEND_URL=${VITE_BACKEND_URL}"
+
     # Start the development server
     print_status "Starting Vite dev server on port 3000 (HTTPS)..."
     npm run dev &
@@ -267,11 +318,18 @@ show_help() {
     echo "  status      - Show status of running services"
     echo "  help        - Show this help message"
     echo ""
+    echo "Environment presets (set ENV_PRESET before command):"
+    echo "  local      - Frontend local (Vite), Backend local (default)"
+    echo "  devnet     - Frontend local (Vite), Backend remote (devnet tools)"
+    echo "  cloudflare - Frontend build for Cloudflare, Backend remote (devnet tools)"
+    echo ""
     echo "Examples:"
-    echo "  $0 setup    # Set up everything"
-    echo "  $0 run      # Run the full application"
-    echo "  $0 backend  # Run only backend"
-    echo "  $0 stop     # Stop all services"
+    echo "  $0 setup                       # Set up everything"
+    echo "  $0 run                         # Run local frontend + backend"
+    echo "  ENV_PRESET=devnet $0 run       # Run local frontend against devnet backend"
+    echo "  ENV_PRESET=cloudflare $0 setup # Prepare env for Cloudflare build"
+    echo "  $0 backend                     # Run only backend"
+    echo "  $0 stop                        # Stop all services"
 }
 
 # Main script logic
@@ -279,6 +337,7 @@ case "${1:-help}" in
     "setup")
         print_status "Setting up Tournament Hub project..."
         load_env_config
+        configure_frontend_env "${ENV_PRESET}"
         setup_backend
         setup_frontend
         build_contract
@@ -287,13 +346,31 @@ case "${1:-help}" in
     "run")
         print_status "Starting Tournament Hub application..."
         load_env_config
+        configure_frontend_env "${ENV_PRESET}"
         show_notifier_config
-        run_backend
-        run_frontend
+        if [ "${ENV_PRESET}" = "local" ]; then
+            run_backend
+            run_frontend
+        elif [ "${ENV_PRESET}" = "devnet" ] || [ "${ENV_PRESET}" = "remote" ]; then
+            print_status "Preset '${ENV_PRESET}': using remote backend. Running only frontend."
+            run_frontend
+        elif [ "${ENV_PRESET}" = "cloudflare" ]; then
+            print_status "Preset 'cloudflare': configure env for build. Not starting local servers."
+            print_status "To build for Cloudflare: cd tournament-hub-frontend && npm run build"
+        else
+            print_warning "Unknown preset '${ENV_PRESET}', defaulting to local."
+            run_backend
+            run_frontend
+        fi
         print_success "Tournament Hub is now running!"
         print_status "Frontend: https://localhost:3000"
-        print_status "Backend API: http://localhost:8000"
-        print_status "Backend Docs: http://localhost:8000/docs"
+        if [ "${ENV_PRESET}" = "local" ]; then
+          print_status "Backend API: http://localhost:8000"
+          print_status "Backend Docs: http://localhost:8000/docs"
+        else
+          print_status "Backend API: https://devnet-tools.multiversx.com/tournament-hub"
+          print_status "Backend Docs: https://devnet-tools.multiversx.com/tournament-hub/openapi.json"
+        fi
         print_status "Press Ctrl+C to stop all services"
         
         # Wait for user to stop
