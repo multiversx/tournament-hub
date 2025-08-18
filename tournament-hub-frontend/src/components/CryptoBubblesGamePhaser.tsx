@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { BACKEND_BASE_URL } from '../config/backend';
 // @ts-ignore - Phaser types are resolved at build time
 import Phaser from 'phaser';
 
@@ -53,7 +54,7 @@ class PlayScene extends Phaser.Scene {
 
     preload() {
         // Create a tiny circular texture for stars
-        const g = this.make.graphics({ x: 0, y: 0, add: false });
+        const g = this.make.graphics({ x: 0, y: 0 });
         g.fillStyle(0xffffff, 1);
         g.fillCircle(2, 2, 2);
         g.generateTexture('bg-star', 4, 4);
@@ -98,8 +99,8 @@ class PlayScene extends Phaser.Scene {
 
         // Join and start
         try {
-            await fetch(`http://localhost:8000/join_cryptobubbles_session?sessionId=${this.sessionId}&player=${this.playerAddress}`, { method: 'POST' });
-            await fetch('http://localhost:8000/start_cryptobubbles_game', {
+            await fetch(`${BACKEND_BASE_URL}/join_cryptobubbles_session?sessionId=${this.sessionId}&player=${this.playerAddress}`, { method: 'POST' });
+            await fetch(`${BACKEND_BASE_URL}/start_cryptobubbles_game`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sessionId: this.sessionId })
@@ -126,7 +127,7 @@ class PlayScene extends Phaser.Scene {
 
     private fetchAndApplyState = async () => {
         try {
-            const resp = await fetch(`http://localhost:8000/cryptobubbles_game_state?sessionId=${this.sessionId}`);
+            const resp = await fetch(`${BACKEND_BASE_URL}/cryptobubbles_game_state?sessionId=${this.sessionId}`);
             if (!resp.ok) return;
             const data = await resp.json();
 
@@ -275,7 +276,7 @@ class PlayScene extends Phaser.Scene {
             if (!e.alive) {
                 row.setAlpha(0.6);
                 const strike = this.add.rectangle(boxX + 12 + row.width / 2, y + 7, row.width, 1, 0x9ca3af).setOrigin(0.5, 0).setScrollFactor(0).setDepth(101);
-                this.leaderboardBox.add ? null : null; // keep linter happy
+                // keep linter happy
                 this.leaderboardTexts.push(strike as any);
             }
             this.leaderboardTexts.push(row);
@@ -343,7 +344,7 @@ class PlayScene extends Phaser.Scene {
         // Periodically send intent (20 Hz)
         if (!this.gameOver && time - this.lastSent > 50 && this.target) {
             this.lastSent = time;
-            fetch('http://localhost:8000/cryptobubbles_move', {
+            fetch(`${BACKEND_BASE_URL}/cryptobubbles_move`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sessionId: this.sessionId, player: this.playerAddress, x: this.target.x, y: this.target.y })

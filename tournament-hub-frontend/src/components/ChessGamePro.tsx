@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { BACKEND_BASE_URL } from '../config/backend';
 import { Chessground } from 'chessground';
 // Use root css path for Vite compatibility
 import '/node_modules/chessground/assets/chessground.base.css';
@@ -89,7 +90,7 @@ export const ChessGamePro: React.FC<Props> = ({ sessionId, playerAddress }) => {
 
     async function fetchState() {
         try {
-            const res = await fetch(`http://localhost:8000/chess_game_state?sessionId=${sessionId}`);
+            const res = await fetch(`${BACKEND_BASE_URL}/chess_game_state?sessionId=${sessionId}`);
             const data = await res.json();
             setState(data);
             const youWhite = data.white_player === playerAddress;
@@ -153,7 +154,7 @@ export const ChessGamePro: React.FC<Props> = ({ sessionId, playerAddress }) => {
                                 promotion = await promptPromotion();
                             }
 
-                            const resp = await fetch('http://localhost:8000/chess_move', {
+                            const resp = await fetch(`${BACKEND_BASE_URL}/chess_move`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ sessionId, player: playerAddress, from_pos: toServerCoord(orig), to_pos: toServerCoord(dest), promotion })
@@ -189,7 +190,7 @@ export const ChessGamePro: React.FC<Props> = ({ sessionId, playerAddress }) => {
         }
 
         // Enhanced "check" UX: pulse and mark king square
-        const inCheck = chess.in_check && (chess as any).in_check();
+        const inCheck = chess.inCheck();
         const boardEl = (boardRef.current as HTMLElement).querySelector('.cg-board');
         if (inCheck && boardEl) {
             boardEl.classList.add('in-check');
@@ -224,7 +225,7 @@ export const ChessGamePro: React.FC<Props> = ({ sessionId, playerAddress }) => {
     }
     async function sendEmoji(e: string) {
         async function postTo(path: string) {
-            return fetch(`http://localhost:8000${path}`, {
+            return fetch(`${BACKEND_BASE_URL}${path}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sessionId, player: playerAddress, emoji: e })
             });
@@ -251,7 +252,7 @@ export const ChessGamePro: React.FC<Props> = ({ sessionId, playerAddress }) => {
             <HStack justify="space-between" align="center">
                 <HStack>
                     <Badge colorScheme={state.current_turn === 'white' ? 'blue' : 'gray'}>{state.current_turn === 'white' ? 'White' : 'Black'} to move</Badge>
-                    {isKingInCheck(fen, state.current_turn) && (
+                    {isKingInCheck(fen) && (
                         <Badge colorScheme="red">Check!</Badge>
                     )}
                     {isSpectator && (
@@ -377,12 +378,12 @@ async function promptPromotion(): Promise<'q' | 'r' | 'b' | 'n'> {
     return (allowed.includes(pick as any) ? (pick as any) : 'q');
 }
 
-function isKingInCheck(fen: string, _color?: 'white' | 'black') {
+function isKingInCheck(fen?: string, _color?: 'white' | 'black') {
     try {
+        if (!fen) return false;
         const c = new Chess(fen);
-        const moves = c.moves({ verbose: true }) as any[];
-        // chess.js exposes in_check after a move; here we approximate by scanning 'check' flag presence
-        return (c as any).in_check && (c as any).in_check();
+        // chess.js exposes inCheck() method
+        return c.inCheck();
     } catch {
         return false;
     }
