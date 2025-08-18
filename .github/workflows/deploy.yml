@@ -1,0 +1,62 @@
+name: Build and Deploy to Cloudflare
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'devnet'
+        type: choice
+        options:
+        - devnet
+
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'main'
+        type: string
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      R2_BUCKET_NAME: ${{ github.event.inputs.environment == 'devnet' && vars.R2_BUCKET_DEVNET || github.event.inputs.environment == 'testnet' && vars.R2_BUCKET_TESTNET || github.event.inputs.environment == 'mainnet' && vars.R2_BUCKET_MAINNET || vars.R2_BUCKET_DEVNET }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: 'tournament-hub-frontend/package-lock.json'
+
+      - name: Install dependencies (frontend)
+        working-directory: tournament-hub-frontend
+        run: npm ci
+
+      - name: Build project (frontend)
+        working-directory: tournament-hub-frontend
+        run: npm run build
+
+      - name: Deploy to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          echo "🚀 Deploying to environment: ${{ github.event.inputs.environment }}"
+          echo "📦 Using bucket: $R2_BUCKET_NAME"
+          echo "🌿 From branch: ${{ github.event.inputs.branch }}"
+
+          # Sync files to R2 bucket with delete flag
+          aws s3 sync ./tournament-hub-frontend/build s3://$R2_BUCKET_NAME/ \
+            --endpoint-url ${{ vars.R2_ENDPOINT_URL }} \
+            --delete
+          echo "✅ Deployment complete!"
