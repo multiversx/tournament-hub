@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { BACKEND_BASE_URL } from '../config/backend';
 import { useNavigate } from 'react-router-dom';
 import {
     Box,
@@ -75,7 +76,7 @@ export const ChessGame: React.FC<ChessGameProps> = ({ sessionId, playerAddress }
 
     const fetchGameState = useCallback(async () => {
         try {
-            const response = await fetch(`http://localhost:8000/chess_game_state?sessionId=${sessionId}`);
+            const response = await fetch(`${BACKEND_BASE_URL}/chess_game_state?sessionId=${sessionId}`);
             if (!response.ok) {
                 throw new Error('Failed to fetch game state');
             }
@@ -121,7 +122,7 @@ export const ChessGame: React.FC<ChessGameProps> = ({ sessionId, playerAddress }
         if (selectedSquare) {
             // Try to make a move
             try {
-                const response = await fetch('http://localhost:8000/chess_move', {
+                const response = await fetch(`${BACKEND_BASE_URL}/chess_move`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

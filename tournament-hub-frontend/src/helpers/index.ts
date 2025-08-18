@@ -2,6 +2,7 @@ export * from './pingPong';
 export * from './signAndSendTransactions';
 
 import { getContractAddress, getNetwork } from '../config/contract';
+import { BACKEND_BASE_URL } from '../config/backend';
 import { Address } from '@multiversx/sdk-core';
 
 // Cache for API responses
@@ -218,7 +219,7 @@ export async function getTournamentsFromBlockchain() {
 
 export async function getRecentNotifierEvents(): Promise<Array<{ identifier: string; tournament_id: number; ts: number; game_id?: number; player?: string }>> {
     try {
-        const res = await fetch('/api/notifier/recent');
+        const res = await fetch(`${BACKEND_BASE_URL}/notifier/recent`);
         if (!res.ok) return [];
         const data = await res.json();
         if (!Array.isArray(data)) return [];
@@ -230,7 +231,7 @@ export async function getRecentNotifierEvents(): Promise<Array<{ identifier: str
 
 export async function getRecentJoins(tournamentId: string | number): Promise<string[]> {
     try {
-        const res = await fetch(`/api/notifier/joins?tournamentId=${tournamentId}`);
+        const res = await fetch(`${BACKEND_BASE_URL}/notifier/joins?tournamentId=${tournamentId}`);
         if (!res.ok) return [];
         const data = await res.json();
         if (!Array.isArray(data)) return [];
@@ -242,7 +243,7 @@ export async function getRecentJoins(tournamentId: string | number): Promise<str
 
 export async function getRecentGameStart(tournamentId: string | number): Promise<{ started: boolean; ts: number }> {
     try {
-        const res = await fetch(`/api/notifier/game-start?tournamentId=${tournamentId}`);
+        const res = await fetch(`${BACKEND_BASE_URL}/notifier/game-start?tournamentId=${tournamentId}`);
         if (!res.ok) return { started: false, ts: 0 };
         const data = await res.json();
         return { started: !!data.started, ts: Number(data.ts || 0) };
@@ -253,7 +254,7 @@ export async function getRecentGameStart(tournamentId: string | number): Promise
 
 export async function getAnyJoinTs(): Promise<number> {
     try {
-        const res = await fetch(`/api/notifier/joins-any`);
+        const res = await fetch(`${BACKEND_BASE_URL}/notifier/joins-any`);
         if (!res.ok) return 0;
         const data = await res.json();
         return Number(data.ts || 0);
