@@ -8,6 +8,7 @@ import DodgeDash from '../components/DodgeDash';
 import { Box, Text, VStack, Spinner, useToast, Button } from '@chakra-ui/react';
 import { useGetAccount } from 'lib';
 import { getTournamentDetailsFromContract } from '../helpers';
+import { BACKEND_BASE_URL } from '../config/backend';
 
 export const GameSession: React.FC = () => {
     const { address: playerAddress } = useGetAccount();
@@ -52,7 +53,7 @@ export const GameSession: React.FC = () => {
                         console.log('Creating game session with players:', players);
 
                         // Create game session
-                        const sessionResponse = await fetch('http://localhost:8000/start_session', {
+                        const sessionResponse = await fetch(`${BACKEND_BASE_URL}/start_session`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -111,7 +112,7 @@ export const GameSession: React.FC = () => {
         // Try to determine game type from session
         const determineGameType = async () => {
             try {
-                const response = await fetch(`http://localhost:8000/game_state?session_id=${actualSessionId}`);
+                const response = await fetch(`${BACKEND_BASE_URL}/game_state?session_id=${actualSessionId}`);
                 if (response.ok) {
                     const data = await response.json();
                     if (data.board && typeof data.board === 'object' && data.current_turn && data.white_player) {

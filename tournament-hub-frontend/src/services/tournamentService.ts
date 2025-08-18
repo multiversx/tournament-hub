@@ -1,3 +1,4 @@
+import { BACKEND_BASE_URL } from '../config/backend';
 import { getContractAddress } from '../config/contract';
 
 const CONTRACT_ADDRESS = getContractAddress();
@@ -69,7 +70,7 @@ export interface StartSessionRequest {
 
 export const startTournamentSession = async (tournamentId: number, gameType: number) => {
   try {
-    const response = await fetch(`http://localhost:8000/start_session`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/start_session`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -93,7 +94,7 @@ export const startTournamentSession = async (tournamentId: number, gameType: num
 
 export const startGameSession = async (tournamentId: string, gameType: number, playerAddresses?: string[]) => {
   try {
-    const response = await fetch(`http://localhost:8000/start_session`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/start_session`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -117,7 +118,7 @@ export const startGameSession = async (tournamentId: string, gameType: number, p
 };
 
 export async function getGameState(sessionId: string): Promise<GameSession> {
-  const response = await fetch(`http://localhost:8000/game_state?session_id=${sessionId}`);
+  const response = await fetch(`${BACKEND_BASE_URL}/game_state?session_id=${sessionId}`);
 
   if (!response.ok) {
     throw new Error('Failed to fetch game state');
@@ -127,7 +128,7 @@ export async function getGameState(sessionId: string): Promise<GameSession> {
 }
 
 export async function makeMove(sessionId: string, playerAddress: string, moveData: any): Promise<GameSession> {
-  const response = await fetch(`http://localhost:8000/move`, {
+  const response = await fetch(`${BACKEND_BASE_URL}/move`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -148,7 +149,7 @@ export async function makeMove(sessionId: string, playerAddress: string, moveDat
 }
 
 export async function submitTournamentResults(sessionId: string, winner: string): Promise<any> {
-  const response = await fetch(`http://localhost:8000/submit_results`, {
+  const response = await fetch(`${BACKEND_BASE_URL}/submit_results`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -168,7 +169,7 @@ export async function submitTournamentResults(sessionId: string, winner: string)
 }
 
 export async function getGameConfigs(): Promise<any> {
-  const response = await fetch(`http://localhost:8000/game-configs`);
+  const response = await fetch(`${BACKEND_BASE_URL}/game-configs`);
 
   if (!response.ok) {
     throw new Error('Failed to fetch game configs');
