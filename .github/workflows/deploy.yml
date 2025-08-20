@@ -43,6 +43,8 @@ jobs:
 
       - name: Build project (frontend)
         working-directory: tournament-hub-frontend
+        env:
+          VITE_BACKEND_URL: https://devnet-tools.multiversx.com/tournament-hub
         run: npm run build
 
       - name: Deploy to Cloudflare R2
