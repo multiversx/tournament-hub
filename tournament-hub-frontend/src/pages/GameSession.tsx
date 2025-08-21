@@ -4,6 +4,7 @@ import { CryptoBubblesGame } from '../components/CryptoBubblesGame';
 import { CryptoBubblesGamePhaser } from '../components/CryptoBubblesGamePhaser';
 import { ChessGamePro } from '../components/ChessGamePro';
 import { TicTacToeGame } from '../components/TicTacToeGame';
+import { ColorRush } from '../components/ColorRush';
 import DodgeDash from '../components/DodgeDash';
 import { Box, Text, VStack, Spinner, useToast, Button } from '@chakra-ui/react';
 import { useGetAccount } from 'lib';
@@ -41,7 +42,8 @@ export const GameSession: React.FC = () => {
                         const gameTypeMap: { [key: number]: string } = {
                             1: 'tictactoe',
                             2: 'chess',
-                            3: 'cryptobubbles'
+                            3: 'cryptobubbles',
+                            4: 'colorrush'
                         };
 
                         const gameType = gameTypeMap[gameId] || (gameId === 6 ? 'dodgedash' : 'cryptobubbles');
@@ -119,6 +121,8 @@ export const GameSession: React.FC = () => {
                         setGameType('chess');
                     } else if (data.board && Array.isArray(data.board) && data.board.length === 3) {
                         setGameType('tictactoe');
+                    } else if (data.board && Array.isArray(data.board) && data.board.length === 8 && data.board[0] && data.board[0].length === 8) {
+                        setGameType('colorrush');
                     } else {
                         setGameType('cryptobubbles');
                     }
@@ -162,6 +166,21 @@ export const GameSession: React.FC = () => {
             ) : gameType === 'dodgedash' ? (
                 <Box position="relative">
                     <DodgeDash sessionId={actualSessionId!} playerAddress={playerAddress} />
+                    <Button
+                        position="absolute"
+                        top={2}
+                        right={2}
+                        size="sm"
+                        colorScheme="red"
+                        onClick={() => navigate('/tournaments')}
+                        zIndex={200}
+                    >
+                        Exit Game
+                    </Button>
+                </Box>
+            ) : gameType === 'colorrush' ? (
+                <Box position="relative">
+                    <ColorRush sessionId={actualSessionId!} playerAddress={playerAddress} />
                     <Button
                         position="absolute"
                         top={2}

@@ -18,6 +18,13 @@ export const GAME_CONFIGS = {
     gameType: "turn_based",
     description: "Strategic board game"
   },
+  4: {
+    name: "Color Rush",
+    minPlayers: 2,
+    maxPlayers: 2,
+    gameType: "real_time",
+    description: "Match colorful tiles to score points in 60 seconds"
+  },
   5: {
     name: "CryptoBubbles",
     minPlayers: 2,
