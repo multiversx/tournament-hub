@@ -77,10 +77,10 @@ export const CreateTournament: React.FC = () => {
     const [errors, setErrors] = useState<FormErrors>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Ensure PvP games (TicTacToe=1, Chess=2) always show 2/2 even on initial load
+    // Ensure PvP games (TicTacToe=1, Chess=2, ColorRush=4) always show 2/2 even on initial load
     React.useEffect(() => {
         const gameId = parseInt(formData.gameType);
-        if ((gameId === 1 || gameId === 2) && (formData.maxPlayers !== '2' || formData.minPlayers !== '2')) {
+        if ((gameId === 1 || gameId === 2 || gameId === 4) && (formData.maxPlayers !== '2' || formData.minPlayers !== '2')) {
             setFormData(prev => ({ ...prev, maxPlayers: '2', minPlayers: '2' }));
         }
     }, [formData.gameType]);
@@ -311,7 +311,7 @@ export const CreateTournament: React.FC = () => {
                                             onChange={(value) => handleInputChange('maxPlayers', value)}
                                             min={2}
                                             max={8}
-                                            isDisabled={parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1}
+                                            isDisabled={parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1 || parseInt(formData.gameType) === 4}
                                         >
                                             <NumberInputField sx={{ color: 'white !important' }} />
                                         </NumberInput>
@@ -328,13 +328,13 @@ export const CreateTournament: React.FC = () => {
                                             onChange={(value) => handleInputChange('minPlayers', value)}
                                             min={2}
                                             max={parseInt(formData.maxPlayers)}
-                                            isDisabled={parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1}
+                                            isDisabled={parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1 || parseInt(formData.gameType) === 4}
                                         >
                                             <NumberInputField sx={{ color: 'white !important' }} />
                                         </NumberInput>
                                         {errors.minPlayers && <Text color="red.400" fontSize="sm">{errors.minPlayers}</Text>}
                                     </FormControl>
-                                    {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1) && (
+                                    {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1 || parseInt(formData.gameType) === 4) && (
                                         <Box gridColumn={{ base: '1', md: '1 / span 2' }}>
                                             <Alert status="info" variant="left-accent" borderRadius="md">
                                                 <AlertIcon />

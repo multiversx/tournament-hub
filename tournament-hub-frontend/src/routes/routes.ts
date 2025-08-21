@@ -1,5 +1,5 @@
 import { RouteNamesEnum } from 'localConstants';
-import { Dashboard, Disclaimer, Home, Unlock, Tournaments, TournamentDetails, CreateTournament, GameSession } from 'pages';
+import { Dashboard, Disclaimer, Home, Unlock, Tournaments, TournamentDetails, CreateTournament, GameSession, ColorRushDemoPage } from 'pages';
 import { RouteType } from 'types';
 
 interface RouteWithTitleType extends RouteType {
@@ -55,6 +55,16 @@ export const routes: RouteWithTitleType[] = [
     path: '/game/cryptobubbles/:tournamentId',
     title: 'CryptoBubbles Game',
     component: GameSession
+  },
+  {
+    path: '/game/colorrush/:tournamentId',
+    title: 'Color Rush Game',
+    component: GameSession
+  },
+  {
+    path: '/demo/colorrush',
+    title: 'Color Rush Demo',
+    component: ColorRushDemoPage
   },
   {
     path: RouteNamesEnum.disclaimer,
