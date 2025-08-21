@@ -16,6 +16,8 @@ export { ChessGamePro } from './ChessGamePro';
 export { default as DodgeDash } from './DodgeDash';
 export { ChessGame } from './ChessGame';
 export { TicTacToeGame } from './TicTacToeGame';
+export { ColorRush } from './ColorRush';
+export { ColorRushDemo } from './ColorRushDemo';
 
 // Export OutputContainer components
 export { TransactionsOutput } from './OutputContainer/components/TransactionsOutput';
