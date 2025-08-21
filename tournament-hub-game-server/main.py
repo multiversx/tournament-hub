@@ -25,6 +25,9 @@ from chess_game_engine import create_chess_game, get_chess_game, remove_chess_ga
 # Import Tic Tac Toe game engine
 from tictactoe_game_engine import create_tictactoe_game, get_tictactoe_game, remove_tictactoe_game, TicTacToeGameEngine
 
+# Import Color Rush game engine
+from colorrush_game_engine import create_colorrush_game, get_colorrush_game, remove_colorrush_game, ColorRushGameEngine, colorrush_games
+
 # Import contract interaction
 from contract.submit_results import sign_results_for_tournament, submit_results_to_contract_with_signature
 from notifier_subscriber import start_notifier_subscriber
@@ -123,8 +126,8 @@ def determine_game_type(game_type_id: Optional[int]) -> str:
         return "chess"
     elif game_type_id == 3:  # Deprecated
         return "cryptobubbles"
-    elif game_type_id == 4:  # Deprecated
-        return "cryptobubbles"
+    elif game_type_id == 4:  # Color Rush
+        return "colorrush"
     elif game_type_id == 5:  # CryptoBubbles
         return "cryptobubbles"
     elif game_type_id == 6:  # DodgeDash
@@ -153,6 +156,8 @@ def create_game_instance(game_type: str, session_id: str, players: List[str]):
         create_tictactoe_game(session_id, players)
     elif game_type == "dodgedash":
         create_dodgedash_game(session_id, players)
+    elif game_type == "colorrush":
+        create_colorrush_game(session_id, players)
     else:  # All other games default to CryptoBubbles for now
         logger.info(f"Game type '{game_type}' not implemented yet, using CryptoBubbles as fallback")
         create_cryptobubbles_game(session_id, players)
@@ -609,6 +614,18 @@ async def start_session(request: StartSessionRequest):
                     elif game_type == 'cryptobubbles':
                         # Engines for other games are created on demand elsewhere; skip for now
                         pass
+                    elif game_type == 'colorrush':
+                        from colorrush_game_engine import get_colorrush_game, create_colorrush_game
+                        g = get_colorrush_game(existing_session_id)
+                        if not g:
+                            logger.info(f"Creating Color Rush engine for existing session {existing_session_id}")
+                            create_colorrush_game(existing_session_id, request.playerAddresses or [])
+                        else:
+                            if request.playerAddresses:
+                                for p in request.playerAddresses:
+                                    if p not in g.players:
+                                        g.players.append(p)
+                                        g.state.scores[p] = 0
                 except Exception as e:
                     logger.warning(f"Failed to ensure engine for existing session: {e}")
                 logger.info(f"Returning existing session: {existing_session_id} for tournament: {request.tournamentId}")
@@ -1272,6 +1289,28 @@ def check_and_submit_game_results():
                         except Exception as e:
                             logger.error(f"Error processing TicTacToe game results for {session_id}: {e}")
 
+            # Check Color Rush games
+            for session_id, game in colorrush_games.items():
+                if not getattr(game, 'results_submitted', False):
+                    game_state = game.get_game_state()
+                    if game_state.get('game_over', False) and game_state.get('winner'):
+                        logger.info(f"Color Rush game {session_id} finished! Winner: {game_state['winner']}")
+                        game.results_submitted = True
+                        try:
+                            tournament_id = int(session_id.split('_')[-1]) if session_id.startswith('session_') else int(session_id)
+                            podium = [game_state['winner']]
+                            signature = sign_results_for_tournament(tournament_id, podium)
+                            if signature:
+                                tx_hash = submit_results_to_contract_with_signature(tournament_id, podium, signature)
+                                if tx_hash:
+                                    logger.info(f"Color Rush results submitted for tournament {tournament_id}: {tx_hash}")
+                                else:
+                                    logger.error(f"Failed to submit Color Rush results for tournament {tournament_id}")
+                            else:
+                                logger.error(f"Failed to sign Color Rush results for tournament {tournament_id}")
+                        except Exception as e:
+                            logger.error(f"Error processing Color Rush game results for {session_id}: {e}")
+
             # Update DodgeDash games and submit results
             for session_id, game in dodgedash_games.items():
                 game.update_game_state()
@@ -1293,6 +1332,91 @@ def check_and_submit_game_results():
         except Exception as e:
             logger.error(f"Error checking game results: {e}")
             time.sleep(5)  # Wait longer on error
+
+# Color Rush API Endpoints
+@app.post("/join_colorrush_session")
+async def join_colorrush_session(sessionId: str, player: str):
+    """Join a Color Rush game session"""
+    try:
+        if sessionId not in colorrush_games:
+            # Create new game if it doesn't exist
+            create_colorrush_game(sessionId, [player])
+            logger.info(f"Created new Color Rush game session {sessionId} for player {player}")
+        else:
+            game = get_colorrush_game(sessionId)
+            if player not in game.players:
+                game.players.append(player)
+                game.state.scores[player] = 0
+                logger.info(f"Player {player} joined Color Rush game session {sessionId}")
+        
+        return {"success": True, "message": "Joined Color Rush session"}
+    except Exception as e:
+        logger.error(f"Error joining Color Rush session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/start_colorrush_game")
+async def start_colorrush_game(sessionId: str, player: str):
+    """Start a Color Rush game"""
+    try:
+        game = get_colorrush_game(sessionId)
+        if not game:
+            raise HTTPException(status_code=404, detail="Game session not found")
+        
+        if game.start_game(player):
+            logger.info(f"Color Rush game started for session {sessionId}")
+            return {"success": True, "message": "Game started"}
+        else:
+            raise HTTPException(status_code=400, detail="Cannot start game")
+    except Exception as e:
+        logger.error(f"Error starting Color Rush game: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/colorrush_game_state")
+async def get_colorrush_game_state(sessionId: str):
+    """Get Color Rush game state"""
+    try:
+        game = get_colorrush_game(sessionId)
+        if not game:
+            raise HTTPException(status_code=404, detail="Game session not found")
+        
+        return game.get_game_state()
+    except Exception as e:
+        logger.error(f"Error getting Color Rush game state: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/submit_colorrush_score")
+async def submit_colorrush_score(sessionId: str, player: str, score: int, tilesCleared: int, combo: int):
+    """Submit final score for Color Rush game"""
+    try:
+        game = get_colorrush_game(sessionId)
+        if not game:
+            raise HTTPException(status_code=404, detail="Game session not found")
+        
+        if game.submit_score(player, score, tilesCleared, combo):
+            logger.info(f"Score submitted for Color Rush game {sessionId}: {score} points")
+            return {"success": True, "message": "Score submitted"}
+        else:
+            raise HTTPException(status_code=400, detail="Failed to submit score")
+    except Exception as e:
+        logger.error(f"Error submitting Color Rush score: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/colorrush_tile_click")
+async def colorrush_tile_click(sessionId: str, player: str, tileId: str):
+    """Handle tile click in Color Rush game"""
+    try:
+        game = get_colorrush_game(sessionId)
+        if not game:
+            raise HTTPException(status_code=404, detail="Game session not found")
+        
+        result = game.select_tile(tileId, player)
+        if result["success"]:
+            return result
+        else:
+            raise HTTPException(status_code=400, detail=result["message"])
+    except Exception as e:
+        logger.error(f"Error handling Color Rush tile click: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Start background update thread
 update_thread = threading.Thread(target=update_cryptobubbles_games, daemon=True)
@@ -1333,4 +1457,10 @@ async def startup_event():
         asyncio.create_task(start_notifier_subscriber(handle_notifier_event))
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    root_path = os.getenv("ROOT_PATH", "")
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=8000,
+        root_path=root_path  # ✅ Add this line
+    )
