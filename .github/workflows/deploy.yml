@@ -44,7 +44,7 @@ jobs:
       - name: Build project (frontend)
         working-directory: tournament-hub-frontend
         env:
-          VITE_BACKEND_URL: ${{ github.event.inputs.environment == 'devnet' && 'https://devnet-tools.multiversx.com/tournament-hub' || 'https://production-domain.com/tournament-hub' }}
+            VITE_BACKEND_URL: https://devnet-tools.multiversx.com/tournament-hub
 
       - name: Deploy to Cloudflare R2
         env:
