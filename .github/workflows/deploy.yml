@@ -44,8 +44,7 @@ jobs:
       - name: Build project (frontend)
         working-directory: tournament-hub-frontend
         env:
-          VITE_BACKEND_URL: https://devnet-tools.multiversx.com/tournament-hub
-        run: npm run build
+          VITE_BACKEND_URL: ${{ github.event.inputs.environment == 'devnet' && 'https://devnet-tools.multiversx.com/tournament-hub' || 'https://production-domain.com/tournament-hub' }}
 
       - name: Deploy to Cloudflare R2
         env:
@@ -56,6 +55,7 @@ jobs:
           echo "🚀 Deploying to environment: ${{ github.event.inputs.environment }}"
           echo "📦 Using bucket: $R2_BUCKET_NAME"
           echo "🌿 From branch: ${{ github.event.inputs.branch }}"
+          echo "🔗 Backend URL: ${{ github.event.inputs.environment == 'devnet' && 'https://devnet-tools.multiversx.com/tournament-hub' || 'https://production-domain.com/tournament-hub' }}"
 
           # Sync files to R2 bucket with delete flag
           aws s3 sync ./tournament-hub-frontend/build s3://$R2_BUCKET_NAME/ \
