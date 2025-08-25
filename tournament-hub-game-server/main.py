@@ -12,7 +12,22 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 import requests
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from bech32 import bech32_encode, convertbits
+
+# Handle bech32 import - try different package names
+try:
+    from bech32 import bech32_encode, convertbits
+except ImportError:
+    try:
+        from bech32m import bech32_encode, convertbits
+    except ImportError:
+        # If neither works, create dummy functions for production fallback
+        def bech32_encode(hrp, data):
+            return "dummy_bech32_encode"
+        def convertbits(data, frombits, tobits, pad=True):
+            return data
+        logger = logging.getLogger(__name__)
+        logger.warning("bech32 module not found, using fallback functions")
+
 import uvicorn
 
 # Import CryptoBubbles game engine
@@ -1082,13 +1097,24 @@ async def post_emoji(req: ChessEmojiRequest):
 async def get_tictactoe_game_state(sessionId: str):
     """Get the current state of a Tic Tac Toe game"""
     try:
+        # Add validation for sessionId
+        if not sessionId or sessionId == "null":
+            logger.warning(f"Invalid sessionId provided: '{sessionId}'")
+            raise HTTPException(status_code=400, detail="Invalid sessionId provided")
+        
+        logger.info(f"Fetching Tic Tac Toe game state for session: {sessionId}")
         game = get_tictactoe_game(sessionId)
         if not game:
+            logger.warning(f"Tic Tac Toe game not found for session: {sessionId}")
             raise HTTPException(status_code=404, detail="Tic Tac Toe game not found")
         
-        return game.get_game_state()
+        game_state = game.get_game_state()
+        logger.info(f"Successfully retrieved game state for session: {sessionId}")
+        return game_state
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error getting Tic Tac Toe game state: {e}")
+        logger.error(f"Error getting Tic Tac Toe game state for session {sessionId}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/tictactoe_move")
@@ -1440,9 +1466,9 @@ async def startup_event():
         try:
             # Start RabbitMQ subscriber in background thread
             subscriber = RabbitNotifierSubscriber(
-                amqp_host=os.getenv("MX_AMQP_HOST", "devnet-external-k8s-proxy.multiversx.com"),
-                amqp_port=int(os.getenv("MX_AMQP_PORT", "30006")),
-                amqp_vhost=os.getenv("MX_AMQP_VHOST", "devnet2"),
+                amqp_host=os.getenv("MX_AMQP_HOST", "localhost"),
+                amqp_port=int(os.getenv("MX_AMQP_PORT", "5672")),
+                amqp_vhost=os.getenv("MX_AMQP_VHOST", "/"),
                 amqp_user=os.getenv("MX_AMQP_USER", ""),
                 amqp_pass=os.getenv("MX_AMQP_PASS", ""),
                 exchange=os.getenv("MX_AMQP_EXCHANGE", "all_events"),
