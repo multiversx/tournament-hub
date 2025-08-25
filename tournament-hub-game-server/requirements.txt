@@ -6,4 +6,3 @@ pynacl
 multiversx-sdk 
 websockets
 pika
-bech32
