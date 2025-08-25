@@ -22,9 +22,9 @@ class RabbitNotifierSubscriber:
                  event_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> None:
         # Either amqp_url or host/port/vhost/user/pass
         self.amqp_url = amqp_url or os.getenv("MX_AMQP_URL")
-        self.host = amqp_host or os.getenv("MX_AMQP_HOST", "devnet-external-k8s-proxy.multiversx.com")
-        self.port = int(amqp_port or os.getenv("MX_AMQP_PORT", "30006"))
-        self.vhost = amqp_vhost or os.getenv("MX_AMQP_VHOST", "devnet2")
+        self.host = amqp_host or os.getenv("MX_AMQP_HOST", "localhost")
+        self.port = int(amqp_port or os.getenv("MX_AMQP_PORT", "5672"))
+        self.vhost = amqp_vhost or os.getenv("MX_AMQP_VHOST", "/")
         self.user = amqp_user or os.getenv("MX_AMQP_USER", "")
         self.password = amqp_pass or os.getenv("MX_AMQP_PASS", "")
         self.exchange = os.getenv("MX_AMQP_EXCHANGE", exchange)
