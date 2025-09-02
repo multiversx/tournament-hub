@@ -547,11 +547,13 @@ def handle_notifier_event(event: Dict):
         logger.error(f"Notifier event handling error: {e}")
 
 @app.get("/notifier/recent")
+@app.get("/tournament-hub/notifier/recent")
 async def get_recent_notifier_events():
     with recent_events_lock:
         return list(recent_notifier_events)
 
 @app.get("/notifier/joins")
+@app.get("/tournament-hub/notifier/joins")
 async def get_recent_joins(tournamentId: str):
     # Return recent join addresses for a tournament (session id)
     sid = str(tournamentId)
@@ -560,6 +562,7 @@ async def get_recent_joins(tournamentId: str):
         return list(dq) if dq else []
 
 @app.get("/notifier/game-start")
+@app.get("/tournament-hub/notifier/game-start")
 async def get_recent_game_start(tournamentId: str):
     sid = str(tournamentId)
     with recent_game_starts_lock:
@@ -569,6 +572,7 @@ async def get_recent_game_start(tournamentId: str):
 
 
 @app.get("/notifier/joins-any")
+@app.get("/tournament-hub/notifier/joins-any")
 async def get_recent_any_join():
     return {"ts": last_global_join_ts}
 
@@ -603,6 +607,7 @@ async def root():
     }
 
 @app.post("/test")
+@app.post("/tournament-hub/test")
 async def test_post():
     """Test POST endpoint"""
     return {"message": "POST request received", "timestamp": time.time()}
@@ -661,6 +666,7 @@ def error_response(message: str, status_code: int = 400):
     return {"error": message, "status_code": status_code}
 
 @app.post("/start_session")
+@app.post("/tournament-hub/start_session")
 async def start_session(request: StartSessionRequest):
     """Start a new game session"""
     logger.info("=== START_SESSION ROUTE CALLED ===")
@@ -1163,6 +1169,7 @@ async def post_emoji(req: ChessEmojiRequest):
 
 # Tic Tac Toe specific endpoints
 @app.get("/tictactoe_game_state")
+@app.get("/tournament-hub/tictactoe_game_state")
 async def get_tictactoe_game_state(sessionId: str):
     """Get the current state of a Tic Tac Toe game"""
     try:
