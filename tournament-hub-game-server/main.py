@@ -815,6 +815,7 @@ async def start_session(request: StartSessionRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/join_session")
+@app.post("/tournament-hub/join_session")
 async def join_session(session_id: str, request: JoinSessionRequest):
     """Join an existing session"""
     try:
@@ -876,6 +877,7 @@ async def get_game_state(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/move")
+@app.post("/tournament-hub/move")
 async def submit_move(session_id: str, request: MoveRequest):
     """Submit a move in the game - handles both chess and CryptoBubbles"""
     try:
@@ -910,6 +912,7 @@ async def submit_move(session_id: str, request: MoveRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/start_game")
+@app.post("/tournament-hub/start_game")
 async def start_game(session_id: str):
     """Start the game"""
     try:
@@ -963,6 +966,7 @@ class DodgeDashMoveRequest(BaseModel):
     dash: bool = False
 
 @app.post("/dodgedash_move")
+@app.post("/tournament-hub/dodgedash_move")
 async def dodgedash_move(req: DodgeDashMoveRequest):
     game = get_dodgedash_game(req.sessionId)
     if not game:
@@ -977,6 +981,7 @@ async def dodgedash_move(req: DodgeDashMoveRequest):
     return { 'status': 'ok' }
 
 @app.post("/join_dodgedash_session")
+@app.post("/tournament-hub/join_dodgedash_session")
 async def join_dodgedash_session(sessionId: str, player: str):
     game = get_dodgedash_game(sessionId)
     if not game:
@@ -988,6 +993,7 @@ async def join_dodgedash_session(sessionId: str, player: str):
     return { 'status': 'joined' }
 
 @app.post("/start_cryptobubbles_game")
+@app.post("/tournament-hub/start_cryptobubbles_game")
 async def start_cryptobubbles_game(request: StartCryptoBubblesGameRequest):
     """Start a CryptoBubbles game"""
     game = get_cryptobubbles_game(request.sessionId)
@@ -999,6 +1005,7 @@ async def start_cryptobubbles_game(request: StartCryptoBubblesGameRequest):
     return {"status": "started"}
 
 @app.post("/cryptobubbles_move")
+@app.post("/tournament-hub/cryptobubbles_move")
 async def submit_cryptobubbles_move(request: CryptoBubblesMoveRequest):
     """Submit a move in CryptoBubbles game"""
     game = get_cryptobubbles_game(request.sessionId)
@@ -1010,6 +1017,7 @@ async def submit_cryptobubbles_move(request: CryptoBubblesMoveRequest):
     return {"status": "moved"}
 
 @app.post("/join_cryptobubbles_session")
+@app.post("/tournament-hub/join_cryptobubbles_session")
 async def join_cryptobubbles_session(sessionId: str, player: str):
     """Join an existing CryptoBubbles session"""
     try:
@@ -1078,6 +1086,7 @@ async def get_chess_game_state(sessionId: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chess_move")
+@app.post("/tournament-hub/chess_move")
 async def submit_chess_move(request: ChessMoveRequest):
     """Submit a move in a chess game"""
     try:
@@ -1125,6 +1134,7 @@ async def submit_chess_move(request: ChessMoveRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/start_chess_game")
+@app.post("/tournament-hub/start_chess_game")
 async def start_chess_game(sessionId: str):
     """Start a chess game (games start automatically when created)"""
     try:
@@ -1140,6 +1150,7 @@ async def start_chess_game(sessionId: str):
 
 # Emojis for chess sessions
 @app.post("/chess_emoji")
+@app.post("/tournament-hub/chess_emoji")
 async def post_chess_emoji(req: ChessEmojiRequest):
     try:
         if req.sessionId not in sessions:
@@ -1160,10 +1171,12 @@ async def post_chess_emoji(req: ChessEmojiRequest):
 
 # Aliases for compatibility
 @app.post("/chess-emoji")
+@app.post("/tournament-hub/chess-emoji")
 async def post_chess_emoji_dash(req: ChessEmojiRequest):
     return await post_chess_emoji(req)
 
 @app.post("/emoji")
+@app.post("/tournament-hub/emoji")
 async def post_emoji(req: ChessEmojiRequest):
     return await post_chess_emoji(req)
 
@@ -1192,24 +1205,31 @@ async def get_tictactoe_game_state(sessionId: str):
         return {"error": str(e), "sessionId": sessionId, "status": "error"}
 
 @app.post("/tictactoe_move")
+@app.post("/tournament-hub/tictactoe_move")
 async def submit_tictactoe_move(request: TicTacToeMoveRequest):
     """Submit a move in a Tic Tac Toe game"""
+    logger.info("=== TICTACTOE_MOVE ROUTE CALLED ===")
     try:
+        logger.info(f"Tic Tac Toe move request: sessionId={request.sessionId}, player={request.player}, row={request.row}, col={request.col}")
         game = get_tictactoe_game(request.sessionId)
         if not game:
+            logger.warning(f"Tic Tac Toe game not found for session: {request.sessionId}")
             raise HTTPException(status_code=404, detail="Tic Tac Toe game not found")
         
         # Make the move
         success = game.make_move(request.row, request.col, request.player)
         if not success:
+            logger.warning(f"Invalid move attempted: player={request.player}, row={request.row}, col={request.col}")
             raise HTTPException(status_code=400, detail="Invalid move")
         
+        logger.info(f"Move successful for player {request.player} at ({request.row}, {request.col})")
         return {"status": "moved", "game_state": game.get_game_state()}
     except Exception as e:
         logger.error(f"Error making Tic Tac Toe move: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/start_tictactoe_game")
+@app.post("/tournament-hub/start_tictactoe_game")
 async def start_tictactoe_game(sessionId: str):
     """Start a Tic Tac Toe game (games start automatically when created)"""
     try:
@@ -1435,6 +1455,7 @@ def check_and_submit_game_results():
 
 # Color Rush API Endpoints
 @app.post("/join_colorrush_session")
+@app.post("/tournament-hub/join_colorrush_session")
 async def join_colorrush_session(sessionId: str, player: str):
     """Join a Color Rush game session"""
     try:
@@ -1455,6 +1476,7 @@ async def join_colorrush_session(sessionId: str, player: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/start_colorrush_game")
+@app.post("/tournament-hub/start_colorrush_game")
 async def start_colorrush_game(sessionId: str, player: str):
     """Start a Color Rush game"""
     try:
@@ -1485,6 +1507,7 @@ async def get_colorrush_game_state(sessionId: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/submit_colorrush_score")
+@app.post("/tournament-hub/submit_colorrush_score")
 async def submit_colorrush_score(sessionId: str, player: str, score: int, tilesCleared: int, combo: int):
     """Submit final score for Color Rush game"""
     try:
@@ -1502,6 +1525,7 @@ async def submit_colorrush_score(sessionId: str, player: str, score: int, tilesC
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/colorrush_tile_click")
+@app.post("/tournament-hub/colorrush_tile_click")
 async def colorrush_tile_click(sessionId: str, player: str, tileId: str):
     """Handle tile click in Color Rush game"""
     try:
