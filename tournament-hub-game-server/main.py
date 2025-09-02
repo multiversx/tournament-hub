@@ -545,6 +545,19 @@ async def get_recent_game_start(tournamentId: str):
 async def get_recent_any_join():
     return {"ts": last_global_join_ts}
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint to monitor server and notifier status"""
+    return {
+        "status": "healthy",
+        "timestamp": time.time(),
+        "active_sessions": len(sessions),
+        "recent_events_count": len(recent_notifier_events),
+        "contract_address": os.getenv("MX_TOURNAMENT_CONTRACT", "not_set"),
+        "notifier_ws_url": os.getenv("MX_NOTIFIER_WS_URL", "not_set"),
+        "notifier_amqp_host": os.getenv("MX_AMQP_HOST", "not_set"),
+    }
+
 # Pydantic models for requests
 class StartSessionRequest(BaseModel):
     players: Optional[List[str]] = None
@@ -1455,20 +1468,31 @@ results_thread.start()
 # Start notifier subscriber on startup
 @app.on_event("startup")
 async def startup_event():
-    # Prefer RabbitMQ notifier if AMQP config provided, else fallback to WS
+    logger.info("Starting Tournament Hub Game Server...")
+    
+    # Check if we have a contract address configured
+    contract_address = os.getenv("MX_TOURNAMENT_CONTRACT")
+    if not contract_address:
+        logger.warning("MX_TOURNAMENT_CONTRACT not set - notifier events will not be filtered by contract address")
+    
+    # Try to start notifiers with graceful fallback
+    notifier_started = False
+    
+    # Prefer RabbitMQ notifier if AMQP config provided
     use_amqp = any([
         os.getenv("MX_AMQP_URL"),
         os.getenv("MX_AMQP_HOST"),
         os.getenv("MX_AMQP_USER"),
         os.getenv("MX_AMQP_PASS"),
     ])
+    
     if use_amqp:
         try:
             # Start RabbitMQ subscriber in background thread
             subscriber = RabbitNotifierSubscriber(
-                amqp_host=os.getenv("MX_AMQP_HOST", "localhost"),
-                amqp_port=int(os.getenv("MX_AMQP_PORT", "5672")),
-                amqp_vhost=os.getenv("MX_AMQP_VHOST", "/"),
+                amqp_host=os.getenv("MX_AMQP_HOST", "devnet-external-k8s-proxy.multiversx.com"),
+                amqp_port=int(os.getenv("MX_AMQP_PORT", "30006")),
+                amqp_vhost=os.getenv("MX_AMQP_VHOST", "devnet2"),
                 amqp_user=os.getenv("MX_AMQP_USER", ""),
                 amqp_pass=os.getenv("MX_AMQP_PASS", ""),
                 exchange=os.getenv("MX_AMQP_EXCHANGE", "all_events"),
@@ -1476,11 +1500,24 @@ async def startup_event():
             )
             subscriber.start()
             logger.info("Started RabbitMQ notifier subscriber")
+            notifier_started = True
         except Exception as e:
-            logger.warning(f"Failed to start RabbitMQ notifier subscriber: {e}. Falling back to WS.")
+            logger.warning(f"Failed to start RabbitMQ notifier subscriber: {e}")
+    
+    # Fallback to WebSocket notifier
+    if not notifier_started:
+        try:
             asyncio.create_task(start_notifier_subscriber(handle_notifier_event))
+            logger.info("Started WebSocket notifier subscriber")
+            notifier_started = True
+        except Exception as e:
+            logger.error(f"Failed to start WebSocket notifier subscriber: {e}")
+    
+    if not notifier_started:
+        logger.error("Failed to start any notifier subscriber - events will not be received from the blockchain")
+        logger.info("Game server will continue to run but tournament events will not be processed automatically")
     else:
-        asyncio.create_task(start_notifier_subscriber(handle_notifier_event))
+        logger.info("Notifier subscriber started successfully")
 
 if __name__ == "__main__":
     root_path = os.getenv("ROOT_PATH", "")
