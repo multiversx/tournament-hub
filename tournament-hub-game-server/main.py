@@ -8,7 +8,8 @@ import os
 import base64
 import re
 from collections import deque
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi.responses import JSONResponse
 import requests
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -62,6 +63,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Custom 404 handler
+@app.exception_handler(404)
+async def custom_404_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=404,
+        content={
+            "error": "Endpoint not found",
+            "path": str(request.url.path),
+            "method": request.method,
+            "message": "The requested endpoint does not exist. Check the API documentation at /docs"
+        }
+    )
 
 # Global session storage
 sessions: Dict[str, Dict] = {}
@@ -618,6 +632,11 @@ async def start_session(request: StartSessionRequest):
         # Debug logging
         logger.info(f"Received start_session request: sessionId={request.sessionId}, tournamentId={request.tournamentId}, players={request.players}, game_type={request.game_type}")
         
+        # Validate that we have at least one identifier
+        if not request.tournamentId and not request.sessionId and not request.players:
+            logger.warning("Invalid start_session request: no tournamentId, sessionId, or players provided")
+            raise HTTPException(status_code=400, detail="Either 'tournamentId', 'sessionId', or 'players' must be provided")
+        
         # Handle new format (tournament-based sessions)
         if request.tournamentId:
             # Determine game type based on request.game_type
@@ -1111,24 +1130,22 @@ async def get_tictactoe_game_state(sessionId: str):
     """Get the current state of a Tic Tac Toe game"""
     try:
         # Add validation for sessionId
-        if not sessionId or sessionId == "null":
+        if not sessionId or sessionId == "null" or sessionId.strip() == "":
             logger.warning(f"Invalid sessionId provided: '{sessionId}'")
-            raise HTTPException(status_code=400, detail="Invalid sessionId provided")
+            return {"error": "Invalid sessionId provided", "sessionId": sessionId, "status": "error"}
         
         logger.info(f"Fetching Tic Tac Toe game state for session: {sessionId}")
         game = get_tictactoe_game(sessionId)
         if not game:
             logger.warning(f"Tic Tac Toe game not found for session: {sessionId}")
-            raise HTTPException(status_code=404, detail="Tic Tac Toe game not found")
+            return {"error": "Tic Tac Toe game not found", "sessionId": sessionId, "status": "not_found"}
         
         game_state = game.get_game_state()
         logger.info(f"Successfully retrieved game state for session: {sessionId}")
         return game_state
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error getting Tic Tac Toe game state for session {sessionId}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"error": str(e), "sessionId": sessionId, "status": "error"}
 
 @app.post("/tictactoe_move")
 async def submit_tictactoe_move(request: TicTacToeMoveRequest):
