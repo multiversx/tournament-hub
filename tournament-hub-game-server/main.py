@@ -59,7 +59,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -67,9 +67,13 @@ app.add_middleware(
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     logger.info(f"Request: {request.method} {request.url.path} - Query: {request.query_params}")
-    response = await call_next(request)
-    logger.info(f"Response: {response.status_code} for {request.method} {request.url.path}")
-    return response
+    try:
+        response = await call_next(request)
+        logger.info(f"Response: {response.status_code} for {request.method} {request.url.path}")
+        return response
+    except Exception as e:
+        logger.error(f"Error processing request {request.method} {request.url.path}: {e}")
+        raise
 
 # Custom 404 handler
 @app.exception_handler(404)
@@ -598,6 +602,11 @@ async def root():
         ]
     }
 
+@app.post("/test")
+async def test_post():
+    """Test POST endpoint"""
+    return {"message": "POST request received", "timestamp": time.time()}
+
 # Pydantic models for requests
 class StartSessionRequest(BaseModel):
     players: Optional[List[str]] = None
@@ -654,9 +663,11 @@ def error_response(message: str, status_code: int = 400):
 @app.post("/start_session")
 async def start_session(request: StartSessionRequest):
     """Start a new game session"""
+    logger.info("=== START_SESSION ROUTE CALLED ===")
     try:
         # Debug logging
         logger.info(f"Received start_session request: sessionId={request.sessionId}, tournamentId={request.tournamentId}, players={request.players}, game_type={request.game_type}")
+        logger.info(f"Request body: {request}")
         
         # Validate that we have at least one identifier
         if not request.tournamentId and not request.sessionId and not request.players:
@@ -1508,24 +1519,7 @@ update_thread.start()
 results_thread = threading.Thread(target=check_and_submit_game_results, daemon=True)
 results_thread.start()
 
-# Add a catch-all route for debugging (must be last)
-@app.get("/{path:path}")
-async def catch_all(path: str):
-    """Catch-all route for debugging unmatched paths"""
-    logger.warning(f"Unmatched path: /{path}")
-    return {
-        "error": "Path not found",
-        "path": f"/{path}",
-        "message": "This path is not defined in the API",
-        "available_endpoints": [
-            "/health",
-            "/start_session", 
-            "/tictactoe_game_state",
-            "/notifier/recent",
-            "/notifier/game-start",
-            "/docs"
-        ]
-    }
+# Catch-all route removed - it was interfering with valid routes
 
 # Start notifier subscriber on startup
 @app.on_event("startup")
