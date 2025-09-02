@@ -14,6 +14,10 @@ import requests
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+# Configure logging first
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Handle bech32 import - try different package names
 try:
     from bech32 import bech32_encode, convertbits
@@ -26,7 +30,6 @@ except ImportError:
             return "dummy_bech32_encode"
         def convertbits(data, frombits, tobits, pad=True):
             return data
-        logger = logging.getLogger(__name__)
         logger.warning("bech32 module not found, using fallback functions")
 
 import uvicorn
@@ -49,10 +52,6 @@ from contract.submit_results import sign_results_for_tournament, submit_results_
 from notifier_subscriber import start_notifier_subscriber
 from notifier_rabbitmq_subscriber import RabbitNotifierSubscriber
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 app = FastAPI(title="Tournament Hub Game Server", version="1.0.0")
 
 # Add CORS middleware
@@ -63,6 +62,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"Request: {request.method} {request.url.path} - Query: {request.query_params}")
+    response = await call_next(request)
+    logger.info(f"Response: {response.status_code} for {request.method} {request.url.path}")
+    return response
 
 # Custom 404 handler
 @app.exception_handler(404)
@@ -555,6 +562,8 @@ async def get_recent_game_start(tournamentId: str):
         ts = recent_game_starts_by_tid.get(sid)
         return {"started": ts is not None, "ts": ts or 0}
 
+
+
 @app.get("/notifier/joins-any")
 async def get_recent_any_join():
     return {"ts": last_global_join_ts}
@@ -570,6 +579,23 @@ async def health_check():
         "contract_address": os.getenv("MX_TOURNAMENT_CONTRACT", "not_set"),
         "notifier_ws_url": os.getenv("MX_NOTIFIER_WS_URL", "not_set"),
         "notifier_amqp_host": os.getenv("MX_AMQP_HOST", "not_set"),
+        "root_path": os.getenv("ROOT_PATH", "not_set"),
+    }
+
+@app.get("/")
+async def root():
+    """Root endpoint to test if the server is working"""
+    return {
+        "message": "Tournament Hub Game Server is running",
+        "timestamp": time.time(),
+        "root_path": os.getenv("ROOT_PATH", "not_set"),
+        "available_endpoints": [
+            "/health",
+            "/start_session",
+            "/tictactoe_game_state",
+            "/notifier/recent",
+            "/docs"
+        ]
     }
 
 # Pydantic models for requests
@@ -1482,6 +1508,25 @@ update_thread.start()
 results_thread = threading.Thread(target=check_and_submit_game_results, daemon=True)
 results_thread.start()
 
+# Add a catch-all route for debugging (must be last)
+@app.get("/{path:path}")
+async def catch_all(path: str):
+    """Catch-all route for debugging unmatched paths"""
+    logger.warning(f"Unmatched path: /{path}")
+    return {
+        "error": "Path not found",
+        "path": f"/{path}",
+        "message": "This path is not defined in the API",
+        "available_endpoints": [
+            "/health",
+            "/start_session", 
+            "/tictactoe_game_state",
+            "/notifier/recent",
+            "/notifier/game-start",
+            "/docs"
+        ]
+    }
+
 # Start notifier subscriber on startup
 @app.on_event("startup")
 async def startup_event():
@@ -1492,6 +1537,15 @@ async def startup_event():
     if not contract_address:
         logger.warning("MX_TOURNAMENT_CONTRACT not set - notifier events will not be filtered by contract address")
     
+    # Temporarily disable notifiers due to DNS resolution issues
+    # All MultiversX notifier endpoints are currently failing DNS resolution
+    logger.warning("Notifiers temporarily disabled due to DNS resolution issues")
+    logger.info("Game server will run without blockchain event notifications")
+    logger.info("Tournament events will need to be processed manually or via other means")
+    
+    # TODO: Re-enable notifiers when DNS issues are resolved
+    # The following code is commented out until notifier endpoints are working:
+    """
     # Try to start notifiers with graceful fallback
     notifier_started = False
     
@@ -1535,6 +1589,7 @@ async def startup_event():
         logger.info("Game server will continue to run but tournament events will not be processed automatically")
     else:
         logger.info("Notifier subscriber started successfully")
+    """
 
 if __name__ == "__main__":
     root_path = os.getenv("ROOT_PATH", "")
