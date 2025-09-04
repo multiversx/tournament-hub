@@ -10,7 +10,21 @@ import binascii
 # --- Helper: Convert bech32 address to raw bytes (32 bytes) ---
 def bech32_to_bytes(addr: str) -> bytes:
     # Return the address bytes, not the public key bytes
-    return bytes.fromhex(Address.from_bech32(addr).hex())
+    try:
+        # Try the constructor approach
+        address = Address(addr)
+        return bytes.fromhex(address.hex())
+    except Exception:
+        # Fallback: try to decode bech32 manually
+        import bech32
+        hrp, data = bech32.bech32_decode(addr)
+        if hrp and data:
+            # Convert 5-bit groups to 8-bit groups
+            decoded = bech32.convertbits(data, 5, 8, False)
+            if decoded:
+                # Pad to 32 bytes
+                return bytes(decoded[:32]) + b'\x00' * (32 - len(decoded[:32]))
+        raise Exception(f"Failed to decode bech32 address: {addr}")
 
 # --- Helper: Get address from Ed25519 public key ---
 def get_address_from_public_key(public_key_bytes: bytes) -> str:
@@ -33,7 +47,7 @@ def construct_result_message(tournament_id: int, podium: list[str]) -> bytes:
     msg = tournament_id.to_bytes(8, "big")
     for addr in podium:
         # Get the address bytes (same as addr.as_managed_buffer() in the contract)
-        addr_bytes = bytes.fromhex(Address.from_bech32(addr).hex())
+        addr_bytes = bech32_to_bytes(addr)
         msg += addr_bytes
     return msg
 
@@ -47,7 +61,7 @@ def encode_submit_results_args(tournament_id: int, podium: list[str], signature_
     Returns the data string for the contract call.
     """
     arg_tournament_id = tournament_id.to_bytes(8, "big").hex()
-    arg_podium = "".join([Address.from_bech32(addr).hex() for addr in podium])
+    arg_podium = "".join([bech32_to_bytes(addr).hex() for addr in podium])
     arg_signature = signature_hex
 
     print(f"Encoded data: submitResults@{arg_tournament_id}@{arg_podium}@{arg_signature}")
@@ -174,7 +188,7 @@ def submit_results_to_contract_with_signature(tournament_id: int, podium: list[s
             nonce=account.nonce,
             value=0,
             sender=account.address,
-            receiver=Address.from_bech32(CONTRACT_ADDRESS),
+            receiver=Address(CONTRACT_ADDRESS),
             gas_price=1000000000,
             gas_limit=60000000,
             data=data.encode(),
@@ -260,7 +274,7 @@ def submit_results_to_contract(tournament_id: int, podium: list[str], private_ke
             nonce=account.nonce,
             value=0,
             sender=account.address,
-            receiver=Address.from_bech32(CONTRACT_ADDRESS),
+            receiver=Address(CONTRACT_ADDRESS),
             gas_price=1000000000,
             gas_limit=60000000,
             data=data.encode(),
