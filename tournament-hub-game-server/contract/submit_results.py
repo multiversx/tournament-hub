@@ -199,7 +199,7 @@ def submit_results_to_contract_with_signature(tournament_id: int, podium: list[s
     
     # Create account with the secret key
     account = Account(secret_key)
-    print("Loaded account address:", account.address.bech32())
+    print("Loaded account address:", account.address)
     
     # Prepare contract call data
     data = encode_submit_results_args(tournament_id, podium, signature_hex)
@@ -223,7 +223,7 @@ def submit_results_to_contract_with_signature(tournament_id: int, podium: list[s
             nonce=account.nonce,
             value=0,
             sender=account.address,
-            receiver=Address(CONTRACT_ADDRESS),
+            receiver=CONTRACT_ADDRESS,
             gas_price=1000000000,
             gas_limit=60000000,
             data=data.encode(),
@@ -269,7 +269,7 @@ def submit_results_to_contract(tournament_id: int, podium: list[str], private_ke
     
     # Create account with the secret key
     account = Account(secret_key)
-    print("Loaded account address:", account.address.bech32())
+    print("Loaded account address:", account.address)
     
     # Construct message as required by contract
     message = construct_result_message(tournament_id, podium)
@@ -309,7 +309,7 @@ def submit_results_to_contract(tournament_id: int, podium: list[str], private_ke
             nonce=account.nonce,
             value=0,
             sender=account.address,
-            receiver=Address(CONTRACT_ADDRESS),
+            receiver=CONTRACT_ADDRESS,
             gas_price=1000000000,
             gas_limit=60000000,
             data=data.encode(),
