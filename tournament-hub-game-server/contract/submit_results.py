@@ -65,6 +65,17 @@ PEM_PATH = os.getenv("MX_PRIVATE_KEY_PATH", os.path.join(os.path.dirname(__file_
 PRIVATE_KEY_BASE64 = os.getenv("MX_PRIVATE_KEY_BASE64")  # Alternative: private key as base64 env var
 CHAIN_ID = os.getenv("MX_CHAIN_ID", "D")
 
+# Debug information for environment variable loading
+print(f"DEBUG: MX_PRIVATE_KEY_BASE64 = {PRIVATE_KEY_BASE64}")
+print(f"DEBUG: MX_PRIVATE_KEY_BASE64 is None: {PRIVATE_KEY_BASE64 is None}")
+print(f"DEBUG: MX_PRIVATE_KEY_BASE64 is empty: {PRIVATE_KEY_BASE64 == ''}")
+print(f"DEBUG: MX_PRIVATE_KEY_BASE64 length: {len(PRIVATE_KEY_BASE64) if PRIVATE_KEY_BASE64 else 'N/A'}")
+print(f"DEBUG: PEM_PATH fallback: {PEM_PATH}")
+print(f"DEBUG: All environment variables starting with MX_:")
+for key, value in os.environ.items():
+    if key.startswith('MX_'):
+        print(f"  {key} = {value[:20]}..." if len(value) > 20 else f"  {key} = {value}")
+
 def load_private_key():
     """
     Load private key from either environment variable (base64) or PEM file.
@@ -72,17 +83,27 @@ def load_private_key():
     """
     import base64
     
+    print(f"DEBUG: load_private_key() called")
+    print(f"DEBUG: PRIVATE_KEY_BASE64 value: {repr(PRIVATE_KEY_BASE64)}")
+    print(f"DEBUG: PRIVATE_KEY_BASE64 truthy check: {bool(PRIVATE_KEY_BASE64)}")
+    
     if PRIVATE_KEY_BASE64:
         # Load from environment variable (base64 encoded)
         print("Loading private key from environment variable")
+        print(f"DEBUG: Base64 key length: {len(PRIVATE_KEY_BASE64)}")
+        print(f"DEBUG: Base64 key first 20 chars: {PRIVATE_KEY_BASE64[:20]}...")
         try:
             private_key_bytes = base64.b64decode(PRIVATE_KEY_BASE64)
+            print(f"DEBUG: Successfully decoded private key, length: {len(private_key_bytes)} bytes")
             return private_key_bytes
         except Exception as e:
+            print(f"DEBUG: Failed to decode base64 private key: {e}")
             raise Exception(f"Failed to decode private key from environment variable: {e}")
     else:
         # Load from PEM file
+        print(f"DEBUG: PRIVATE_KEY_BASE64 is falsy, falling back to PEM file")
         print(f"Loading private key from file: {PEM_PATH}")
+        print(f"DEBUG: Checking if PEM file exists: {os.path.exists(PEM_PATH)}")
         if not os.path.exists(PEM_PATH):
             raise Exception(f"Private key file not found: {PEM_PATH}")
         
