@@ -79,9 +79,8 @@ def construct_result_message(tournament_id: int, podium: list[str]) -> bytes:
     """
     msg = tournament_id.to_bytes(8, "big")
     for addr in podium:
-        # For now, let's use a simple approach - pad the address string to 32 bytes
-        # This is a temporary solution to test if the rest of the flow works
-        addr_bytes = addr.encode('utf-8')[:32].ljust(32, b'\x00')
+        # Use the same address encoding as the contract call
+        addr_bytes = bech32_to_bytes(addr)
         msg += addr_bytes
     return msg
 
