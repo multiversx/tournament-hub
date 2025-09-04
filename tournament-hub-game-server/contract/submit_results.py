@@ -11,20 +11,13 @@ import binascii
 def bech32_to_bytes(addr: str) -> bytes:
     # Return the address bytes, not the public key bytes
     try:
-        # Try the constructor approach
+        # Use the Address constructor - this should work with MultiversX SDK
         address = Address(addr)
         return bytes.fromhex(address.hex())
-    except Exception:
-        # Fallback: try to decode bech32 manually
-        import bech32
-        hrp, data = bech32.bech32_decode(addr)
-        if hrp and data:
-            # Convert 5-bit groups to 8-bit groups
-            decoded = bech32.convertbits(data, 5, 8, False)
-            if decoded:
-                # Pad to 32 bytes
-                return bytes(decoded[:32]) + b'\x00' * (32 - len(decoded[:32]))
-        raise Exception(f"Failed to decode bech32 address: {addr}")
+    except Exception as e:
+        # If Address constructor fails, we need to handle this differently
+        # For now, let's just raise a clear error message
+        raise Exception(f"Failed to create Address from bech32 string '{addr}': {e}. Please check if the address is valid and the MultiversX SDK is properly installed.")
 
 # --- Helper: Get address from Ed25519 public key ---
 def get_address_from_public_key(public_key_bytes: bytes) -> str:
