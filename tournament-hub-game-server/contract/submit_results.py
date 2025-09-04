@@ -226,7 +226,7 @@ def submit_results_to_contract_with_signature(tournament_id: int, podium: list[s
             receiver=Address.new_from_bech32(CONTRACT_ADDRESS),
             gas_price=1000000000,
             gas_limit=60000000,
-            data=data.encode(),
+            data=data.encode('utf-8'),
             chain_id=CHAIN_ID,
             version=1,
         )
@@ -312,7 +312,7 @@ def submit_results_to_contract(tournament_id: int, podium: list[str], private_ke
             receiver=Address.new_from_bech32(CONTRACT_ADDRESS),
             gas_price=1000000000,
             gas_limit=60000000,
-            data=data.encode(),
+            data=data.encode('utf-8'),
             chain_id=CHAIN_ID,
             version=1,
         )
