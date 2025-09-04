@@ -95,8 +95,8 @@ def encode_submit_results_args(tournament_id: int, podium: list[str], signature_
     Returns the data string for the contract call.
     """
     arg_tournament_id = tournament_id.to_bytes(8, "big").hex()
-    # For contract call arguments, we can use the bech32 addresses directly
-    arg_podium = "".join([addr for addr in podium])
+    # Convert bech32 addresses to hex format for contract call
+    arg_podium = "".join([bech32_to_bytes(addr).hex() for addr in podium])
     arg_signature = signature_hex
 
     print(f"Encoded data: submitResults@{arg_tournament_id}@{arg_podium}@{arg_signature}")
