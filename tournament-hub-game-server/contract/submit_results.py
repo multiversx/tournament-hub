@@ -58,11 +58,46 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-# Config - hardcoded values since config directory was removed
-API_URL = "https://devnet-api.multiversx.com"
-CONTRACT_ADDRESS = "erd1qqqqqqqqqqqqqpgq9zhclje8g8n6xlsaj0ds6xj87lt4rgtzd8sspxwzu7"
-PEM_PATH = os.path.join(os.path.dirname(__file__), "..", "signing", "ed25519_private.pem")  # Path to Ed25519 private key
-CHAIN_ID = "D"
+# Config - use environment variables with fallbacks
+API_URL = os.getenv("MX_API_URL", "https://devnet-api.multiversx.com")
+CONTRACT_ADDRESS = os.getenv("MX_TOURNAMENT_CONTRACT", "erd1qqqqqqqqqqqqqpgq9zhclje8g8n6xlsaj0ds6xj87lt4rgtzd8sspxwzu7")
+PEM_PATH = os.getenv("MX_PRIVATE_KEY_PATH", os.path.join(os.path.dirname(__file__), "..", "signing", "ed25519_private.pem"))
+PRIVATE_KEY_BASE64 = os.getenv("MX_PRIVATE_KEY_BASE64")  # Alternative: private key as base64 env var
+CHAIN_ID = os.getenv("MX_CHAIN_ID", "D")
+
+def load_private_key():
+    """
+    Load private key from either environment variable (base64) or PEM file.
+    Returns the private key bytes.
+    """
+    import base64
+    
+    if PRIVATE_KEY_BASE64:
+        # Load from environment variable (base64 encoded)
+        print("Loading private key from environment variable")
+        try:
+            private_key_bytes = base64.b64decode(PRIVATE_KEY_BASE64)
+            return private_key_bytes
+        except Exception as e:
+            raise Exception(f"Failed to decode private key from environment variable: {e}")
+    else:
+        # Load from PEM file
+        print(f"Loading private key from file: {PEM_PATH}")
+        if not os.path.exists(PEM_PATH):
+            raise Exception(f"Private key file not found: {PEM_PATH}")
+        
+        with open(PEM_PATH, 'r') as f:
+            pem_content = f.read()
+        
+        lines = pem_content.strip().split('\n')
+        if len(lines) >= 2:
+            # Get the base64 encoded key (second line)
+            base64_key = lines[1]
+            # Decode the base64 key to get the raw bytes
+            private_key_bytes = base64.b64decode(base64_key)
+            return private_key_bytes
+        else:
+            raise Exception("Invalid PEM file format")
 
 # --- Helper function to sign results for tournament ---
 def sign_results_for_tournament(tournament_id: int, podium: list[str]) -> str:
@@ -71,20 +106,9 @@ def sign_results_for_tournament(tournament_id: int, podium: list[str]) -> str:
     This function can be called from the game server to get the signature.
     """
     from multiversx_sdk import UserSecretKey
-    import base64
     
-    # Read the PEM file and extract the private key
-    with open(PEM_PATH, 'r') as f:
-        pem_content = f.read()
-    
-    lines = pem_content.strip().split('\n')
-    if len(lines) >= 2:
-        # Get the base64 encoded key (second line)
-        base64_key = lines[1]
-        # Decode the base64 key to get the raw bytes
-        private_key_bytes = base64.b64decode(base64_key)
-    else:
-        raise Exception("Invalid PEM file format")
+    # Load private key using the helper function
+    private_key_bytes = load_private_key()
     
     # Create UserSecretKey from the decoded bytes
     secret_key = UserSecretKey(private_key_bytes)
@@ -106,20 +130,9 @@ def submit_results_to_contract_with_signature(tournament_id: int, podium: list[s
     This function can be called from the game server with a signature from sign_results_for_tournament.
     """
     from multiversx_sdk import UserSecretKey, Account, Transaction, DevnetEntrypoint, Address
-    import base64
     
-    # Read the PEM file and extract the private key
-    with open(PEM_PATH, 'r') as f:
-        pem_content = f.read()
-    
-    lines = pem_content.strip().split('\n')
-    if len(lines) >= 2:
-        # Get the base64 encoded key (second line)
-        base64_key = lines[1]
-        # Decode the base64 key to get the raw bytes
-        private_key_bytes = base64.b64decode(base64_key)
-    else:
-        raise Exception("Invalid PEM file format")
+    # Load private key using the helper function
+    private_key_bytes = load_private_key()
     
     # Create UserSecretKey from the decoded bytes
     secret_key = UserSecretKey(private_key_bytes)
@@ -187,20 +200,9 @@ def submit_results_to_contract_with_signature(tournament_id: int, podium: list[s
 def submit_results_to_contract(tournament_id: int, podium: list[str], private_key=None):
     # Load Ed25519 private key using MultiversX SDK format
     from multiversx_sdk import UserSecretKey, Account, Transaction, DevnetEntrypoint, Address
-    import base64
     
-    # Read the PEM file and extract the private key
-    with open(PEM_PATH, 'r') as f:
-        pem_content = f.read()
-    
-    lines = pem_content.strip().split('\n')
-    if len(lines) >= 2:
-        # Get the base64 encoded key (second line)
-        base64_key = lines[1]
-        # Decode the base64 key to get the raw bytes
-        private_key_bytes = base64.b64decode(base64_key)
-    else:
-        raise Exception("Invalid PEM file format")
+    # Load private key using the helper function
+    private_key_bytes = load_private_key()
     
     # Create UserSecretKey from the decoded bytes
     secret_key = UserSecretKey(private_key_bytes)
