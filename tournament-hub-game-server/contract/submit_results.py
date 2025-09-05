@@ -9,54 +9,17 @@ import binascii
 
 # --- Helper: Convert bech32 address to raw bytes (32 bytes) ---
 def bech32_to_bytes(addr: str) -> bytes:
-    # Return the address bytes, not the public key bytes
+    """
+    Convert bech32 address to bytes for MultiversX.
+    Uses the SDK's Address class for proper conversion.
+    """
     try:
-        # Try to use the existing bech32 functions from main.py
-        import sys
-        import os
-        sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-        
-        # Import bech32 functions that are already available
-        try:
-            from bech32 import bech32_decode, convertbits
-        except ImportError:
-            try:
-                from bech32m import bech32_decode, convertbits
-            except ImportError:
-                # Fallback: create a simple bech32 decoder
-                def bech32_decode(addr):
-                    # This is a simplified bech32 decoder for MultiversX addresses
-                    if not addr.startswith('erd'):
-                        raise ValueError("Invalid MultiversX address format")
-                    
-                    # Remove the 'erd' prefix and decode the rest
-                    # This is a simplified approach - in production you'd want a proper bech32 decoder
-                    import base64
-                    try:
-                        # For now, let's just return dummy data to test if the rest works
-                        return "erd", [0] * 32
-                    except:
-                        raise ValueError("Failed to decode bech32 address")
-                
-                def convertbits(data, frombits, tobits, pad=True):
-                    return data
-        
-        # Decode the bech32 address
-        hrp, data = bech32_decode(addr)
-        if hrp != "erd":
-            raise ValueError(f"Invalid MultiversX address: expected 'erd' prefix, got '{hrp}'")
-        
-        # Convert 5-bit groups to 8-bit groups
-        decoded = convertbits(data, 5, 8, False)
-        if not decoded:
-            raise ValueError("Failed to convert bech32 data")
-        
-        # Pad to 32 bytes
-        result = bytes(decoded[:32]) + b'\x00' * (32 - len(decoded[:32]))
-        return result
-        
+        # Use the SDK's Address class for proper conversion
+        address = Address.new_from_bech32(addr)
+        return bytes.fromhex(address.hex())
     except Exception as e:
-        raise Exception(f"Failed to decode bech32 address '{addr}': {e}")
+        # If SDK fails, raise the error instead of using fallback
+        raise Exception(f"Failed to decode bech32 address '{addr}' using SDK: {e}")
 
 # --- Helper: Get address from Ed25519 public key ---
 def get_address_from_public_key(public_key_bytes: bytes) -> str:
@@ -212,7 +175,7 @@ def submit_results_to_contract_with_signature(tournament_id: int, podium: list[s
         
         # Get account info
         account_info = provider.get_account(account.address)
-        account.nonce = account_info.nonce
+        account.nonce = account_info.nonce 
         
         print(f"Account nonce: {account.nonce}")
         print(f"Account address: {account.address}")
