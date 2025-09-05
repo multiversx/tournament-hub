@@ -13,18 +13,38 @@ class NotifierSubscriber:
     def __init__(self,
                  ws_url: Optional[str] = None,
                  event_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> None:
-        self.ws_url = ws_url or os.getenv("MX_NOTIFIER_WS_URL", "ws://localhost:5000/hub/ws")
+        # Use proper MultiversX notifier endpoints
+        # Try different notifier endpoints in order of preference
+        self.ws_url = ws_url or os.getenv("MX_NOTIFIER_WS_URL", "wss://notifier.multiversx.com/hub/ws")
+        # Fallback endpoints to try if primary fails
+        self.fallback_urls = [
+            "wss://notifier.multiversx.com/hub/ws",
+            "wss://devnet-notifier.multiversx.com/hub/ws",
+            "wss://testnet-notifier.multiversx.com/hub/ws"
+        ]
         # Types: all_events, revert_events, finalized_events
         self.event_type = os.getenv("MX_NOTIFIER_EVENT_TYPE", "all_events")
         self.contract_address = os.getenv("MX_TOURNAMENT_CONTRACT", "")
         self._stop = asyncio.Event()
         self._event_callback = event_callback or self._default_event_handler
+        self._retry_count = 0
+        self._max_retries = 10
+        self._current_url_index = 0
 
     async def start(self) -> None:
-        while not self._stop.is_set():
+        while not self._stop.is_set() and self._retry_count < self._max_retries:
             try:
                 logger.info(f"Connecting to Notifier WS at {self.ws_url}")
-                async with websockets.connect(self.ws_url, ping_interval=20, ping_timeout=20) as ws:
+                # Reset retry count on successful connection
+                self._retry_count = 0
+                
+                async with websockets.connect(
+                    self.ws_url, 
+                    ping_interval=20, 
+                    ping_timeout=20,
+                    open_timeout=10,
+                    close_timeout=10
+                ) as ws:
                     # Subscribe to events
                     subscribe_msg = json.dumps({
                         "type": self.event_type
@@ -33,6 +53,8 @@ class NotifierSubscriber:
                     logger.info(f"Subscribed to notifier events type='{self.event_type}'")
 
                     async for message in ws:
+                        if self._stop.is_set():
+                            break
                         try:
                             payload = json.loads(message)
                         except Exception:
@@ -41,9 +63,25 @@ class NotifierSubscriber:
                         await self._handle_payload(payload)
 
             except Exception as e:
-                logger.warning(f"Notifier WS connection error: {e}. Reconnecting in 3s...")
+                self._retry_count += 1
+                
+                # Try next fallback URL if available
+                if self._current_url_index < len(self.fallback_urls) - 1:
+                    self._current_url_index += 1
+                    self.ws_url = self.fallback_urls[self._current_url_index]
+                    logger.info(f"Trying fallback notifier URL: {self.ws_url}")
+                    # Reset retry count when trying new URL
+                    self._retry_count = 0
+                
+                if self._retry_count >= self._max_retries:
+                    logger.error(f"Max retries ({self._max_retries}) reached for WebSocket notifier. Giving up.")
+                    break
+                
+                # Exponential backoff: 3s, 6s, 12s, 24s, 30s (max)
+                wait_time = min(3 * (2 ** (self._retry_count - 1)), 30)
+                logger.warning(f"Notifier WS connection error: {e}. Reconnecting in {wait_time}s... (attempt {self._retry_count}/{self._max_retries})")
                 try:
-                    await asyncio.wait_for(self._stop.wait(), timeout=3)
+                    await asyncio.wait_for(self._stop.wait(), timeout=wait_time)
                 except asyncio.TimeoutError:
                     continue
 

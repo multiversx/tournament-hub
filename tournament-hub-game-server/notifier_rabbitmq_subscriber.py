@@ -22,9 +22,10 @@ class RabbitNotifierSubscriber:
                  event_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> None:
         # Either amqp_url or host/port/vhost/user/pass
         self.amqp_url = amqp_url or os.getenv("MX_AMQP_URL")
-        self.host = amqp_host or os.getenv("MX_AMQP_HOST", "localhost")
-        self.port = int(amqp_port or os.getenv("MX_AMQP_PORT", "5672"))
-        self.vhost = amqp_vhost or os.getenv("MX_AMQP_VHOST", "/")
+        # Use proper MultiversX RabbitMQ endpoints
+        self.host = amqp_host or os.getenv("MX_AMQP_HOST", "devnet-external-k8s-proxy.multiversx.com")
+        self.port = int(amqp_port or os.getenv("MX_AMQP_PORT", "30006"))
+        self.vhost = amqp_vhost or os.getenv("MX_AMQP_VHOST", "devnet2")
         self.user = amqp_user or os.getenv("MX_AMQP_USER", "")
         self.password = amqp_pass or os.getenv("MX_AMQP_PASS", "")
         self.exchange = os.getenv("MX_AMQP_EXCHANGE", exchange)
@@ -33,6 +34,8 @@ class RabbitNotifierSubscriber:
         self._stop = False
         self._event_callback = event_callback or self._default_event_handler
         self._thread: Optional[threading.Thread] = None
+        self._retry_count = 0
+        self._max_retries = 10
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -44,9 +47,12 @@ class RabbitNotifierSubscriber:
         self._stop = True
 
     def _run(self) -> None:
-        while not self._stop:
+        while not self._stop and self._retry_count < self._max_retries:
             try:
                 logger.info("Connecting to RabbitMQ notifier...")
+                # Reset retry count on successful connection
+                self._retry_count = 0
+                
                 if self.amqp_url:
                     params = pika.URLParameters(self.amqp_url)
                 else:
@@ -58,6 +64,9 @@ class RabbitNotifierSubscriber:
                         credentials=credentials,
                         heartbeat=30,
                         blocked_connection_timeout=300,
+                        connection_attempts=3,
+                        retry_delay=2,
+                        socket_timeout=10,
                     )
                 connection = pika.BlockingConnection(params)
                 channel = connection.channel()
@@ -92,8 +101,15 @@ class RabbitNotifierSubscriber:
                 except Exception:
                     pass
             except Exception as e:
-                logger.warning(f"RabbitMQ notifier connection error: {e}. Reconnecting in 3s...")
-                time.sleep(3)
+                self._retry_count += 1
+                if self._retry_count >= self._max_retries:
+                    logger.error(f"Max retries ({self._max_retries}) reached for RabbitMQ notifier. Giving up.")
+                    break
+                
+                # Exponential backoff: 3s, 6s, 12s, 24s, 30s (max)
+                wait_time = min(3 * (2 ** (self._retry_count - 1)), 30)
+                logger.warning(f"RabbitMQ notifier connection error: {e}. Reconnecting in {wait_time}s... (attempt {self._retry_count}/{self._max_retries})")
+                time.sleep(wait_time)
 
     def _handle_payload(self, payload: Dict[str, Any]) -> None:
         # Accept both WS-like wrapper ({ Type, Data }) and raw push-block ({ hash, events })

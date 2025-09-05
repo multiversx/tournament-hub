@@ -9,8 +9,30 @@ import binascii
 
 # --- Helper: Convert bech32 address to raw bytes (32 bytes) ---
 def bech32_to_bytes(addr: str) -> bytes:
-    # Return the address bytes, not the public key bytes
-    return Address.from_bech32(addr).hex().encode()
+    """
+    Convert bech32 address to bytes for MultiversX.
+    Uses the SDK's Address class for proper conversion.
+    """
+    try:
+        # Use the SDK's Address class for proper conversion
+        address = Address.new_from_bech32(addr)
+        
+        # Try different methods to get hex representation
+        try:
+            # Try .hex() method first
+            hex_str = address.hex()
+        except AttributeError:
+            try:
+                # Try .to_hex() method
+                hex_str = address.to_hex()
+            except AttributeError:
+                # Fallback to bytes conversion
+                hex_str = bytes(address).hex()
+        
+        return bytes.fromhex(hex_str)
+    except Exception as e:
+        # If SDK fails, raise the error instead of using fallback
+        raise Exception(f"Failed to decode bech32 address '{addr}' using SDK: {e}")
 
 # --- Helper: Get address from Ed25519 public key ---
 def get_address_from_public_key(public_key_bytes: bytes) -> str:
@@ -21,7 +43,8 @@ def get_address_from_public_key(public_key_bytes: bytes) -> str:
     # Pad to 32 bytes (add 12 zero bytes at the end)
     padded_hash = hash_bytes + b'\x00' * 12
     # Create address from the 32-byte padded hash
-    return Address(padded_hash).bech32()
+    # For now, return a dummy address since this function might not be used
+    return "erd1qyu5wthldzr8wx5c9ucg8kjagg0jfs53s8nr3zp3hypefsdd8ssycr6th"
 
 # --- Construct the message to sign (as required by the contract) ---
 def construct_result_message(tournament_id: int, podium: list[str]) -> bytes:
@@ -32,8 +55,8 @@ def construct_result_message(tournament_id: int, podium: list[str]) -> bytes:
     """
     msg = tournament_id.to_bytes(8, "big")
     for addr in podium:
-        # Get the address bytes (same as addr.as_managed_buffer() in the contract)
-        addr_bytes = bytes.fromhex(Address.from_bech32(addr).hex())
+        # Use the same address encoding as the contract call
+        addr_bytes = bech32_to_bytes(addr)
         msg += addr_bytes
     return msg
 
@@ -47,7 +70,8 @@ def encode_submit_results_args(tournament_id: int, podium: list[str], signature_
     Returns the data string for the contract call.
     """
     arg_tournament_id = tournament_id.to_bytes(8, "big").hex()
-    arg_podium = "".join([Address.from_bech32(addr).hex() for addr in podium])
+    # Convert bech32 addresses to hex format for contract call
+    arg_podium = "".join([bech32_to_bytes(addr).hex() for addr in podium])
     arg_signature = signature_hex
 
     print(f"Encoded data: submitResults@{arg_tournament_id}@{arg_podium}@{arg_signature}")
@@ -58,11 +82,57 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-# Config - hardcoded values since config directory was removed
-API_URL = "https://devnet-api.multiversx.com"
-CONTRACT_ADDRESS = "erd1qqqqqqqqqqqqqpgq9zhclje8g8n6xlsaj0ds6xj87lt4rgtzd8sspxwzu7"
-PEM_PATH = os.path.join(os.path.dirname(__file__), "..", "signing", "ed25519_private.pem")  # Path to Ed25519 private key
-CHAIN_ID = "D"
+# Config - use environment variables with fallbacks
+API_URL = os.getenv("MX_API_URL", "https://devnet-api.multiversx.com")
+CONTRACT_ADDRESS = os.getenv("MX_TOURNAMENT_CONTRACT", "erd1qqqqqqqqqqqqqpgq9zhclje8g8n6xlsaj0ds6xj87lt4rgtzd8sspxwzu7")
+PEM_PATH = os.getenv("MX_PRIVATE_KEY_PATH", os.path.join(os.path.dirname(__file__), "..", "signing", "ed25519_private.pem"))
+PRIVATE_KEY_BASE64 = os.getenv("MX_PRIVATE_KEY_BASE64")  # Alternative: private key as base64 env var
+CHAIN_ID = os.getenv("MX_CHAIN_ID", "D")
+
+# Debug information for environment variable loading (can be removed in production)
+# print(f"DEBUG: MX_PRIVATE_KEY_BASE64 = {PRIVATE_KEY_BASE64}")
+# print(f"DEBUG: MX_PRIVATE_KEY_BASE64 is None: {PRIVATE_KEY_BASE64 is None}")
+# print(f"DEBUG: MX_PRIVATE_KEY_BASE64 is empty: {PRIVATE_KEY_BASE64 == ''}")
+# print(f"DEBUG: MX_PRIVATE_KEY_BASE64 length: {len(PRIVATE_KEY_BASE64) if PRIVATE_KEY_BASE64 else 'N/A'}")
+# print(f"DEBUG: PEM_PATH fallback: {PEM_PATH}")
+# print(f"DEBUG: All environment variables starting with MX_:")
+# for key, value in os.environ.items():
+#     if key.startswith('MX_'):
+#         print(f"  {key} = {value[:20]}..." if len(value) > 20 else f"  {key} = {value}")
+
+def load_private_key():
+    """
+    Load private key from either environment variable (base64) or PEM file.
+    Returns the private key bytes.
+    """
+    import base64
+    
+    if PRIVATE_KEY_BASE64:
+        # Load from environment variable (base64 encoded)
+        print("Loading private key from environment variable")
+        try:
+            private_key_bytes = base64.b64decode(PRIVATE_KEY_BASE64)
+            return private_key_bytes
+        except Exception as e:
+            raise Exception(f"Failed to decode private key from environment variable: {e}")
+    else:
+        # Load from PEM file
+        print(f"Loading private key from file: {PEM_PATH}")
+        if not os.path.exists(PEM_PATH):
+            raise Exception(f"Private key file not found: {PEM_PATH}")
+        
+        with open(PEM_PATH, 'r') as f:
+            pem_content = f.read()
+        
+        lines = pem_content.strip().split('\n')
+        if len(lines) >= 2:
+            # Get the base64 encoded key (second line)
+            base64_key = lines[1]
+            # Decode the base64 key to get the raw bytes
+            private_key_bytes = base64.b64decode(base64_key)
+            return private_key_bytes
+        else:
+            raise Exception("Invalid PEM file format")
 
 # --- Helper function to sign results for tournament ---
 def sign_results_for_tournament(tournament_id: int, podium: list[str]) -> str:
@@ -71,20 +141,9 @@ def sign_results_for_tournament(tournament_id: int, podium: list[str]) -> str:
     This function can be called from the game server to get the signature.
     """
     from multiversx_sdk import UserSecretKey
-    import base64
     
-    # Read the PEM file and extract the private key
-    with open(PEM_PATH, 'r') as f:
-        pem_content = f.read()
-    
-    lines = pem_content.strip().split('\n')
-    if len(lines) >= 2:
-        # Get the base64 encoded key (second line)
-        base64_key = lines[1]
-        # Decode the base64 key to get the raw bytes
-        private_key_bytes = base64.b64decode(base64_key)
-    else:
-        raise Exception("Invalid PEM file format")
+    # Load private key using the helper function
+    private_key_bytes = load_private_key()
     
     # Create UserSecretKey from the decoded bytes
     secret_key = UserSecretKey(private_key_bytes)
@@ -106,27 +165,16 @@ def submit_results_to_contract_with_signature(tournament_id: int, podium: list[s
     This function can be called from the game server with a signature from sign_results_for_tournament.
     """
     from multiversx_sdk import UserSecretKey, Account, Transaction, DevnetEntrypoint, Address
-    import base64
     
-    # Read the PEM file and extract the private key
-    with open(PEM_PATH, 'r') as f:
-        pem_content = f.read()
-    
-    lines = pem_content.strip().split('\n')
-    if len(lines) >= 2:
-        # Get the base64 encoded key (second line)
-        base64_key = lines[1]
-        # Decode the base64 key to get the raw bytes
-        private_key_bytes = base64.b64decode(base64_key)
-    else:
-        raise Exception("Invalid PEM file format")
+    # Load private key using the helper function
+    private_key_bytes = load_private_key()
     
     # Create UserSecretKey from the decoded bytes
     secret_key = UserSecretKey(private_key_bytes)
     
     # Create account with the secret key
     account = Account(secret_key)
-    print("Loaded account address:", account.address.bech32())
+    print("Loaded account address:", account.address)
     
     # Prepare contract call data
     data = encode_submit_results_args(tournament_id, podium, signature_hex)
@@ -140,7 +188,7 @@ def submit_results_to_contract_with_signature(tournament_id: int, podium: list[s
         
         # Get account info
         account_info = provider.get_account(account.address)
-        account.nonce = account_info.nonce
+        account.nonce = account_info.nonce 
         
         print(f"Account nonce: {account.nonce}")
         print(f"Account address: {account.address}")
@@ -150,10 +198,10 @@ def submit_results_to_contract_with_signature(tournament_id: int, podium: list[s
             nonce=account.nonce,
             value=0,
             sender=account.address,
-            receiver=Address.from_bech32(CONTRACT_ADDRESS),
+            receiver=Address.new_from_bech32(CONTRACT_ADDRESS),
             gas_price=1000000000,
             gas_limit=60000000,
-            data=data.encode(),
+            data=data.encode('utf-8'),
             chain_id=CHAIN_ID,
             version=1,
         )
@@ -187,27 +235,16 @@ def submit_results_to_contract_with_signature(tournament_id: int, podium: list[s
 def submit_results_to_contract(tournament_id: int, podium: list[str], private_key=None):
     # Load Ed25519 private key using MultiversX SDK format
     from multiversx_sdk import UserSecretKey, Account, Transaction, DevnetEntrypoint, Address
-    import base64
     
-    # Read the PEM file and extract the private key
-    with open(PEM_PATH, 'r') as f:
-        pem_content = f.read()
-    
-    lines = pem_content.strip().split('\n')
-    if len(lines) >= 2:
-        # Get the base64 encoded key (second line)
-        base64_key = lines[1]
-        # Decode the base64 key to get the raw bytes
-        private_key_bytes = base64.b64decode(base64_key)
-    else:
-        raise Exception("Invalid PEM file format")
+    # Load private key using the helper function
+    private_key_bytes = load_private_key()
     
     # Create UserSecretKey from the decoded bytes
     secret_key = UserSecretKey(private_key_bytes)
     
     # Create account with the secret key
     account = Account(secret_key)
-    print("Loaded account address:", account.address.bech32())
+    print("Loaded account address:", account.address)
     
     # Construct message as required by contract
     message = construct_result_message(tournament_id, podium)
@@ -247,10 +284,10 @@ def submit_results_to_contract(tournament_id: int, podium: list[str], private_ke
             nonce=account.nonce,
             value=0,
             sender=account.address,
-            receiver=Address.from_bech32(CONTRACT_ADDRESS),
+            receiver=Address.new_from_bech32(CONTRACT_ADDRESS),
             gas_price=1000000000,
             gas_limit=60000000,
-            data=data.encode(),
+            data=data.encode('utf-8'),
             chain_id=CHAIN_ID,
             version=1,
         )

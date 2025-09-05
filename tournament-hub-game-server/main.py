@@ -8,10 +8,15 @@ import os
 import base64
 import re
 from collections import deque
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi.responses import JSONResponse
 import requests
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+# Configure logging first
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Handle bech32 import - try different package names
 try:
@@ -25,7 +30,6 @@ except ImportError:
             return "dummy_bech32_encode"
         def convertbits(data, frombits, tobits, pad=True):
             return data
-        logger = logging.getLogger(__name__)
         logger.warning("bech32 module not found, using fallback functions")
 
 import uvicorn
@@ -48,10 +52,6 @@ from contract.submit_results import sign_results_for_tournament, submit_results_
 from notifier_subscriber import start_notifier_subscriber
 from notifier_rabbitmq_subscriber import RabbitNotifierSubscriber
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 app = FastAPI(title="Tournament Hub Game Server", version="1.0.0")
 
 # Add CORS middleware
@@ -59,9 +59,34 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Add request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"Request: {request.method} {request.url.path} - Query: {request.query_params}")
+    try:
+        response = await call_next(request)
+        logger.info(f"Response: {response.status_code} for {request.method} {request.url.path}")
+        return response
+    except Exception as e:
+        logger.error(f"Error processing request {request.method} {request.url.path}: {e}")
+        raise
+
+# Custom 404 handler
+@app.exception_handler(404)
+async def custom_404_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=404,
+        content={
+            "error": "Endpoint not found",
+            "path": str(request.url.path),
+            "method": request.method,
+            "message": "The requested endpoint does not exist. Check the API documentation at /docs"
+        }
+    )
 
 # Global session storage
 sessions: Dict[str, Dict] = {}
@@ -522,11 +547,13 @@ def handle_notifier_event(event: Dict):
         logger.error(f"Notifier event handling error: {e}")
 
 @app.get("/notifier/recent")
+@app.get("/tournament-hub/notifier/recent")
 async def get_recent_notifier_events():
     with recent_events_lock:
         return list(recent_notifier_events)
 
 @app.get("/notifier/joins")
+@app.get("/tournament-hub/notifier/joins")
 async def get_recent_joins(tournamentId: str):
     # Return recent join addresses for a tournament (session id)
     sid = str(tournamentId)
@@ -535,15 +562,55 @@ async def get_recent_joins(tournamentId: str):
         return list(dq) if dq else []
 
 @app.get("/notifier/game-start")
+@app.get("/tournament-hub/notifier/game-start")
 async def get_recent_game_start(tournamentId: str):
     sid = str(tournamentId)
     with recent_game_starts_lock:
         ts = recent_game_starts_by_tid.get(sid)
         return {"started": ts is not None, "ts": ts or 0}
 
+
+
 @app.get("/notifier/joins-any")
+@app.get("/tournament-hub/notifier/joins-any")
 async def get_recent_any_join():
     return {"ts": last_global_join_ts}
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint to monitor server and notifier status"""
+    return {
+        "status": "healthy",
+        "timestamp": time.time(),
+        "active_sessions": len(sessions),
+        "recent_events_count": len(recent_notifier_events),
+        "contract_address": os.getenv("MX_TOURNAMENT_CONTRACT", "not_set"),
+        "notifier_ws_url": os.getenv("MX_NOTIFIER_WS_URL", "not_set"),
+        "notifier_amqp_host": os.getenv("MX_AMQP_HOST", "not_set"),
+        "root_path": os.getenv("ROOT_PATH", "not_set"),
+    }
+
+@app.get("/")
+async def root():
+    """Root endpoint to test if the server is working"""
+    return {
+        "message": "Tournament Hub Game Server is running",
+        "timestamp": time.time(),
+        "root_path": os.getenv("ROOT_PATH", "not_set"),
+        "available_endpoints": [
+            "/health",
+            "/start_session",
+            "/tictactoe_game_state",
+            "/notifier/recent",
+            "/docs"
+        ]
+    }
+
+@app.post("/test")
+@app.post("/tournament-hub/test")
+async def test_post():
+    """Test POST endpoint"""
+    return {"message": "POST request received", "timestamp": time.time()}
 
 # Pydantic models for requests
 class StartSessionRequest(BaseModel):
@@ -599,11 +666,19 @@ def error_response(message: str, status_code: int = 400):
     return {"error": message, "status_code": status_code}
 
 @app.post("/start_session")
+@app.post("/tournament-hub/start_session")
 async def start_session(request: StartSessionRequest):
     """Start a new game session"""
+    logger.info("=== START_SESSION ROUTE CALLED ===")
     try:
         # Debug logging
         logger.info(f"Received start_session request: sessionId={request.sessionId}, tournamentId={request.tournamentId}, players={request.players}, game_type={request.game_type}")
+        logger.info(f"Request body: {request}")
+        
+        # Validate that we have at least one identifier
+        if not request.tournamentId and not request.sessionId and not request.players:
+            logger.warning("Invalid start_session request: no tournamentId, sessionId, or players provided")
+            raise HTTPException(status_code=400, detail="Either 'tournamentId', 'sessionId', or 'players' must be provided")
         
         # Handle new format (tournament-based sessions)
         if request.tournamentId:
@@ -740,6 +815,7 @@ async def start_session(request: StartSessionRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/join_session")
+@app.post("/tournament-hub/join_session")
 async def join_session(session_id: str, request: JoinSessionRequest):
     """Join an existing session"""
     try:
@@ -801,6 +877,7 @@ async def get_game_state(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/move")
+@app.post("/tournament-hub/move")
 async def submit_move(session_id: str, request: MoveRequest):
     """Submit a move in the game - handles both chess and CryptoBubbles"""
     try:
@@ -835,6 +912,7 @@ async def submit_move(session_id: str, request: MoveRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/start_game")
+@app.post("/tournament-hub/start_game")
 async def start_game(session_id: str):
     """Start the game"""
     try:
@@ -888,6 +966,7 @@ class DodgeDashMoveRequest(BaseModel):
     dash: bool = False
 
 @app.post("/dodgedash_move")
+@app.post("/tournament-hub/dodgedash_move")
 async def dodgedash_move(req: DodgeDashMoveRequest):
     game = get_dodgedash_game(req.sessionId)
     if not game:
@@ -902,6 +981,7 @@ async def dodgedash_move(req: DodgeDashMoveRequest):
     return { 'status': 'ok' }
 
 @app.post("/join_dodgedash_session")
+@app.post("/tournament-hub/join_dodgedash_session")
 async def join_dodgedash_session(sessionId: str, player: str):
     game = get_dodgedash_game(sessionId)
     if not game:
@@ -913,6 +993,7 @@ async def join_dodgedash_session(sessionId: str, player: str):
     return { 'status': 'joined' }
 
 @app.post("/start_cryptobubbles_game")
+@app.post("/tournament-hub/start_cryptobubbles_game")
 async def start_cryptobubbles_game(request: StartCryptoBubblesGameRequest):
     """Start a CryptoBubbles game"""
     game = get_cryptobubbles_game(request.sessionId)
@@ -924,6 +1005,7 @@ async def start_cryptobubbles_game(request: StartCryptoBubblesGameRequest):
     return {"status": "started"}
 
 @app.post("/cryptobubbles_move")
+@app.post("/tournament-hub/cryptobubbles_move")
 async def submit_cryptobubbles_move(request: CryptoBubblesMoveRequest):
     """Submit a move in CryptoBubbles game"""
     game = get_cryptobubbles_game(request.sessionId)
@@ -935,6 +1017,7 @@ async def submit_cryptobubbles_move(request: CryptoBubblesMoveRequest):
     return {"status": "moved"}
 
 @app.post("/join_cryptobubbles_session")
+@app.post("/tournament-hub/join_cryptobubbles_session")
 async def join_cryptobubbles_session(sessionId: str, player: str):
     """Join an existing CryptoBubbles session"""
     try:
@@ -1003,6 +1086,7 @@ async def get_chess_game_state(sessionId: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chess_move")
+@app.post("/tournament-hub/chess_move")
 async def submit_chess_move(request: ChessMoveRequest):
     """Submit a move in a chess game"""
     try:
@@ -1050,6 +1134,7 @@ async def submit_chess_move(request: ChessMoveRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/start_chess_game")
+@app.post("/tournament-hub/start_chess_game")
 async def start_chess_game(sessionId: str):
     """Start a chess game (games start automatically when created)"""
     try:
@@ -1065,6 +1150,7 @@ async def start_chess_game(sessionId: str):
 
 # Emojis for chess sessions
 @app.post("/chess_emoji")
+@app.post("/tournament-hub/chess_emoji")
 async def post_chess_emoji(req: ChessEmojiRequest):
     try:
         if req.sessionId not in sessions:
@@ -1085,57 +1171,65 @@ async def post_chess_emoji(req: ChessEmojiRequest):
 
 # Aliases for compatibility
 @app.post("/chess-emoji")
+@app.post("/tournament-hub/chess-emoji")
 async def post_chess_emoji_dash(req: ChessEmojiRequest):
     return await post_chess_emoji(req)
 
 @app.post("/emoji")
+@app.post("/tournament-hub/emoji")
 async def post_emoji(req: ChessEmojiRequest):
     return await post_chess_emoji(req)
 
 # Tic Tac Toe specific endpoints
 @app.get("/tictactoe_game_state")
+@app.get("/tournament-hub/tictactoe_game_state")
 async def get_tictactoe_game_state(sessionId: str):
     """Get the current state of a Tic Tac Toe game"""
     try:
         # Add validation for sessionId
-        if not sessionId or sessionId == "null":
+        if not sessionId or sessionId == "null" or sessionId.strip() == "":
             logger.warning(f"Invalid sessionId provided: '{sessionId}'")
-            raise HTTPException(status_code=400, detail="Invalid sessionId provided")
+            return {"error": "Invalid sessionId provided", "sessionId": sessionId, "status": "error"}
         
         logger.info(f"Fetching Tic Tac Toe game state for session: {sessionId}")
         game = get_tictactoe_game(sessionId)
         if not game:
             logger.warning(f"Tic Tac Toe game not found for session: {sessionId}")
-            raise HTTPException(status_code=404, detail="Tic Tac Toe game not found")
+            return {"error": "Tic Tac Toe game not found", "sessionId": sessionId, "status": "not_found"}
         
         game_state = game.get_game_state()
         logger.info(f"Successfully retrieved game state for session: {sessionId}")
         return game_state
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error getting Tic Tac Toe game state for session {sessionId}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"error": str(e), "sessionId": sessionId, "status": "error"}
 
 @app.post("/tictactoe_move")
+@app.post("/tournament-hub/tictactoe_move")
 async def submit_tictactoe_move(request: TicTacToeMoveRequest):
     """Submit a move in a Tic Tac Toe game"""
+    logger.info("=== TICTACTOE_MOVE ROUTE CALLED ===")
     try:
+        logger.info(f"Tic Tac Toe move request: sessionId={request.sessionId}, player={request.player}, row={request.row}, col={request.col}")
         game = get_tictactoe_game(request.sessionId)
         if not game:
+            logger.warning(f"Tic Tac Toe game not found for session: {request.sessionId}")
             raise HTTPException(status_code=404, detail="Tic Tac Toe game not found")
         
         # Make the move
         success = game.make_move(request.row, request.col, request.player)
         if not success:
+            logger.warning(f"Invalid move attempted: player={request.player}, row={request.row}, col={request.col}")
             raise HTTPException(status_code=400, detail="Invalid move")
         
+        logger.info(f"Move successful for player {request.player} at ({request.row}, {request.col})")
         return {"status": "moved", "game_state": game.get_game_state()}
     except Exception as e:
         logger.error(f"Error making Tic Tac Toe move: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/start_tictactoe_game")
+@app.post("/tournament-hub/start_tictactoe_game")
 async def start_tictactoe_game(sessionId: str):
     """Start a Tic Tac Toe game (games start automatically when created)"""
     try:
@@ -1361,6 +1455,7 @@ def check_and_submit_game_results():
 
 # Color Rush API Endpoints
 @app.post("/join_colorrush_session")
+@app.post("/tournament-hub/join_colorrush_session")
 async def join_colorrush_session(sessionId: str, player: str):
     """Join a Color Rush game session"""
     try:
@@ -1381,6 +1476,7 @@ async def join_colorrush_session(sessionId: str, player: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/start_colorrush_game")
+@app.post("/tournament-hub/start_colorrush_game")
 async def start_colorrush_game(sessionId: str, player: str):
     """Start a Color Rush game"""
     try:
@@ -1411,6 +1507,7 @@ async def get_colorrush_game_state(sessionId: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/submit_colorrush_score")
+@app.post("/tournament-hub/submit_colorrush_score")
 async def submit_colorrush_score(sessionId: str, player: str, score: int, tilesCleared: int, combo: int):
     """Submit final score for Color Rush game"""
     try:
@@ -1428,6 +1525,7 @@ async def submit_colorrush_score(sessionId: str, player: str, score: int, tilesC
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/colorrush_tile_click")
+@app.post("/tournament-hub/colorrush_tile_click")
 async def colorrush_tile_click(sessionId: str, player: str, tileId: str):
     """Handle tile click in Color Rush game"""
     try:
@@ -1452,23 +1550,45 @@ update_thread.start()
 results_thread = threading.Thread(target=check_and_submit_game_results, daemon=True)
 results_thread.start()
 
+# Catch-all route removed - it was interfering with valid routes
+
 # Start notifier subscriber on startup
 @app.on_event("startup")
 async def startup_event():
-    # Prefer RabbitMQ notifier if AMQP config provided, else fallback to WS
+    logger.info("Starting Tournament Hub Game Server...")
+    
+    # Check if we have a contract address configured
+    contract_address = os.getenv("MX_TOURNAMENT_CONTRACT")
+    if not contract_address:
+        logger.warning("MX_TOURNAMENT_CONTRACT not set - notifier events will not be filtered by contract address")
+    
+    # Temporarily disable notifiers due to DNS resolution issues
+    # All MultiversX notifier endpoints are currently failing DNS resolution
+    logger.warning("Notifiers temporarily disabled due to DNS resolution issues")
+    logger.info("Game server will run without blockchain event notifications")
+    logger.info("Tournament events will need to be processed manually or via other means")
+    
+    # TODO: Re-enable notifiers when DNS issues are resolved
+    # The following code is commented out until notifier endpoints are working:
+    """
+    # Try to start notifiers with graceful fallback
+    notifier_started = False
+    
+    # Prefer RabbitMQ notifier if AMQP config provided
     use_amqp = any([
         os.getenv("MX_AMQP_URL"),
         os.getenv("MX_AMQP_HOST"),
         os.getenv("MX_AMQP_USER"),
         os.getenv("MX_AMQP_PASS"),
     ])
+    
     if use_amqp:
         try:
             # Start RabbitMQ subscriber in background thread
             subscriber = RabbitNotifierSubscriber(
-                amqp_host=os.getenv("MX_AMQP_HOST", "localhost"),
-                amqp_port=int(os.getenv("MX_AMQP_PORT", "5672")),
-                amqp_vhost=os.getenv("MX_AMQP_VHOST", "/"),
+                amqp_host=os.getenv("MX_AMQP_HOST", "devnet-external-k8s-proxy.multiversx.com"),
+                amqp_port=int(os.getenv("MX_AMQP_PORT", "30006")),
+                amqp_vhost=os.getenv("MX_AMQP_VHOST", "devnet2"),
                 amqp_user=os.getenv("MX_AMQP_USER", ""),
                 amqp_pass=os.getenv("MX_AMQP_PASS", ""),
                 exchange=os.getenv("MX_AMQP_EXCHANGE", "all_events"),
@@ -1476,11 +1596,25 @@ async def startup_event():
             )
             subscriber.start()
             logger.info("Started RabbitMQ notifier subscriber")
+            notifier_started = True
         except Exception as e:
-            logger.warning(f"Failed to start RabbitMQ notifier subscriber: {e}. Falling back to WS.")
+            logger.warning(f"Failed to start RabbitMQ notifier subscriber: {e}")
+    
+    # Fallback to WebSocket notifier
+    if not notifier_started:
+        try:
             asyncio.create_task(start_notifier_subscriber(handle_notifier_event))
+            logger.info("Started WebSocket notifier subscriber")
+            notifier_started = True
+        except Exception as e:
+            logger.error(f"Failed to start WebSocket notifier subscriber: {e}")
+    
+    if not notifier_started:
+        logger.error("Failed to start any notifier subscriber - events will not be received from the blockchain")
+        logger.info("Game server will continue to run but tournament events will not be processed automatically")
     else:
-        asyncio.create_task(start_notifier_subscriber(handle_notifier_event))
+        logger.info("Notifier subscriber started successfully")
+    """
 
 if __name__ == "__main__":
     root_path = os.getenv("ROOT_PATH", "")
