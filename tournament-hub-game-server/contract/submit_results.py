@@ -16,7 +16,20 @@ def bech32_to_bytes(addr: str) -> bytes:
     try:
         # Use the SDK's Address class for proper conversion
         address = Address.new_from_bech32(addr)
-        return bytes.fromhex(address.hex())
+        
+        # Try different methods to get hex representation
+        try:
+            # Try .hex() method first
+            hex_str = address.hex()
+        except AttributeError:
+            try:
+                # Try .to_hex() method
+                hex_str = address.to_hex()
+            except AttributeError:
+                # Fallback to bytes conversion
+                hex_str = bytes(address).hex()
+        
+        return bytes.fromhex(hex_str)
     except Exception as e:
         # If SDK fails, raise the error instead of using fallback
         raise Exception(f"Failed to decode bech32 address '{addr}' using SDK: {e}")
