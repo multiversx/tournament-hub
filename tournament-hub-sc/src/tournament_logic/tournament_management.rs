@@ -6,7 +6,7 @@ multiversx_sc::derive_imports!();
 #[multiversx_sc::module]
 // Specify the supertrait with its full path as required by the linter
 pub trait TournamentManagementModule:
-    crate::storage::StorageModule + crate::events::EventsModule
+    crate::storage::StorageModule + crate::events::EventsModule + crate::helpers::HelperModule
 {
     #[endpoint(createTournament)]
     #[payable("EGLD")]
@@ -80,6 +80,13 @@ pub trait TournamentManagementModule:
         // Add tournament to VecMapper; index will be the tournament ID (starting from 1)
         self.active_tournaments().push(&tournament);
         let tournament_index = self.active_tournaments().len() as u64; // index of the newly added tournament
+
+        // Update user statistics
+        self.update_user_tournament_created(&caller, tournament_index);
+
+        // Update global statistics
+        self.total_tournaments_created().update(|count| *count += 1);
+
         self.tournament_created_event(&tournament_index, &game_index, &caller);
     }
 
@@ -142,6 +149,10 @@ pub trait TournamentManagementModule:
 
         self.active_tournaments()
             .set(tournament_index as usize, &tournament);
+
+        // Update user statistics
+        self.update_user_tournament_joined(&caller, tournament_index);
+
         self.player_joined_event(&(tournament_index as u64), &caller);
 
         // Check if minimum players reached and update status to ReadyToStart
@@ -218,5 +229,28 @@ pub trait TournamentManagementModule:
 
         // Emit event for logging
         self.tournaments_cleared_event();
+    }
+
+    // Helper functions for user statistics
+    fn update_user_tournament_created(&self, user: &ManagedAddress, tournament_id: u64) {
+        // Add tournament to user's created tournaments
+        self.user_tournaments_created(user).insert(tournament_id);
+
+        // Update user stats
+        self.update_user_stats(user, |stats| {
+            stats.tournaments_created += 1;
+            stats.last_activity = self.blockchain().get_block_timestamp();
+        });
+    }
+
+    fn update_user_tournament_joined(&self, user: &ManagedAddress, tournament_id: u64) {
+        // Add tournament to user's joined tournaments
+        self.user_tournaments_joined(user).insert(tournament_id);
+
+        // Update user stats
+        self.update_user_stats(user, |stats| {
+            stats.games_played += 1;
+            stats.last_activity = self.blockchain().get_block_timestamp();
+        });
     }
 }

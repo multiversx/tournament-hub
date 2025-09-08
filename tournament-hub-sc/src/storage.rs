@@ -1,4 +1,4 @@
-use crate::models::{GameConfig, SpectatorBet, Tournament};
+use crate::models::{GameConfig, SpectatorBet, Tournament, UserStats};
 use multiversx_sc::imports::*;
 
 #[multiversx_sc::module]
@@ -30,4 +30,25 @@ pub trait StorageModule {
 
     #[storage_mapper("tournament_fee")]
     fn tournament_fee(&self) -> SingleValueMapper<BigUint<Self::Api>>;
+
+    // User statistics storage
+    #[storage_mapper("user_stats")]
+    fn user_stats(&self, user: &ManagedAddress) -> SingleValueMapper<UserStats<Self::Api>>;
+
+    // User tournament participation tracking
+    #[storage_mapper("user_tournaments_created")]
+    fn user_tournaments_created(&self, user: &ManagedAddress) -> UnorderedSetMapper<u64>;
+
+    #[storage_mapper("user_tournaments_joined")]
+    fn user_tournaments_joined(&self, user: &ManagedAddress) -> UnorderedSetMapper<u64>;
+
+    #[storage_mapper("user_tournaments_won")]
+    fn user_tournaments_won(&self, user: &ManagedAddress) -> UnorderedSetMapper<u64>;
+
+    // Global statistics
+    #[storage_mapper("total_tournaments_created")]
+    fn total_tournaments_created(&self) -> SingleValueMapper<u64>;
+
+    #[storage_mapper("total_tournaments_completed")]
+    fn total_tournaments_completed(&self) -> SingleValueMapper<u64>;
 }
