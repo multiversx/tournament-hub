@@ -13,12 +13,17 @@ import {
   StatNumber,
   StatGroup,
   Container,
+  Spinner,
+  Skeleton,
 } from '@chakra-ui/react';
-import { Trophy, Users, Calendar, Plus } from 'lucide-react';
+import { Trophy, Users, Calendar, Plus, Gamepad2 } from 'lucide-react';
 import { PageWrapper } from 'wrappers';
+import { useTournamentStats } from '../../hooks/useTournamentStats';
+import { UpcomingTournaments } from '../../components/UpcomingTournaments';
 
 export const Home = () => {
   const isMobile = useBreakpointValue({ base: true, md: false });
+  const { totalTournaments, joiningTournaments, readyToStartTournaments, activeTournaments, completedTournaments, loading, error } = useTournamentStats();
 
   return (
     <PageWrapper>
@@ -39,20 +44,54 @@ export const Home = () => {
               </Text>
 
               {/* Stats */}
-              <StatGroup maxW="md" w="full">
+              <StatGroup maxW="lg" w="full">
                 <Stat>
-                  <StatNumber color="blue.400">6</StatNumber>
-                  <StatLabel color="gray.400">Total Tournaments</StatLabel>
+                  {loading ? (
+                    <Skeleton height="32px" width="40px" />
+                  ) : error ? (
+                    <StatNumber color="red.400">-</StatNumber>
+                  ) : (
+                    <StatNumber color="yellow.400">{joiningTournaments}</StatNumber>
+                  )}
+                  <StatLabel color="gray.400">Joining</StatLabel>
                 </Stat>
                 <Stat>
-                  <StatNumber color="green.400">1</StatNumber>
-                  <StatLabel color="gray.400">Active Tournaments</StatLabel>
+                  {loading ? (
+                    <Skeleton height="32px" width="40px" />
+                  ) : error ? (
+                    <StatNumber color="red.400">-</StatNumber>
+                  ) : (
+                    <StatNumber color="blue.400">{readyToStartTournaments}</StatNumber>
+                  )}
+                  <StatLabel color="gray.400">Ready to Start</StatLabel>
                 </Stat>
                 <Stat>
-                  <StatNumber color="yellow.400">5</StatNumber>
-                  <StatLabel color="gray.400">Upcoming Tournaments</StatLabel>
+                  {loading ? (
+                    <Skeleton height="32px" width="40px" />
+                  ) : error ? (
+                    <StatNumber color="red.400">-</StatNumber>
+                  ) : (
+                    <StatNumber color="green.400">{activeTournaments}</StatNumber>
+                  )}
+                  <StatLabel color="gray.400">Active</StatLabel>
+                </Stat>
+                <Stat>
+                  {loading ? (
+                    <Skeleton height="32px" width="40px" />
+                  ) : error ? (
+                    <StatNumber color="red.400">-</StatNumber>
+                  ) : (
+                    <StatNumber color="purple.400">{completedTournaments}</StatNumber>
+                  )}
+                  <StatLabel color="gray.400">Completed</StatLabel>
                 </Stat>
               </StatGroup>
+
+              {error && (
+                <Text fontSize="sm" color="red.400" textAlign={{ base: 'center', md: 'left' }}>
+                  Failed to load tournament statistics. Please try refreshing the page.
+                </Text>
+              )}
 
               {/* Action Buttons */}
               <HStack spacing={4} flexWrap="wrap" justify={{ base: 'center', md: 'start' }}>
@@ -81,6 +120,23 @@ export const Home = () => {
               </HStack>
             </VStack>
           </Box>
+
+          {/* Available Tournaments Preview */}
+          {(joiningTournaments + readyToStartTournaments + activeTournaments + completedTournaments) > 0 && (
+            <Box>
+              <HStack spacing={3} mb={6}>
+                <Box p={2} bg="yellow.500" borderRadius="lg">
+                  <Gamepad2 size={20} color="white" />
+                </Box>
+                <VStack spacing={0} align="start">
+                  <Heading size="lg">Available Tournaments</Heading>
+                  <Text color="gray.400" fontSize="sm">
+                    {joiningTournaments + readyToStartTournaments + activeTournaments + completedTournaments} tournaments to view and join
+                  </Text>
+                </VStack>
+              </HStack>
+            </Box>
+          )}
 
           {/* Features Grid */}
           <SimpleGrid columns={{ base: 1, md: 3 }} spacing={8}>
