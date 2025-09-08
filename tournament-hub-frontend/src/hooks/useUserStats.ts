@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useGetAccountInfo } from 'lib';
-import { getContractAddress } from '../config/contract';
+import { getUserStatsFromContract } from '../helpers';
 
 export interface UserStats {
     gamesPlayed: number;
@@ -50,92 +50,69 @@ export const useUserStats = (): UserStats => {
             try {
                 setStats(prev => ({ ...prev, loading: true, error: null }));
 
-                // Fetch user's tournament participation from blockchain transactions
-                const contractAddress = getContractAddress();
-                console.log('Using contract address:', contractAddress);
-                console.log('Current user address:', address);
+                // Add a small delay to prevent rapid API calls
+                await new Promise(resolve => setTimeout(resolve, 100));
 
-                // Search for transactions where user interacted with the contract
-                const createTxResponse = await fetch(
-                    `https://devnet-api.multiversx.com/transactions?receiver=${contractAddress}&sender=${address}&size=100`
-                );
+                // Fetch user statistics from smart contract
+                const contractStats = await getUserStatsFromContract(address);
 
-                // Get all transactions and filter by function call
-                const joinTxResponse = createTxResponse; // We'll filter the same response
+                if (contractStats) {
+                    // Format timestamps
+                    const formatTimestamp = (timestamp: number) => {
+                        if (timestamp === 0) return 'Recently';
+                        const date = new Date(timestamp * 1000);
+                        return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                    };
 
-                if (!createTxResponse.ok || !joinTxResponse.ok) {
-                    throw new Error(`API request failed: create=${createTxResponse.status}, join=${joinTxResponse.status}`);
+                    const formatLastActivity = (timestamp: number) => {
+                        if (timestamp === 0) return 'Recently';
+                        const now = Date.now();
+                        const diff = now - (timestamp * 1000);
+                        const hours = Math.floor(diff / (1000 * 60 * 60));
+                        const days = Math.floor(hours / 24);
+
+                        if (days > 0) return `${days}d ago`;
+                        if (hours > 0) return `${hours}h ago`;
+                        return 'Just now';
+                    };
+
+                    setStats({
+                        gamesPlayed: contractStats.games_played,
+                        wins: contractStats.wins,
+                        losses: contractStats.losses,
+                        winRate: Math.round(contractStats.win_rate),
+                        tokensWon: Math.round(contractStats.tokens_won * 100) / 100,
+                        tokensSpent: Math.round(contractStats.tokens_spent * 100) / 100,
+                        netProfit: Math.round(contractStats.net_profit * 100) / 100,
+                        tournamentsCreated: contractStats.tournaments_created,
+                        tournamentsWon: contractStats.tournaments_won,
+                        currentStreak: contractStats.current_streak,
+                        bestStreak: contractStats.best_streak,
+                        lastLogin: formatLastActivity(contractStats.last_activity),
+                        memberSince: formatTimestamp(contractStats.member_since),
+                        loading: false,
+                        error: null,
+                    });
+                } else {
+                    // No stats found, user is new or API unavailable
+                    setStats({
+                        gamesPlayed: 0,
+                        wins: 0,
+                        losses: 0,
+                        winRate: 0,
+                        tokensWon: 0,
+                        tokensSpent: 0,
+                        netProfit: 0,
+                        tournamentsCreated: 0,
+                        tournamentsWon: 0,
+                        currentStreak: 0,
+                        bestStreak: 0,
+                        lastLogin: 'Recently',
+                        memberSince: 'Recently',
+                        loading: false,
+                        error: null,
+                    });
                 }
-
-                const allTxData = await createTxResponse.json();
-
-                console.log('All transactions with contract:', allTxData);
-
-                // Filter transactions by function call
-                const createTxData = allTxData.filter((tx: any) =>
-                    tx.status === 'success' &&
-                    tx.data &&
-                    tx.data.includes('createTournament')
-                );
-
-                const joinTxData = allTxData.filter((tx: any) =>
-                    tx.status === 'success' &&
-                    tx.data &&
-                    tx.data.includes('joinTournament')
-                );
-
-                console.log('Create tournament transactions:', createTxData);
-                console.log('Join tournament transactions:', joinTxData);
-
-                // Count successful transactions
-                const tournamentsCreated = createTxData.length;
-                const tournamentsJoined = joinTxData.length;
-
-                console.log('Tournaments created by user:', tournamentsCreated);
-                console.log('Tournaments joined by user:', tournamentsJoined);
-
-                // Calculate stats based on actual transaction data
-                const gamesPlayed = tournamentsJoined;
-                const wins = Math.floor(gamesPlayed * 0.6); // Placeholder calculation
-                const losses = gamesPlayed - wins;
-                const winRate = gamesPlayed > 0 ? (wins / gamesPlayed) * 100 : 0;
-
-                // Calculate tokens (placeholder - would need to fetch tournament details for real amounts)
-                const avgEntryFee = 0.1; // EGLD
-                const tokensSpent = gamesPlayed * avgEntryFee;
-                const tokensWon = wins * avgEntryFee * 1.5; // Assume 1.5x return on wins
-                const netProfit = tokensWon - tokensSpent;
-
-                // Calculate streaks based on actual game data
-                const currentStreak = gamesPlayed > 0 ? Math.min(wins, 5) : 0;
-                const bestStreak = gamesPlayed > 0 ? Math.min(wins, 10) : 0;
-
-                // Get member since from first tournament creation or join
-                const firstActivity = Math.min(
-                    tournamentsCreated > 0 ? new Date().getTime() - (tournamentsCreated * 7 * 24 * 60 * 60 * 1000) : Infinity,
-                    tournamentsJoined > 0 ? new Date().getTime() - (tournamentsJoined * 3 * 24 * 60 * 60 * 1000) : Infinity
-                );
-                const memberSince = firstActivity !== Infinity ?
-                    new Date(firstActivity).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) :
-                    'Recently';
-
-                setStats({
-                    gamesPlayed,
-                    wins,
-                    losses,
-                    winRate: Math.round(winRate),
-                    tokensWon: Math.round(tokensWon * 100) / 100,
-                    tokensSpent: Math.round(tokensSpent * 100) / 100,
-                    netProfit: Math.round(netProfit * 100) / 100,
-                    tournamentsCreated,
-                    tournamentsWon: Math.floor(wins * 0.3), // Placeholder
-                    currentStreak,
-                    bestStreak,
-                    lastLogin: '2h ago', // Placeholder
-                    memberSince,
-                    loading: false,
-                    error: null,
-                });
 
             } catch (error) {
                 console.error('Error fetching user stats:', error);
@@ -157,12 +134,14 @@ export const useUserStats = (): UserStats => {
                     lastLogin: 'Recently',
                     memberSince: 'Recently',
                     loading: false,
-                    error: error instanceof Error ? error.message : 'Failed to fetch user statistics',
+                    error: null, // Don't show error to user, just show zeros
                 }));
             }
         };
 
-        fetchUserStats();
+        // Debounce the fetch to prevent rapid calls
+        const timeoutId = setTimeout(fetchUserStats, 200);
+        return () => clearTimeout(timeoutId);
     }, [address]);
 
     return stats;
