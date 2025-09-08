@@ -27,53 +27,104 @@ export const Header = () => {
     });
 
   return (
-    <Box as="header" display="flex" flexDirection="row" alignItems="center" justifyContent="space-between" pl={6} pr={6} pt={6}>
+    <Box
+      as="header"
+      display="flex"
+      flexDirection="row"
+      alignItems="center"
+      justifyContent="space-between"
+      pl={6}
+      pr={6}
+      pt={6}
+      pb={4}
+      borderBottom="1px solid"
+      borderColor="gray.700"
+      bg="gray.900"
+      position="sticky"
+      top={0}
+      zIndex={10}
+      backdropFilter="blur(10px)"
+    >
       <MxLink
-        className='flex items-center justify-between'
+        className='flex items-center justify-between hover:no-underline'
         to={RouteNamesEnum.home}
       >
-        <Text fontSize="2xl" fontWeight="bold" color="blue.400">Tournament Hub</Text>
+        <HStack spacing={3}>
+          <Box
+            p={2}
+            bgGradient="linear(to-br, blue.500, purple.600)"
+            borderRadius="lg"
+            boxShadow="md"
+          >
+            <Text fontSize="xl">🏆</Text>
+          </Box>
+          <VStack spacing={0} align="start">
+            <Text fontSize="2xl" fontWeight="bold" bgGradient="linear(to-r, blue.400, purple.400)" bgClip="text">
+              Tournament Hub
+            </Text>
+            <Text fontSize="xs" color="gray.500" fontWeight="medium">
+              MultiversX Gaming Platform
+            </Text>
+          </VStack>
+        </HStack>
       </MxLink>
 
       <Box as="nav" h="full" w={{ base: 'full', sm: 'auto' }} fontSize="sm" position={{ base: 'static', sm: 'relative' }} left={{ sm: 'auto' }} top={{ sm: 'auto' }} display={{ base: 'block', sm: 'flex' }} flexDirection={{ sm: 'row' }} justifyContent={{ sm: 'end' }} bg={{ sm: 'transparent' }}>
-        <HStack justify="end" spacing={2} alignItems="center">
+        <HStack justify="end" spacing={6} alignItems="center">
+          {/* Navigation Links */}
+          <HStack spacing={6} display={{ base: 'none', md: 'flex' }}>
+            <MxLink to="/tournaments" className="text-gray-300 hover:text-blue-400 transition-colors font-medium">
+              Tournaments
+            </MxLink>
+            <MxLink to="/tournaments/create" className="text-gray-300 hover:text-green-400 transition-colors font-medium">
+              Create
+            </MxLink>
+            <MxLink to="/dashboard" className="text-gray-300 hover:text-purple-400 transition-colors font-medium">
+              Dashboard
+            </MxLink>
+          </HStack>
+
           <HStack spacing={1} alignItems="center">
             <Box w={2} h={2} borderRadius="full" bg="green.500" />
-            <Text color="gray.400">{network.name}</Text>
+            <Text color="gray.400" fontSize="sm">{network.name}</Text>
           </HStack>
 
           {isLoggedIn && (
             <>
-              <Text
-                fontFamily="mono"
-                fontSize="xs"
-                bg="gray.800"
-                color="gray.300"
-                borderRadius="md"
-                px={2}
-                py={1}
-                border="1px solid"
-                borderColor="gray.700"
-              >
-                {address}
-              </Text>
-              <Text
-                fontFamily="mono"
-                fontSize="xs"
-                bg="gray.800"
-                color="gray.300"
-                borderRadius="md"
-                px={2}
-                py={1}
-                border="1px solid"
-                borderColor="gray.700"
-              >
-                Balance: {isValid ? `${valueInteger}.${valueDecimal} ${label}` : '...'}
-              </Text>
+              <VStack spacing={1} align="end">
+                <Text
+                  fontFamily="mono"
+                  fontSize="xs"
+                  bg="gray.800"
+                  color="gray.300"
+                  borderRadius="lg"
+                  px={3}
+                  py={1}
+                  border="1px solid"
+                  borderColor="gray.700"
+                  fontWeight="medium"
+                >
+                  {address?.slice(0, 8)}...{address?.slice(-6)}
+                </Text>
+                <Text
+                  fontFamily="mono"
+                  fontSize="xs"
+                  bg="blue.900"
+                  color="blue.300"
+                  borderRadius="lg"
+                  px={3}
+                  py={1}
+                  border="1px solid"
+                  borderColor="blue.700"
+                  fontWeight="semibold"
+                >
+                  {isValid ? `${valueInteger}.${valueDecimal} ${label}` : '...'}
+                </Text>
+              </VStack>
               <NotificationsButton />
               <Button
                 onClick={handleLogout}
-                className="inline-block rounded-lg px-3 py-2 text-center hover:no-underline my-0 text-gray-400 hover:bg-gray-800 mx-0"
+                className="inline-block rounded-lg px-3 py-2 text-center hover:no-underline my-0 text-red-400 hover:bg-red-600 hover:text-white mx-0 transition-colors"
               >
                 Logout
               </Button>
@@ -85,8 +136,9 @@ export const Header = () => {
               onClick={() => {
                 navigate(RouteNamesEnum.unlock);
               }}
+              className="inline-block rounded-lg px-4 py-2 text-center hover:no-underline my-0 text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 hover:transform hover:-translate-y-0.5 hover:shadow-lg mx-0 transition-all font-semibold"
             >
-              Connect
+              Connect Wallet
             </Button>
           )}
         </HStack>

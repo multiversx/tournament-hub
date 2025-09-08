@@ -37,17 +37,17 @@ import { getActiveTournamentIds, getTournamentDetailsFromContract, getGameConfig
 
 const statusColors: { [key: number]: string } = {
     0: 'yellow', // Joining
-    1: 'blue',   // ReadyToStart
-    2: 'green',  // Active
-    3: 'orange', // ProcessingResults
-    4: 'gray',   // Completed
+    1: 'blue',   // Ready to Start
+    2: 'green',  // Playing
+    3: 'orange', // Processing Results
+    4: 'purple', // Completed
 };
 
 const statusMap: { [key: number]: string } = {
     0: 'Joining',
-    1: 'ReadyToStart',
-    2: 'Active',
-    3: 'ProcessingResults',
+    1: 'Ready to Start',
+    2: 'Playing',
+    3: 'Processing Results',
     4: 'Completed'
 };
 
@@ -742,55 +742,84 @@ export const Tournaments = () => {
                 </Button>
             </HStack>
 
-            {/* Search and Filters */}
-            <VStack spacing={4} mb={8} align="stretch">
-                <HStack justify="space-between">
-                    <InputGroup maxW="400px">
+            {/* Enhanced Search and Filters */}
+            <Box
+                p={6}
+                bg="gray.800"
+                borderRadius="2xl"
+                border="1px solid"
+                borderColor="gray.700"
+                mb={8}
+            >
+                <VStack spacing={6} align="stretch">
+                    <HStack justify="space-between" align="center">
+                        <Heading size="md" color="gray.200">Search & Filter</Heading>
+                        <IconButton
+                            aria-label="Toggle filters"
+                            icon={showFilters ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                            onClick={() => setShowFilters(!showFilters)}
+                            variant="ghost"
+                            size="sm"
+                            colorScheme="blue"
+                            _hover={{ bg: 'blue.600', color: 'white' }}
+                            _focus={{ bg: 'blue.600', color: 'white' }}
+                        />
+                    </HStack>
+
+                    <InputGroup maxW="500px">
                         <InputLeftElement pointerEvents="none">
-                            <Search size={16} color="gray.400" />
+                            <Search size={18} color="gray.400" />
                         </InputLeftElement>
                         <Input
-                            placeholder="Search tournaments..."
+                            placeholder="Search tournaments by name, creator, or game type..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            bg={bgColor}
-                            borderColor={borderColor}
+                            bg="gray.700"
+                            borderColor="gray.600"
+                            _hover={{ borderColor: "gray.500" }}
+                            _focus={{ borderColor: "blue.500", boxShadow: "0 0 0 1px #3182ce" }}
+                            size="lg"
+                            fontSize="md"
                         />
                     </InputGroup>
 
-                    <IconButton
-                        aria-label="Toggle filters"
-                        icon={showFilters ? <ChevronUp size={16} color="#3182CE" /> : <ChevronDown size={16} color="#3182CE" />}
-                        onClick={() => setShowFilters(!showFilters)}
-                        variant="ghost"
-                        size="sm"
-                        colorScheme="blue"
-                        _hover={{ bg: 'blue.700', color: 'white' }}
-                        _focus={{ bg: 'blue.700', color: 'white' }}
-                    />
-                </HStack>
+                    <Collapse in={showFilters}>
+                        <HStack spacing={4} flexWrap="wrap">
+                            <Select
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                                bg="gray.700"
+                                borderColor="gray.600"
+                                maxW="200px"
+                                _hover={{ borderColor: "gray.500" }}
+                                _focus={{ borderColor: "blue.500" }}
+                            >
+                                <option value="all">All Status</option>
+                                <option value="active">Playing Only</option>
+                                <option value="completed">Completed Only</option>
+                                <option value="0">Joining</option>
+                                <option value="1">Ready to Start</option>
+                                <option value="2">Playing</option>
+                                <option value="3">Processing Results</option>
+                                <option value="4">Completed</option>
+                            </Select>
 
-                <Collapse in={showFilters}>
-                    <HStack spacing={4}>
-                        <Select
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                            bg={bgColor}
-                            borderColor={borderColor}
-                            maxW="200px"
-                        >
-                            <option value="all">All Status</option>
-                            <option value="active">Active Only</option>
-                            <option value="completed">Completed Only</option>
-                            <option value="0">Joining</option>
-                            <option value="1">ReadyToStart</option>
-                            <option value="2">Active</option>
-                            <option value="3">ProcessingResults</option>
-                            <option value="4">Completed</option>
-                        </Select>
-                    </HStack>
-                </Collapse>
-            </VStack>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                colorScheme="blue"
+                                onClick={() => {
+                                    setSearchTerm('');
+                                    setStatusFilter('all');
+                                }}
+                                _hover={{ bg: "blue.600", color: "white" }}
+                            >
+                                Clear Filters
+                            </Button>
+                        </HStack>
+                    </Collapse>
+                </VStack>
+            </Box>
 
             {/* Active Tournaments Section */}
             <VStack spacing={6} align="stretch">
@@ -802,74 +831,16 @@ export const Tournaments = () => {
                             {activeTournaments.length}
                         </Badge>
                     </HStack>
-                    <HStack spacing={2}>
-                        <Button
-                            leftIcon={<RefreshCw size={16} />}
-                            onClick={() => {
-                                tournamentCache.clear();
-                                localStorage.removeItem(PERSISTENT_CACHE_KEY);
-                                // Clear API cache by reloading the page
-                                setTournaments([]);
-                                setLoading(true);
-                                setTimeout(() => {
-                                    window.location.reload();
-                                }, 100);
-                            }}
-                            size="sm"
-                            colorScheme="blue"
-                            variant="outline"
-                            isLoading={loading}
-                        >
-                            Refresh
-                        </Button>
-                        <Button
-                            onClick={async () => {
-                                console.log('Debugging contract...');
-                                const debug = await debugContractResponse();
-                                console.log('Contract debug:', debug);
-                                toast({
-                                    title: 'Debug Info',
-                                    description: `Contract: ${debug.contractInfo ? 'Found' : 'Not found'}, Games: ${debug.gamesResponse?.data?.value || 'Error'}, Tournaments: ${debug.functionResponse?.data?.value || 'Error'}`,
-                                    status: 'info',
-                                    duration: 10000,
-                                    isClosable: true,
-                                });
-                            }}
-                            size="sm"
-                            colorScheme="yellow"
-                            variant="outline"
-                        >
-                            Debug
-                        </Button>
-                        <Button
-                            onClick={() => {
-                                tournamentCache.clear();
-                                localStorage.removeItem(PERSISTENT_CACHE_KEY);
-                                clearApiCaches();
-                                pendingRequests.clear();
-                                toast({
-                                    title: 'Cache Cleared',
-                                    description: 'All caches have been cleared',
-                                    status: 'success',
-                                    duration: 3000,
-                                    isClosable: true,
-                                });
-                            }}
-                            size="sm"
-                            colorScheme="red"
-                            variant="outline"
-                        >
-                            Clear Cache
-                        </Button>
-                        <Button
-                            onClick={() => window.location.href = '/tournaments/create'}
-                            size="sm"
-                            colorScheme="green"
-                            variant="solid"
-                        >
-                            Create Tournament
-                        </Button>
-                    </HStack>
+                    <Button
+                        onClick={() => window.location.href = '/tournaments/create'}
+                        size="sm"
+                        colorScheme="green"
+                        variant="solid"
+                        leftIcon={<Plus size={16} />}
+                        fontWeight="semibold"
+                    >
+                        Create Tournament
+                    </Button>
                 </HStack>
 
                 {activeTournaments.length === 0 ? (
