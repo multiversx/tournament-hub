@@ -76,5 +76,9 @@ pub trait ResultsManagementModule:
         tournament.status = TournamentStatus::Completed;
         self.active_tournaments()
             .set(tournament_index as usize, &tournament);
+
+        // Update global statistics
+        self.total_tournaments_completed()
+            .update(|count| *count += 1);
     }
 }

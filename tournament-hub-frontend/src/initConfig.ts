@@ -4,6 +4,7 @@ import { walletConnectV2ProjectId } from './config/sharedConfig';
 import { EnvironmentsEnum, ICustomProvider, InitAppType } from './lib';
 import { InMemoryProvider } from './provider/inMemoryProvider';
 
+// Configure providers for MultiversX SDK
 const providers: ICustomProvider[] = [
   {
     name: 'In Memory Provider',
@@ -12,10 +13,6 @@ const providers: ICustomProvider[] = [
     constructor: async (options) => new InMemoryProvider(options)
   }
 ];
-
-(window as any).multiversx = {};
-// Option 1: Add providers using the `window.providers` array
-(window as any).multiversx.providers = providers;
 
 export const config: InitAppType = {
   storage: { getStorageCallback: () => sessionStorage },
@@ -28,7 +25,4 @@ export const config: InitAppType = {
       }
     }
   }
-
-  // Option 2: Add providers using the config `customProviders` array
-  // customProviders: [providers]
 };

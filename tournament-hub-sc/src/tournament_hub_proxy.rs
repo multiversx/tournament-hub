@@ -303,6 +303,32 @@ where
             .original_result()
     }
 
+    pub fn get_tournament_basic_info<
+        Arg0: ProxyArg<u64>,
+    >(
+        self,
+        tournament_id: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, (u64, u64, u32, ManagedVec<Env::Api, ManagedAddress<Env::Api>>, ManagedAddress<Env::Api>, u32, u32, BigUint<Env::Api>, u64, ManagedBuffer<Env::Api>, u64)> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTournamentBasicInfo")
+            .argument(&tournament_id)
+            .original_result()
+    }
+
+    pub fn get_user_tournaments<
+        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
+    >(
+        self,
+        user_address: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, (ManagedVec<Env::Api, u64>, ManagedVec<Env::Api, u64>)> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getUserTournaments")
+            .argument(&user_address)
+            .original_result()
+    }
+
     pub fn get_spectator_bets<
         Arg0: ProxyArg<usize>,
         Arg1: ProxyArg<ManagedAddress<Env::Api>>,
@@ -347,6 +373,94 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getTournamentFee")
+            .original_result()
+    }
+
+    pub fn get_house_fee_percentage(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u32> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getHouseFeePercentage")
+            .original_result()
+    }
+
+    pub fn get_user_stats<
+        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
+    >(
+        self,
+        user: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, UserStats<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getUserStats")
+            .argument(&user)
+            .original_result()
+    }
+
+    pub fn get_user_tournaments_created<
+        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
+    >(
+        self,
+        user: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, u64>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getUserTournamentsCreated")
+            .argument(&user)
+            .original_result()
+    }
+
+    pub fn get_user_tournaments_joined<
+        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
+    >(
+        self,
+        user: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, u64>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getUserTournamentsJoined")
+            .argument(&user)
+            .original_result()
+    }
+
+    pub fn get_user_tournaments_won<
+        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
+    >(
+        self,
+        user: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, u64>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getUserTournamentsWon")
+            .argument(&user)
+            .original_result()
+    }
+
+    pub fn get_total_tournaments_created(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u64> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTotalTournamentsCreated")
+            .original_result()
+    }
+
+    pub fn get_total_tournaments_completed(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u64> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTotalTournamentsCompleted")
+            .original_result()
+    }
+
+    pub fn get_tournament_stats(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, (u64, u64, u64, u64, u64)> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTournamentStats")
             .original_result()
     }
 }
@@ -401,4 +515,24 @@ where
 {
     pub bettor_address: ManagedAddress<Api>,
     pub amount: BigUint<Api>,
+}
+
+#[type_abi]
+#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
+pub struct UserStats<Api>
+where
+    Api: ManagedTypeApi,
+{
+    pub games_played: u32,
+    pub wins: u32,
+    pub losses: u32,
+    pub win_rate: u32,
+    pub tokens_won: BigUint<Api>,
+    pub tokens_spent: BigUint<Api>,
+    pub tournaments_created: u32,
+    pub tournaments_won: u32,
+    pub current_streak: u32,
+    pub best_streak: u32,
+    pub last_activity: u64,
+    pub member_since: u64,
 }
