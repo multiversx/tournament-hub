@@ -63,6 +63,17 @@ const GAME_TYPES: { [key: number]: GameInfo } = {
     5: { name: 'CryptoBubbles', description: 'Real-time cell battle arena', icon: '🫧' },
 };
 
+const getGameColor = (gameId: number): string => {
+    const colors = {
+        1: 'purple', // Tic Tac Toe
+        2: 'blue',   // Chess
+        3: 'red',    // Dodge Dash
+        4: 'yellow', // Color Rush
+        5: 'cyan',   // CryptoBubbles
+    };
+    return colors[gameId as keyof typeof colors] || 'gray';
+};
+
 const formatEGLD = (wei: string): string => {
     const value = BigInt(wei);
     const egld = Number(value) / 1e18;
@@ -102,7 +113,7 @@ const getStatusInfo = (status: number) => {
         case 1:
             return { label: 'Ready to Start', color: 'blue', description: 'Minimum players reached' };
         case 2:
-            return { label: 'Active', color: 'green', description: 'Game in progress' };
+            return { label: 'Playing', color: 'green', description: 'Game in progress' };
         case 4:
             return { label: 'Completed', color: 'purple', description: 'Tournament finished' };
         default:
@@ -138,7 +149,7 @@ export const UpcomingTournaments: React.FC = () => {
             );
 
             const allTournaments = await Promise.all(tournamentPromises);
-            const validTournaments = allTournaments.filter(t => t !== null) as TournamentDetails[];
+            const validTournaments = allTournaments.filter(t => t !== null) as unknown as TournamentDetails[];
 
             // Filter for tournaments to display (status 0, 1, 2, or 4) - exclude status 3 (ProcessingResults)
             const upcomingTournaments = validTournaments.filter(t =>
@@ -267,34 +278,55 @@ export const UpcomingTournaments: React.FC = () => {
                             const participantCount = tournament.participants.length;
                             const progressPercent = (participantCount / tournament.max_players) * 100;
 
+                            const gameColor = getGameColor(tournament.game_id);
+
                             return (
                                 <Card
                                     key={index}
                                     bg={cardBg}
                                     border="1px solid"
                                     borderColor={borderColor}
+                                    position="relative"
+                                    overflow="hidden"
                                     _hover={{
-                                        transform: 'translateY(-2px)',
-                                        boxShadow: 'lg',
-                                        transition: 'all 0.2s'
+                                        transform: 'translateY(-4px)',
+                                        boxShadow: '2xl',
+                                        borderColor: `${gameColor}.500`,
+                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
                                     }}
-                                    transition="all 0.2s"
+                                    transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
                                 >
-                                    <CardHeader pb={3}>
-                                        <VStack spacing={2} align="start">
+                                    <CardHeader pb={4}>
+                                        <VStack spacing={3} align="start">
                                             <HStack justify="space-between" w="full">
-                                                <HStack spacing={2}>
-                                                    <Text fontSize="2xl">{gameInfo.icon}</Text>
-                                                    <VStack spacing={0} align="start">
-                                                        <Heading size="sm" noOfLines={1}>
+                                                <HStack spacing={3}>
+                                                    <Box
+                                                        p={2}
+                                                        bgGradient={`linear(to-br, ${gameColor}.500, ${gameColor}.600)`}
+                                                        borderRadius="lg"
+                                                        boxShadow="md"
+                                                    >
+                                                        <Text fontSize="xl">{gameInfo.icon}</Text>
+                                                    </Box>
+                                                    <VStack spacing={1} align="start">
+                                                        <Heading size="md" noOfLines={1} fontWeight="semibold">
                                                             {tournament.name}
                                                         </Heading>
-                                                        <Text fontSize="xs" color="gray.500">
+                                                        <Text fontSize="sm" color="gray.400" fontWeight="medium">
                                                             {gameInfo.name}
                                                         </Text>
                                                     </VStack>
                                                 </HStack>
-                                                <Badge colorScheme={statusInfo.color} fontSize="xs">
+                                                <Badge
+                                                    colorScheme={statusInfo.color}
+                                                    fontSize="xs"
+                                                    px={3}
+                                                    py={1}
+                                                    borderRadius="lg"
+                                                    fontWeight="semibold"
+                                                    textTransform="uppercase"
+                                                    letterSpacing="0.05em"
+                                                >
                                                     {statusInfo.label}
                                                 </Badge>
                                             </HStack>
@@ -326,46 +358,63 @@ export const UpcomingTournaments: React.FC = () => {
                                                 </Stat>
                                             </SimpleGrid>
 
-                                            {/* Players Progress */}
+                                            {/* Enhanced Players Progress */}
                                             <Box>
-                                                <HStack justify="space-between" mb={2}>
-                                                    <Text fontSize="xs" color="gray.500">Players</Text>
-                                                    <Text fontSize="xs" color="gray.500">
+                                                <HStack justify="space-between" mb={3}>
+                                                    <Text fontSize="sm" color="gray.400" fontWeight="medium">Players</Text>
+                                                    <Text fontSize="sm" color="gray.300" fontWeight="semibold">
                                                         {participantCount}/{tournament.max_players}
                                                     </Text>
                                                 </HStack>
                                                 <Box
                                                     w="full"
-                                                    bg="gray.200"
+                                                    bg="gray.700"
                                                     borderRadius="full"
-                                                    h="6px"
+                                                    h="8px"
                                                     overflow="hidden"
+                                                    position="relative"
                                                 >
                                                     <Box
-                                                        bg={progressPercent >= 100 ? "green.400" : "blue.400"}
+                                                        bgGradient={`linear(to-r, ${gameColor}.400, ${gameColor}.500)`}
                                                         h="100%"
                                                         w={`${Math.min(progressPercent, 100)}%`}
-                                                        transition="width 0.3s ease"
+                                                        transition="width 0.5s cubic-bezier(0.4, 0, 0.2, 1)"
+                                                        borderRadius="full"
+                                                        boxShadow="sm"
                                                     />
                                                 </Box>
-                                                <Text fontSize="xs" color="gray.400" mt={1}>
-                                                    Min: {tournament.min_players} players to start
-                                                </Text>
+                                                <HStack justify="space-between" mt={2}>
+                                                    <Text fontSize="xs" color="gray.500">
+                                                        Min: {tournament.min_players} to start
+                                                    </Text>
+                                                    <Text fontSize="xs" color="gray.500">
+                                                        {Math.round(progressPercent)}% full
+                                                    </Text>
+                                                </HStack>
                                             </Box>
 
                                             <Divider />
 
-                                            {/* Footer Info */}
-                                            <HStack justify="space-between" fontSize="xs" color="gray.500">
-                                                <HStack spacing={1}>
-                                                    <Calendar size={12} />
-                                                    <Text>{formatTimeAgo(tournament.created_at)}</Text>
+                                            {/* Enhanced Footer Info */}
+                                            <HStack justify="space-between" align="center">
+                                                <HStack spacing={2} color="gray.500">
+                                                    <Calendar size={14} />
+                                                    <Text fontSize="sm">{formatTimeAgo(tournament.created_at)}</Text>
                                                 </HStack>
                                                 <Button
-                                                    size="xs"
-                                                    rightIcon={<ChevronRight size={12} />}
-                                                    colorScheme="blue"
-                                                    variant="ghost"
+                                                    size="sm"
+                                                    rightIcon={<ChevronRight size={14} />}
+                                                    colorScheme={gameColor}
+                                                    variant="solid"
+                                                    fontWeight="semibold"
+                                                    px={4}
+                                                    py={2}
+                                                    borderRadius="lg"
+                                                    _hover={{
+                                                        transform: 'translateX(2px)',
+                                                        boxShadow: 'md'
+                                                    }}
+                                                    transition="all 0.2s"
                                                 >
                                                     View Details
                                                 </Button>

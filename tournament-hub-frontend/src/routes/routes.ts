@@ -37,6 +37,11 @@ export const routes: RouteWithTitleType[] = [
     component: CreateTournament
   },
   {
+    path: '/dashboard',
+    title: 'Dashboard',
+    component: Dashboard
+  },
+  {
     path: RouteNamesEnum.gameSession,
     title: 'Game Session',
     component: GameSession
