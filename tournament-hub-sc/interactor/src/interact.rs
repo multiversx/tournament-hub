@@ -39,6 +39,27 @@ pub async fn tournament_hub_cli() {
         "getSpectatorBets" => interact.get_spectator_bets().await,
         "getSpectatorPoolTotal" => interact.get_spectator_pool_total().await,
         "getAccumulatedHouseFees" => interact.get_accumulated_house_fees().await,
+        "getNumberOfTournaments" => interact.get_number_of_tournaments().await,
+        "getNumberOfGames" => interact.get_number_of_games().await,
+        "getActiveTournamentIds" => interact.get_active_tournament_ids().await,
+        "getTournamentBasicInfo" => interact.get_tournament_basic_info().await,
+        "getUserTournaments" => interact.get_user_tournaments().await,
+        "getTournamentFee" => interact.get_tournament_fee().await,
+        "getUserStats" => interact.get_user_stats().await,
+        "getUserTournamentsCreated" => interact.get_user_tournaments_created().await,
+        "getUserTournamentsJoined" => interact.get_user_tournaments_joined().await,
+        "getUserTournamentsWon" => interact.get_user_tournaments_won().await,
+        "getTotalTournamentsCreated" => interact.get_total_tournaments_created().await,
+        "getTotalTournamentsCompleted" => interact.get_total_tournaments_completed().await,
+        "getTournamentStats" => interact.get_tournament_stats().await,
+        "getPrizePool" => interact.get_prize_pool().await,
+        "getHouseFeePercentage" => interact.get_house_fee_percentage().await,
+        "getAllTournaments" => interact.get_all_tournaments().await,
+        "getAllGames" => interact.get_all_games().await,
+        "getTournamentByStatus" => interact.get_tournament_by_status().await,
+        "getUserStatsByAddress" => interact.get_user_stats_by_address().await,
+        "getTournamentBasicInfoById" => interact.get_tournament_basic_info_by_id().await,
+        "getPrizePoolById" => interact.get_prize_pool_by_id().await,
         _ => panic!("unknown command: {}", &cmd),
     }
 }
@@ -374,7 +395,7 @@ impl ContractInteract {
     }
 
     pub async fn get_tournament(&mut self) {
-        let tournament_id = 0usize;
+        let tournament_id = 1usize;
 
         let result_value = self
             .interactor
@@ -450,5 +471,389 @@ impl ContractInteract {
             .await;
 
         println!("Result: {response:?}");
+    }
+
+    // Additional view functions
+    pub async fn get_number_of_tournaments(&mut self) {
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_number_of_tournaments()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Number of tournaments: {result_value:?}");
+    }
+
+    pub async fn get_number_of_games(&mut self) {
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_number_of_games()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Number of games: {result_value:?}");
+    }
+
+    pub async fn get_active_tournament_ids(&mut self) {
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_active_tournament_ids()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Active tournament IDs: {result_value:?}");
+    }
+
+    pub async fn get_tournament_basic_info(&mut self) {
+        let tournament_id = 1u64;
+
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_tournament_basic_info(tournament_id)
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Tournament basic info: {result_value:?}");
+    }
+
+    pub async fn get_user_tournaments(&mut self) {
+        let user_address =
+            bech32::decode("erd1qyu5wthldzr8wx5c9ucg8kjagg0jfs53s8nr3zpz3hypefsdd8ssycr6th");
+
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_user_tournaments(user_address)
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("User tournaments: {result_value:?}");
+    }
+
+    pub async fn get_tournament_fee(&mut self) {
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_tournament_fee()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Tournament fee: {result_value:?}");
+    }
+
+    pub async fn get_user_stats(&mut self) {
+        let user_address =
+            bech32::decode("erd1qyu5wthldzr8wx5c9ucg8kjagg0jfs53s8nr3zpz3hypefsdd8ssycr6th");
+
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_user_stats(user_address)
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("User stats: {result_value:?}");
+    }
+
+    pub async fn get_user_tournaments_created(&mut self) {
+        let user_address =
+            bech32::decode("erd1qyu5wthldzr8wx5c9ucg8kjagg0jfs53s8nr3zpz3hypefsdd8ssycr6th");
+
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_user_tournaments_created(user_address)
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("User tournaments created: {result_value:?}");
+    }
+
+    pub async fn get_user_tournaments_joined(&mut self) {
+        let user_address =
+            bech32::decode("erd1qyu5wthldzr8wx5c9ucg8kjagg0jfs53s8nr3zpz3hypefsdd8ssycr6th");
+
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_user_tournaments_joined(user_address)
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("User tournaments joined: {result_value:?}");
+    }
+
+    pub async fn get_user_tournaments_won(&mut self) {
+        let user_address =
+            bech32::decode("erd1qyu5wthldzr8wx5c9ucg8kjagg0jfs53s8nr3zpz3hypefsdd8ssycr6th");
+
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_user_tournaments_won(user_address)
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("User tournaments won: {result_value:?}");
+    }
+
+    pub async fn get_total_tournaments_created(&mut self) {
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_total_tournaments_created()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Total tournaments created: {result_value:?}");
+    }
+
+    pub async fn get_total_tournaments_completed(&mut self) {
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_total_tournaments_completed()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Total tournaments completed: {result_value:?}");
+    }
+
+    pub async fn get_tournament_stats(&mut self) {
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_tournament_stats()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Tournament stats: {result_value:?}");
+    }
+
+    pub async fn get_prize_pool(&mut self) {
+        let tournament_id = 1u64;
+
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_prize_pool(tournament_id)
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Prize pool: {result_value:?}");
+    }
+
+    // Additional utility view functions
+    pub async fn get_house_fee_percentage(&mut self) {
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_house_fee_percentage()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("House fee percentage: {result_value:?}");
+    }
+
+    pub async fn get_all_tournaments(&mut self) {
+        let num_tournaments = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_number_of_tournaments()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Total tournaments: {num_tournaments:?}");
+
+        // Get all tournament IDs
+        let tournament_ids = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_active_tournament_ids()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Tournament IDs: {tournament_ids:?}");
+
+        // Get basic info for each tournament
+        for id in 1..=num_tournaments {
+            let tournament_info = self
+                .interactor
+                .query()
+                .to(self.state.current_address())
+                .typed(proxy::TournamentHubProxy)
+                .get_tournament_basic_info(id as u64)
+                .returns(ReturnsResultUnmanaged)
+                .run()
+                .await;
+
+            println!("Tournament {} info: {tournament_info:?}", id);
+        }
+    }
+
+    pub async fn get_all_games(&mut self) {
+        let num_games = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_number_of_games()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Total games: {num_games:?}");
+
+        // Get config for each game
+        for game_id in 1..=num_games {
+            let game_config = self
+                .interactor
+                .query()
+                .to(self.state.current_address())
+                .typed(proxy::TournamentHubProxy)
+                .get_game_config(game_id as usize)
+                .returns(ReturnsResultUnmanaged)
+                .run()
+                .await;
+
+            println!("Game {} config: {game_config:?}", game_id);
+        }
+    }
+
+    pub async fn get_tournament_by_status(&mut self) {
+        let stats = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_tournament_stats()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Tournament status breakdown: {stats:?}");
+    }
+
+    pub async fn get_user_stats_by_address(&mut self) {
+        let args: Vec<String> = std::env::args().collect();
+        let user_address = if args.len() > 2 {
+            &args[2]
+        } else {
+            "erd1qyu5wthldzr8wx5c9ucg8kjagg0jfs53s8nr3zpz3hypefsdd8ssycr6th"
+        };
+
+        let user_address_decoded = bech32::decode(user_address);
+
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_user_stats(user_address_decoded)
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("User stats for {}: {result_value:?}", user_address);
+    }
+
+    pub async fn get_tournament_basic_info_by_id(&mut self) {
+        let args: Vec<String> = std::env::args().collect();
+        let tournament_id = if args.len() > 2 {
+            args[2].parse::<u64>().unwrap_or(1)
+        } else {
+            1
+        };
+
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_tournament_basic_info(tournament_id)
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Tournament {} basic info: {result_value:?}", tournament_id);
+    }
+
+    pub async fn get_prize_pool_by_id(&mut self) {
+        let args: Vec<String> = std::env::args().collect();
+        let tournament_id = if args.len() > 2 {
+            args[2].parse::<u64>().unwrap_or(1)
+        } else {
+            1
+        };
+
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_prize_pool(tournament_id)
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!(
+            "Prize pool for tournament {}: {result_value:?}",
+            tournament_id
+        );
     }
 }

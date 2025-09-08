@@ -37,25 +37,25 @@ import { getActiveTournamentIds, getTournamentDetailsFromContract, getGameConfig
 
 const statusColors: { [key: number]: string } = {
     0: 'yellow', // Joining
-    1: 'blue',   // ReadyToStart
-    2: 'green',  // Active
-    3: 'orange', // ProcessingResults
-    4: 'gray',   // Completed
+    1: 'blue',   // Ready to Start
+    2: 'green',  // Playing
+    3: 'orange', // Processing Results
+    4: 'purple', // Completed
 };
 
 const statusMap: { [key: number]: string } = {
     0: 'Joining',
-    1: 'ReadyToStart',
-    2: 'Active',
-    3: 'ProcessingResults',
+    1: 'Ready to Start',
+    2: 'Playing',
+    3: 'Processing Results',
     4: 'Completed'
 };
 
 // Enhanced cache with TTL
 const tournamentCache = new Map<string, { data: any; timestamp: number; ttl: number }>();
 const ITEMS_PER_PAGE = 6;
-const MAX_FETCH = 60; // cap initial tournaments loaded for performance
-const CACHE_TTL = 60 * 1000; // 1 minute cache
+const MAX_FETCH = 200; // cap initial tournaments loaded for performance
+const CACHE_TTL = 300 * 1000; // 5 minutes cache
 
 // Request deduplication
 const pendingRequests = new Map<string, Promise<any>>();
@@ -219,7 +219,7 @@ const TournamentCard = React.memo(({ tournament, onLoadDetails }: { tournament: 
                     <HStack align="center" minW="0" flex="1">
                         <Award size={16} />
                         <Text>
-                            Prize Pool: {tournament.prizePool !== null ?
+                            Prize Pool: {tournament.prizePool !== null && tournament.prizePool !== undefined ?
                                 formatEgld(tournament.prizePool) + ' EGLD' :
                                 tournament.prizePoolLoaded ? 'Loading...' : '0.00 EGLD'
                             }
@@ -231,9 +231,9 @@ const TournamentCard = React.memo(({ tournament, onLoadDetails }: { tournament: 
                 <HStack color="gray.400" fontSize="sm" justify="space-between" w="full" align="flex-start">
                     <HStack align="center" minW="0" flex="1">
                         <Box w="16px" />
-                        <Text>Creator: {tournament.creator ?
+                        <Text>Creator: {tournament.creator && tournament.creator !== 'Unknown' && tournament.creator !== 'Loading...' ?
                             `${tournament.creator.slice(0, 8)}...${tournament.creator.slice(-6)}` :
-                            'N/A'
+                            tournament.creator || 'N/A'
                         }</Text>
                     </HStack>
                     <Box w="32px" display="flex" justifyContent="center" alignItems="center" h="20px">
@@ -381,6 +381,7 @@ export const Tournaments = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [loadingDetails, setLoadingDetails] = useState<Set<string>>(new Set());
     const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
+    const [refreshing, setRefreshing] = useState(false);
     const { isOpen, onOpen, onClose } = useDisclosure();
 
     const toast = useToast();
@@ -410,47 +411,116 @@ export const Tournaments = () => {
         }
 
         return deduplicateRequest(cacheKey, async () => {
-            try {
-                console.log(`loadBasicTournamentData: Fetching details for tournament ${id}...`);
-                const details = await getTournamentDetailsFromContract(id);
-                console.log(`loadBasicTournamentData: Details for tournament ${id}:`, details);
+            const maxRetries = 3;
+            let lastError: any = null;
 
-                if (details) {
-                    const participantsCount = (details.participants || []).length;
-                    const computedPrizePool = (details.entry_fee ?? 0n) * BigInt(participantsCount);
-                    const basicData = {
-                        id,
-                        name: details.name || `Tournament #${id}`,
-                        status: details.status,
-                        participants: details.participants || [],
-                        description: getGameName(Number(details.game_id)),
-                        creator: details.creator,
-                        final_podium: details.final_podium || [],
-                        game_id: details.game_id,
-                        prizePool: computedPrizePool,
-                        prizePoolLoaded: true,
-                        gameConfig: null,
-                        gameConfigLoaded: false,
-                        resultTxHash: null,
-                        resultTxLoaded: details.status !== 2,
-                        loadingDetails: false
-                    };
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    console.log(`loadBasicTournamentData: Fetching details for tournament ${id} (attempt ${attempt}/${maxRetries})...`);
 
-                    console.log(`loadBasicTournamentData: Created basic data for tournament ${id}:`, basicData);
+                    // Use getTournament endpoint (getTournamentBasicInfo doesn't exist in deployed contract)
+                    console.log(`loadBasicTournamentData: Fetching tournament ${id} using getTournament...`);
+                    const details = await getTournamentDetailsFromContract(id);
+                    console.log(`loadBasicTournamentData: Details for tournament ${id}:`, details);
 
-                    // Update persistent cache
-                    const updatedPersistentCache = getPersistentCache();
-                    updatedPersistentCache[cacheKey] = basicData;
-                    setPersistentCache(updatedPersistentCache);
+                    if (details) {
+                        const participantsCount = (details.participants || []).length;
+                        const computedPrizePool = BigInt(details.entry_fee ?? 0) * BigInt(participantsCount);
+                        const basicData = {
+                            id,
+                            name: details.name || `Tournament #${id}`,
+                            status: details.status,
+                            participants: details.participants || [],
+                            description: getGameName(Number(details.game_id)),
+                            creator: details.creator || 'Unknown',
+                            final_podium: details.final_podium || [],
+                            game_id: details.game_id,
+                            prizePool: computedPrizePool,
+                            prizePoolLoaded: true,
+                            gameConfig: null,
+                            gameConfigLoaded: false,
+                            resultTxHash: null,
+                            resultTxLoaded: details.status !== 2,
+                            loadingDetails: false
+                        };
 
-                    return basicData;
-                } else {
-                    console.log(`loadBasicTournamentData: No details returned for tournament ${id}`);
+                        console.log(`loadBasicTournamentData: Created basic data for tournament ${id}:`, basicData);
+
+                        // Update persistent cache
+                        const updatedPersistentCache = getPersistentCache();
+                        updatedPersistentCache[cacheKey] = basicData;
+                        setPersistentCache(updatedPersistentCache);
+
+                        return basicData;
+                    } else {
+                        console.log(`loadBasicTournamentData: No details returned for tournament ${id}, creating fallback data`);
+
+                        // Create fallback data for tournaments that fail to load details
+                        const fallbackData = {
+                            id,
+                            name: `Tournament ${id}`,
+                            status: 0, // Default to Joining status
+                            participants: [],
+                            description: `Tournament #${id}`,
+                            creator: 'Unknown',
+                            final_podium: [],
+                            game_id: 0n,
+                            prizePool: 0n,
+                            prizePoolLoaded: true,
+                            gameConfig: null,
+                            gameConfigLoaded: false,
+                            resultTxHash: null,
+                            resultTxLoaded: true,
+                            loadingDetails: false,
+                            isFallback: true // Mark as fallback data
+                        };
+
+                        console.log(`loadBasicTournamentData: Created fallback data for tournament ${id}:`, fallbackData);
+
+                        // Update persistent cache
+                        const updatedPersistentCache = getPersistentCache();
+                        updatedPersistentCache[cacheKey] = fallbackData;
+                        setPersistentCache(updatedPersistentCache);
+
+                        return fallbackData;
+                    }
+                } catch (err) {
+                    lastError = err;
+                    console.error(`loadBasicTournamentData: Error loading tournament ${id} (attempt ${attempt}):`, err);
+
+                    // If this is not the last attempt, wait before retrying
+                    if (attempt < maxRetries) {
+                        const delay = attempt * 2000; // Exponential backoff: 2s, 4s, 6s
+                        console.log(`loadBasicTournamentData: Retrying tournament ${id} in ${delay}ms...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
                 }
-            } catch (err) {
-                console.error(`loadBasicTournamentData: Error loading tournament ${id}:`, err);
             }
-            return null;
+
+            // If all retries failed, create fallback data instead of returning null
+            console.error(`loadBasicTournamentData: Failed to fetch tournament ${id} after ${maxRetries} attempts, creating fallback data:`, lastError);
+
+            const fallbackData = {
+                id,
+                name: `Tournament ${id}`,
+                status: 0, // Default to Joining status
+                participants: [],
+                description: `Tournament #${id}`,
+                creator: 'Unknown',
+                final_podium: [],
+                game_id: 0n,
+                prizePool: 0n,
+                prizePoolLoaded: true,
+                gameConfig: null,
+                gameConfigLoaded: false,
+                resultTxHash: null,
+                resultTxLoaded: true,
+                loadingDetails: false,
+                isFallback: true // Mark as fallback data
+            };
+
+            console.log(`loadBasicTournamentData: Created fallback data for tournament ${id} after retry failure:`, fallbackData);
+            return fallbackData;
         });
     }, []);
 
@@ -522,6 +592,41 @@ export const Tournaments = () => {
         }
     }, [loadingDetails]);
 
+    // Refresh function
+    const refreshTournaments = useCallback(async () => {
+        setRefreshing(true);
+        try {
+            // Clear caches
+            clearApiCaches();
+            tournamentCache.clear();
+            localStorage.removeItem(PERSISTENT_CACHE_KEY);
+
+            // Reload tournaments
+            setTournaments([]);
+            setLoading(true);
+
+            // Trigger a re-fetch by updating the lastRefresh timestamp
+            setLastRefresh(Date.now());
+
+            toast({
+                title: 'Refreshing tournaments...',
+                status: 'info',
+                duration: 2000,
+                isClosable: true,
+            });
+        } catch (error) {
+            console.error('Error refreshing tournaments:', error);
+            toast({
+                title: 'Error refreshing tournaments',
+                status: 'error',
+                duration: 3000,
+                isClosable: true,
+            });
+        } finally {
+            setRefreshing(false);
+        }
+    }, [toast]);
+
     // Optimized initial load
     useEffect(() => {
         const fetchTournaments = async () => {
@@ -535,52 +640,84 @@ export const Tournaments = () => {
 
                 let eventTournaments: any[] = []; // Declare eventTournaments in the proper scope
 
-                if (tournamentIds.length === 0) {
+                if (!tournamentIds || tournamentIds.length === 0) {
                     eventTournaments = await getTournamentsFromBlockchain();
 
-                    tournamentIds = eventTournaments
+                    tournamentIds = (eventTournaments || [])
                         .filter((t): t is NonNullable<typeof t> => t !== null)
                         .map(t => BigInt(t.id || 0))
                         .filter(id => id > 0n)
-                        .slice(0, 50);
+                        .slice(0, 200);
                     // fall through
                 }
 
-                if (tournamentIds.length === 0) {
+                if (!tournamentIds || tournamentIds.length === 0) {
                     tournamentIds = await findTournamentsByTesting();
                 }
 
-                if (tournamentIds.length === 0) {
+                if (!tournamentIds || tournamentIds.length === 0) {
                     setTournaments([]);
                     setLoading(false);
                     return;
                 }
 
                 // Sort newest first and cap how many we fetch initially
-                const sortedIds = [...tournamentIds].sort((a, b) => Number(b) - Number(a));
+                const sortedIds = [...(tournamentIds || [])].sort((a, b) => Number(b) - Number(a));
                 const limitedIds = sortedIds.slice(0, MAX_FETCH);
 
-                // Load basic data in small batches to avoid network/CPU spikes
-                const batchSize = 8;
-                const basicResults: any[] = [];
-                for (let i = 0; i < limitedIds.length; i += batchSize) {
-                    const batch = limitedIds.slice(i, i + batchSize);
-                    const batchResults = await Promise.allSettled(batch.map(async (id) => {
+                // Load tournaments with aggressive parallel processing and smart caching
+                const maxInitialLoad = 100; // Load more tournaments
+                const limitedIdsForLoad = limitedIds.slice(0, maxInitialLoad);
+
+                console.log(`Loading ${limitedIdsForLoad.length} tournaments with parallel processing...`);
+
+                // Process all tournaments in parallel with Promise.allSettled
+                // This will be much faster than sequential processing
+                const allResults = await Promise.allSettled(
+                    limitedIdsForLoad.map(async (id) => {
                         try {
                             return await loadBasicTournamentData(id);
                         } catch (err) {
                             console.error(`Failed to load tournament ${id}:`, err);
                             return null;
                         }
-                    }));
-                    basicResults.push(...batchResults);
-                }
+                    })
+                );
+
+                const basicResults = allResults;
 
                 const validTournaments = basicResults
                     .filter(result => result.status === 'fulfilled' && result.value !== null)
                     .map(result => (result as PromiseFulfilledResult<any>).value);
 
+                console.log(`Successfully loaded ${validTournaments.length} tournaments (including ${validTournaments.filter(t => t.isFallback).length} fallback tournaments)`);
+
+
                 setTournaments(validTournaments);
+
+                // Try to load real data for fallback tournaments in the background
+                const fallbackTournaments = validTournaments.filter(t => t.isFallback);
+                if (fallbackTournaments.length > 0) {
+                    console.log(`Attempting to load real data for ${fallbackTournaments.length} fallback tournaments...`);
+
+                    // Load real data for fallback tournaments with delays to avoid rate limiting
+                    fallbackTournaments.forEach(async (tournament, index) => {
+                        // Add delay between retries to avoid rate limiting
+                        setTimeout(async () => {
+                            try {
+                                console.log(`Retrying tournament ${tournament.id} in background...`);
+                                const realData = await loadBasicTournamentData(tournament.id);
+                                if (realData && !realData.isFallback) {
+                                    console.log(`Successfully loaded real data for tournament ${tournament.id}`);
+                                    // Update the tournament in the state
+                                    setTournaments(prev => prev.map(t => t.id === tournament.id ? realData : t));
+                                }
+                            } catch (error) {
+                                console.log(`Background retry failed for tournament ${tournament.id}:`, error);
+                            }
+                        }, index * 1000); // 1 second delay between each retry
+                    });
+                }
             } catch (err) {
                 console.error('Error fetching tournaments:', err);
                 setError('Failed to fetch tournaments');
@@ -661,7 +798,7 @@ export const Tournaments = () => {
     // Optimized filtering with deferred search value
     const deferredSearch = useDeferredValue(searchTerm);
     const filteredTournaments = useMemo(() => {
-        return tournaments.filter(tournament => {
+        const filtered = tournaments.filter(tournament => {
             const query = deferredSearch.toLowerCase();
             const matchesSearch = tournament.name.toLowerCase().includes(query) ||
                 tournament.description.toLowerCase().includes(query) ||
@@ -674,21 +811,40 @@ export const Tournaments = () => {
 
             return matchesSearch && matchesStatus;
         });
+        console.log(`Filtered tournaments: ${filtered.length} (total tournaments: ${tournaments.length}, search: "${deferredSearch}", status: "${statusFilter}")`);
+
+        // Debug: Log details of each tournament
+        console.log('Tournament details:');
+        filtered.forEach((tournament, index) => {
+            console.log(`Tournament ${index + 1}:`, {
+                id: tournament.id,
+                name: tournament.name,
+                status: tournament.status,
+                isFallback: tournament.isFallback,
+                participants: tournament.participants?.length || 0,
+                creator: tournament.creator
+            });
+        });
+
+
+        return filtered;
     }, [tournaments, deferredSearch, statusFilter]);
 
     // Optimized sorting
-    const activeTournaments = useMemo(() =>
-        filteredTournaments
+    const activeTournaments = useMemo(() => {
+        const active = filteredTournaments
             .filter(t => t.status !== 4) // Not completed (status 4)
-            .sort((a, b) => Number(b.id) - Number(a.id)),
-        [filteredTournaments]
-    );
-    const completedTournaments = useMemo(() =>
-        filteredTournaments
+            .sort((a, b) => Number(b.id) - Number(a.id));
+        console.log(`Active tournaments: ${active.length} (total filtered: ${filteredTournaments.length})`);
+        return active;
+    }, [filteredTournaments]);
+    const completedTournaments = useMemo(() => {
+        const completed = filteredTournaments
             .filter(t => t.status === 4) // Completed (status 4)
-            .sort((a, b) => Number(b.id) - Number(a.id)),
-        [filteredTournaments]
-    );
+            .sort((a, b) => Number(b.id) - Number(a.id));
+        console.log(`Completed tournaments: ${completed.length}`);
+        return completed;
+    }, [filteredTournaments]);
 
     // Pagination
     const totalPages = Math.ceil(activeTournaments.length / ITEMS_PER_PAGE);
@@ -717,9 +873,22 @@ export const Tournaments = () => {
             <VStack justify="center" align="center" h="96" spacing={4}>
                 <Heading size="md">Error</Heading>
                 <Text color="gray.600">{error}</Text>
-                <Button variant="outline" onClick={() => window.location.reload()}>
-                    Retry
-                </Button>
+                <VStack spacing={2}>
+                    <Button variant="outline" onClick={() => window.location.reload()}>
+                        Retry
+                    </Button>
+                    <Button
+                        variant="outline"
+                        colorScheme="blue"
+                        onClick={() => {
+                            if (typeof window !== 'undefined' && (window as any).showDeploymentInstructions) {
+                                (window as any).showDeploymentInstructions();
+                            }
+                        }}
+                    >
+                        Show Deployment Instructions
+                    </Button>
+                </VStack>
             </VStack>
         );
     }
@@ -742,58 +911,121 @@ export const Tournaments = () => {
                 </Button>
             </HStack>
 
-            {/* Search and Filters */}
-            <VStack spacing={4} mb={8} align="stretch">
-                <HStack justify="space-between">
-                    <InputGroup maxW="400px">
+            {/* Enhanced Search and Filters */}
+            <Box
+                p={6}
+                bg="gray.800"
+                borderRadius="2xl"
+                border="1px solid"
+                borderColor="gray.700"
+                mb={8}
+            >
+                <VStack spacing={6} align="stretch">
+                    <HStack justify="space-between" align="center">
+                        <Heading size="md" color="gray.200">Search & Filter</Heading>
+                        <IconButton
+                            aria-label="Toggle filters"
+                            icon={showFilters ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                            onClick={() => setShowFilters(!showFilters)}
+                            variant="ghost"
+                            size="sm"
+                            colorScheme="blue"
+                            _hover={{ bg: 'blue.600', color: 'white' }}
+                            _focus={{ bg: 'blue.600', color: 'white' }}
+                        />
+                    </HStack>
+
+                    <InputGroup maxW="500px">
                         <InputLeftElement pointerEvents="none">
-                            <Search size={16} color="gray.400" />
+                            <Search size={18} color="gray.400" />
                         </InputLeftElement>
                         <Input
-                            placeholder="Search tournaments..."
+                            placeholder="Search tournaments by name, creator, or game type..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            bg={bgColor}
-                            borderColor={borderColor}
+                            bg="gray.700"
+                            borderColor="gray.600"
+                            _hover={{ borderColor: "gray.500" }}
+                            _focus={{ borderColor: "blue.500", boxShadow: "0 0 0 1px #3182ce" }}
+                            size="lg"
+                            fontSize="md"
                         />
                     </InputGroup>
 
-                    <IconButton
-                        aria-label="Toggle filters"
-                        icon={showFilters ? <ChevronUp size={16} color="#3182CE" /> : <ChevronDown size={16} color="#3182CE" />}
-                        onClick={() => setShowFilters(!showFilters)}
-                        variant="ghost"
-                        size="sm"
-                        colorScheme="blue"
-                        _hover={{ bg: 'blue.700', color: 'white' }}
-                        _focus={{ bg: 'blue.700', color: 'white' }}
-                    />
-                </HStack>
+                    <Collapse in={showFilters}>
+                        <HStack spacing={4} flexWrap="wrap">
+                            <Select
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                                bg="gray.700"
+                                borderColor="gray.600"
+                                maxW="200px"
+                                _hover={{ borderColor: "gray.500" }}
+                                _focus={{ borderColor: "blue.500" }}
+                            >
+                                <option value="all">All Status</option>
+                                <option value="active">Playing Only</option>
+                                <option value="completed">Completed Only</option>
+                                <option value="0">Joining</option>
+                                <option value="1">Ready to Start</option>
+                                <option value="2">Playing</option>
+                                <option value="3">Processing Results</option>
+                                <option value="4">Completed</option>
+                            </Select>
 
-                <Collapse in={showFilters}>
-                    <HStack spacing={4}>
-                        <Select
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                            bg={bgColor}
-                            borderColor={borderColor}
-                            maxW="200px"
-                        >
-                            <option value="all">All Status</option>
-                            <option value="active">Active Only</option>
-                            <option value="completed">Completed Only</option>
-                            <option value="0">Joining</option>
-                            <option value="1">ReadyToStart</option>
-                            <option value="2">Active</option>
-                            <option value="3">ProcessingResults</option>
-                            <option value="4">Completed</option>
-                        </Select>
-                    </HStack>
-                </Collapse>
-            </VStack>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                colorScheme="blue"
+                                onClick={() => {
+                                    setSearchTerm('');
+                                    setStatusFilter('all');
+                                }}
+                                _hover={{ bg: "blue.600", color: "white" }}
+                            >
+                                Clear Filters
+                            </Button>
+                        </HStack>
+                    </Collapse>
+                </VStack>
+            </Box>
 
             {/* Active Tournaments Section */}
             <VStack spacing={6} align="stretch">
+
+                {/* Show message when no tournaments at all */}
+                {tournaments.length === 0 && !loading && (
+                    <Box
+                        p={8}
+                        textAlign="center"
+                        bg="gray.800"
+                        borderRadius="lg"
+                        border="1px solid"
+                        borderColor="gray.700"
+                    >
+                        <VStack spacing={4}>
+                            <Trophy size={48} color="#9CA3AF" />
+                            <VStack spacing={2}>
+                                <Text fontSize="xl" fontWeight="bold" color="gray.300">
+                                    No Tournaments Yet
+                                </Text>
+                                <Text color="gray.400">
+                                    Be the first to create a tournament and start the competition!
+                                </Text>
+                            </VStack>
+                            <Button
+                                colorScheme="blue"
+                                size="lg"
+                                onClick={() => {
+                                    window.location.href = '/create';
+                                }}
+                            >
+                                Create Your First Tournament
+                            </Button>
+                        </VStack>
+                    </Box>
+                )}
+
                 <HStack justify="space-between" align="center">
                     <HStack>
                         <Clock size={24} color="#3182CE" />
@@ -801,71 +1033,41 @@ export const Tournaments = () => {
                         <Badge colorScheme="blue" fontSize="sm" px={2} py={1} borderRadius="md">
                             {activeTournaments.length}
                         </Badge>
+                        {completedTournaments.length > 0 && (
+                            <Text fontSize="sm" color="green.400" ml={2}>
+                                💡 {completedTournaments.length} completed tournaments have real data!
+                            </Text>
+                        )}
+                        {activeTournaments.length > 0 && activeTournaments.some(t => t.isWorkaround) && (
+                            <Text fontSize="sm" color="blue.400" ml={2}>
+                                ℹ️ Using workaround data (contract getTournament function has a bug)
+                            </Text>
+                        )}
+                        {activeTournaments.length > 0 && activeTournaments.every(t => t.isFallback) && (
+                            <Text fontSize="sm" color="yellow.400" ml={2}>
+                                ⚠️ Tournament data failed to load - showing placeholder data
+                            </Text>
+                        )}
                     </HStack>
                     <HStack spacing={2}>
                         <Button
-                            leftIcon={<RefreshCw size={16} />}
-                            onClick={() => {
-                                tournamentCache.clear();
-                                localStorage.removeItem(PERSISTENT_CACHE_KEY);
-                                // Clear API cache by reloading the page
-                                setTournaments([]);
-                                setLoading(true);
-                                setTimeout(() => {
-                                    window.location.reload();
-                                }, 100);
-                            }}
+                            onClick={refreshTournaments}
                             size="sm"
-                            colorScheme="blue"
                             variant="outline"
-                            isLoading={loading}
+                            colorScheme="blue"
+                            leftIcon={<RefreshCw size={16} />}
+                            isLoading={refreshing}
+                            loadingText="Refreshing"
                         >
                             Refresh
-                        </Button>
-                        <Button
-                            onClick={async () => {
-                                console.log('Debugging contract...');
-                                const debug = await debugContractResponse();
-                                console.log('Contract debug:', debug);
-                                toast({
-                                    title: 'Debug Info',
-                                    description: `Contract: ${debug.contractInfo ? 'Found' : 'Not found'}, Games: ${debug.gamesResponse?.data?.value || 'Error'}, Tournaments: ${debug.functionResponse?.data?.value || 'Error'}`,
-                                    status: 'info',
-                                    duration: 10000,
-                                    isClosable: true,
-                                });
-                            }}
-                            size="sm"
-                            colorScheme="yellow"
-                            variant="outline"
-                        >
-                            Debug
-                        </Button>
-                        <Button
-                            onClick={() => {
-                                tournamentCache.clear();
-                                localStorage.removeItem(PERSISTENT_CACHE_KEY);
-                                clearApiCaches();
-                                pendingRequests.clear();
-                                toast({
-                                    title: 'Cache Cleared',
-                                    description: 'All caches have been cleared',
-                                    status: 'success',
-                                    duration: 3000,
-                                    isClosable: true,
-                                });
-                            }}
-                            size="sm"
-                            colorScheme="red"
-                            variant="outline"
-                        >
-                            Clear Cache
                         </Button>
                         <Button
                             onClick={() => window.location.href = '/tournaments/create'}
                             size="sm"
                             colorScheme="green"
                             variant="solid"
+                            leftIcon={<Plus size={16} />}
+                            fontWeight="semibold"
                         >
                             Create Tournament
                         </Button>

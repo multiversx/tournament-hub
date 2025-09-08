@@ -1,7 +1,7 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use crate::models::{GameConfig, Tournament};
+use crate::models::{GameConfig, Tournament, UserStats};
 
 #[multiversx_sc::module]
 pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsModule {
@@ -68,13 +68,32 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
             self.accumulated_house_fees().set(&accumulated_fees);
         }
 
-        // Distribute prizes to winners
+        // Distribute prizes to winners and update user statistics
         for (position, winner) in tournament.final_podium.iter().enumerate() {
             let percentage = game_config.prize_distribution_percentages.get(position);
             let prize_amount = &remaining_pool * percentage / 10_000u32;
 
             if prize_amount > 0 {
                 self.send().direct_egld(&winner, &prize_amount);
+
+                // Update winner's statistics
+                self.update_user_tournament_won(&winner, tournament.game_id, &prize_amount);
+            }
+        }
+
+        // Update statistics for all participants (winners and losers)
+        for participant in tournament.participants.iter() {
+            let mut is_winner = false;
+            for winner in tournament.final_podium.iter() {
+                if participant == winner {
+                    is_winner = true;
+                    break;
+                }
+            }
+
+            if !is_winner {
+                // Update loser's statistics
+                self.update_user_tournament_lost(&participant, &tournament.entry_fee);
             }
         }
     }
@@ -86,5 +105,82 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
         key.append(&ManagedBuffer::from(b"_"));
         key.append(caller.as_managed_buffer());
         key
+    }
+
+    // Helper functions for user statistics (moved from tournament_management)
+    fn update_user_tournament_won(
+        &self,
+        user: &ManagedAddress,
+        tournament_id: u64,
+        prize_amount: &BigUint,
+    ) {
+        // Add tournament to user's won tournaments
+        self.user_tournaments_won(user).insert(tournament_id);
+
+        // Update user stats
+        self.update_user_stats(user, |stats| {
+            stats.tournaments_won += 1;
+            stats.wins += 1;
+            stats.tokens_won += prize_amount;
+            stats.current_streak += 1;
+            if stats.current_streak > stats.best_streak {
+                stats.best_streak = stats.current_streak;
+            }
+            stats.last_activity = self.blockchain().get_block_timestamp();
+        });
+    }
+
+    fn update_user_tournament_lost(&self, user: &ManagedAddress, entry_fee: &BigUint) {
+        // Update user stats
+        self.update_user_stats(user, |stats| {
+            stats.losses += 1;
+            stats.tokens_spent += entry_fee;
+            stats.current_streak = 0; // Reset streak on loss
+            stats.last_activity = self.blockchain().get_block_timestamp();
+        });
+    }
+
+    fn get_or_create_user_stats(&self, user: &ManagedAddress) -> UserStats<Self::Api> {
+        if self.user_stats(user).is_empty() {
+            // Create default stats for new user
+            UserStats {
+                games_played: 0,
+                wins: 0,
+                losses: 0,
+                win_rate: 0,
+                tokens_won: BigUint::zero(),
+                tokens_spent: BigUint::zero(),
+                tournaments_created: 0,
+                tournaments_won: 0,
+                current_streak: 0,
+                best_streak: 0,
+                last_activity: 0,
+                member_since: self.blockchain().get_block_timestamp(),
+            }
+        } else {
+            self.user_stats(user).get()
+        }
+    }
+
+    fn update_user_stats<F>(&self, user: &ManagedAddress, update_fn: F)
+    where
+        F: FnOnce(&mut UserStats<Self::Api>),
+    {
+        let mut stats = self.get_or_create_user_stats(user);
+
+        // Initialize member_since if this is the first activity
+        if stats.member_since == 0 {
+            stats.member_since = self.blockchain().get_block_timestamp();
+        }
+
+        update_fn(&mut stats);
+
+        // Calculate win rate
+        if stats.games_played > 0 {
+            stats.win_rate = (stats.wins as u64 * 10000 / stats.games_played as u64) as u32;
+            // Store as basis points
+        }
+
+        self.user_stats(user).set(&stats);
     }
 }
