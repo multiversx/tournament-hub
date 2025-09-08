@@ -54,3 +54,20 @@ pub struct SpectatorClaim<M: ManagedTypeApi> {
     pub bettor_address: ManagedAddress<M>,
     pub has_claimed: bool,
 }
+
+#[type_abi]
+#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
+pub struct UserStats<M: ManagedTypeApi> {
+    pub games_played: u32,
+    pub wins: u32,
+    pub losses: u32,
+    pub win_rate: u32,
+    pub tokens_won: BigUint<M>,
+    pub tokens_spent: BigUint<M>,
+    pub tournaments_created: u32,
+    pub tournaments_won: u32,
+    pub current_streak: u32,
+    pub best_streak: u32,
+    pub last_activity: u64, // timestamp
+    pub member_since: u64,  // timestamp
+}
