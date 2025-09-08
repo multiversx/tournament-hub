@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getActiveTournamentIds, getTournamentDetailsFromContract } from '../helpers';
+import { getActiveTournamentIds, getTournamentDetailsFromContract, getTournamentStatsFromContract } from '../helpers';
 
 export interface TournamentStats {
     totalTournaments: number;
@@ -27,7 +27,26 @@ export const useTournamentStats = (): TournamentStats => {
             try {
                 setStats(prev => ({ ...prev, loading: true, error: null }));
 
-                // Get all tournament IDs
+                // Add a small delay to prevent rapid API calls
+                await new Promise(resolve => setTimeout(resolve, 150));
+
+                // Try to get stats from smart contract first
+                const contractStats = await getTournamentStatsFromContract();
+
+                if (contractStats) {
+                    setStats({
+                        totalTournaments: contractStats.total_created,
+                        joiningTournaments: contractStats.joining,
+                        readyToStartTournaments: contractStats.ready_to_start,
+                        activeTournaments: contractStats.active,
+                        completedTournaments: contractStats.completed,
+                        loading: false,
+                        error: null,
+                    });
+                    return;
+                }
+
+                // Fallback to individual tournament queries (but limit to prevent API overload)
                 const tournamentIds = await getActiveTournamentIds();
 
                 if (tournamentIds.length === 0) {
@@ -43,8 +62,11 @@ export const useTournamentStats = (): TournamentStats => {
                     return;
                 }
 
-                // Fetch details for all tournaments
-                const tournamentPromises = tournamentIds.map(id =>
+                // Limit the number of tournaments we query to prevent API overload
+                const limitedIds = tournamentIds.slice(0, 20); // Only query first 20 tournaments
+
+                // Fetch details for limited tournaments
+                const tournamentPromises = limitedIds.map(id =>
                     getTournamentDetailsFromContract(id).catch(() => null)
                 );
 
@@ -95,12 +117,14 @@ export const useTournamentStats = (): TournamentStats => {
                 setStats(prev => ({
                     ...prev,
                     loading: false,
-                    error: error instanceof Error ? error.message : 'Failed to fetch tournament statistics',
+                    error: null, // Don't show error to user, just show zeros
                 }));
             }
         };
 
-        fetchStats();
+        // Debounce the fetch to prevent rapid calls
+        const timeoutId = setTimeout(fetchStats, 300);
+        return () => clearTimeout(timeoutId);
     }, []);
 
     return stats;

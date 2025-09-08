@@ -36,8 +36,7 @@ import {
   Target
 } from 'lucide-react';
 import { useGetAccountInfo, useGetIsLoggedIn } from 'lib';
-import { useTournamentStats } from '../../hooks/useTournamentStats';
-import { useUserStats } from '../../hooks/useUserStats';
+import { useSimpleTournamentStats, useSimpleUserStats, testApiConnectivity } from '../../hooks/useSimpleDashboard';
 import { useNavigate } from 'react-router-dom';
 import { RouteNamesEnum } from 'localConstants';
 
@@ -52,7 +51,7 @@ export const Dashboard = () => {
     activeTournaments,
     completedTournaments,
     loading: statsLoading
-  } = useTournamentStats();
+  } = useSimpleTournamentStats();
 
   const {
     gamesPlayed,
@@ -66,15 +65,23 @@ export const Dashboard = () => {
     tournamentsWon,
     currentStreak,
     bestStreak,
-    lastLogin,
-    memberSince,
     loading: userStatsLoading,
     error: userStatsError
-  } = useUserStats();
+  } = useSimpleUserStats();
 
   const bgColor = useColorModeValue('gray.800', 'gray.900');
   const cardBg = useColorModeValue('gray.700', 'gray.800');
   const borderColor = useColorModeValue('gray.600', 'gray.700');
+
+  const handleTestApi = async () => {
+    console.log('Test API button clicked!');
+    try {
+      const result = await testApiConnectivity();
+      console.log('Test API result:', result);
+    } catch (error) {
+      console.error('Test API error:', error);
+    }
+  };
 
   if (!isLoggedIn) {
     return (
@@ -348,6 +355,16 @@ export const Dashboard = () => {
                 >
                   View Leaderboard
                 </Button>
+                <Button
+                  leftIcon={<Target size={16} />}
+                  colorScheme="orange"
+                  variant="outline"
+                  justifyContent="start"
+                  _hover={{ bg: "orange.600", color: "white" }}
+                  onClick={handleTestApi}
+                >
+                  Test API Connection
+                </Button>
               </VStack>
             </CardBody>
           </Card>
@@ -411,18 +428,22 @@ export const Dashboard = () => {
                   <Text color="gray.400" fontSize="sm">Games Played:</Text>
                   <Text color="blue.400" fontWeight="bold">{gamesPlayed}</Text>
                 </HStack>
+                <HStack justify="space-between">
+                  <Text color="gray.400" fontSize="sm">This Week:</Text>
+                  <Text color="cyan.400" fontWeight="bold">{Math.floor(gamesPlayed * 0.3)} games</Text>
+                </HStack>
               </VStack>
             </CardBody>
           </Card>
 
-          {/* Activity Summary */}
+          {/* Performance Summary */}
           <Card bg={cardBg} border="1px solid" borderColor={borderColor}>
             <CardHeader pb={3}>
               <HStack spacing={3}>
-                <Icon as={Calendar} boxSize={5} color="cyan.400" />
+                <Icon as={TrendingUp} boxSize={5} color="green.400" />
                 <VStack spacing={0} align="start">
                   <Heading size="sm" color="gray.200">
-                    Activity
+                    Performance
                   </Heading>
                 </VStack>
               </HStack>
@@ -430,16 +451,16 @@ export const Dashboard = () => {
             <CardBody pt={0}>
               <VStack spacing={3} align="stretch">
                 <HStack justify="space-between">
-                  <Text color="gray.400" fontSize="sm">This Week:</Text>
-                  <Text color="blue.400" fontWeight="bold">{Math.floor(gamesPlayed * 0.3)} games</Text>
+                  <Text color="gray.400" fontSize="sm">Total Wins:</Text>
+                  <Text color="green.400" fontWeight="bold">{wins}</Text>
                 </HStack>
                 <HStack justify="space-between">
-                  <Text color="gray.400" fontSize="sm">Last Login:</Text>
-                  <Text color="green.400" fontWeight="bold">{lastLogin}</Text>
+                  <Text color="gray.400" fontSize="sm">Total Losses:</Text>
+                  <Text color="red.400" fontWeight="bold">{losses}</Text>
                 </HStack>
                 <HStack justify="space-between">
-                  <Text color="gray.400" fontSize="sm">Member Since:</Text>
-                  <Text color="purple.400" fontWeight="bold">{memberSince}</Text>
+                  <Text color="gray.400" fontSize="sm">Win Streak:</Text>
+                  <Text color="purple.400" fontWeight="bold">{currentStreak} games</Text>
                 </HStack>
               </VStack>
             </CardBody>
