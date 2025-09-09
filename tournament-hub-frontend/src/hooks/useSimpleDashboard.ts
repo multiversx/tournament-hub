@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useGetAccountInfo } from 'lib';
 import { getContractAddress } from '../config/contract';
 import { Address } from '@multiversx/sdk-core';
+import { getUserStatsFromContract, getActiveTournamentIds, getTournamentDetailsFromContract, isTournamentCompletedByEvents } from '../helpers';
 
 // Simple, direct API calls without complex SDK features
 const CONTRACT_ADDRESS = getContractAddress();
@@ -203,165 +204,9 @@ function generateTournamentStats(data: { numberOfTournaments: any, activeTournam
     }
 }
 
-// Generate user-specific stats based on real contract data and user address
-function generateUserSpecificStats(data: { numberOfTournaments: any, userAddress: string, activeTournamentIds: any }): Partial<SimpleUserStats> {
-    try {
-        // Parse the number of tournaments from base64 or hex
-        let totalTournaments = 0;
-        if (data.numberOfTournaments) {
-            let cleanData = data.numberOfTournaments;
+// Note: Mock data generation functions removed - now using real data from smart contract
 
-            // Handle base64 encoded data
-            if (cleanData.includes('=') || /^[A-Za-z0-9+/]+$/.test(cleanData)) {
-                try {
-                    // Decode base64 to get hex string
-                    const decoded = atob(cleanData);
-                    // Convert each character to its hex representation
-                    const hexString = Array.from(decoded).map(char => char.charCodeAt(0).toString(16).padStart(2, '0')).join('');
-                    totalTournaments = parseInt(hexString, 16) || 0;
-                    console.log('Parsed base64 data:', cleanData, '-> decoded:', decoded, '-> hex:', hexString, '-> number:', totalTournaments);
-                } catch (error) {
-                    console.error('Error decoding base64:', error);
-                    // Fallback to treating as hex
-                    const cleanHex = cleanData.startsWith('0x') ? cleanData.slice(2) : cleanData;
-                    totalTournaments = parseInt(cleanHex, 16) || 0;
-                }
-            } else {
-                // Handle hex data
-                const cleanHex = cleanData.startsWith('0x') ? cleanData.slice(2) : cleanData;
-                totalTournaments = parseInt(cleanHex, 16) || 0;
-            }
-        }
-
-        console.log('generateUserSpecificStats - totalTournaments:', totalTournaments);
-        console.log('generateUserSpecificStats - data.numberOfTournaments:', data.numberOfTournaments);
-
-        // Use the user address as a seed to generate consistent but different stats per user
-        const addressHash = data.userAddress.split('').reduce((hash, char) => {
-            return ((hash << 5) - hash + char.charCodeAt(0)) & 0xffffffff;
-        }, 0);
-
-        // Generate user-specific stats based on address hash and real tournament data
-        const userSeed = Math.abs(addressHash) % 1000; // 0-999 range
-        const participationRate = 0.1 + (userSeed % 30) / 100; // 10-40% participation
-        const winRate = 0.3 + (userSeed % 40) / 100; // 30-70% win rate
-
-        let userTournaments = Math.floor(totalTournaments * participationRate);
-
-        // Ensure minimum participation to avoid all zeros
-        if (userTournaments === 0 && totalTournaments > 0) {
-            userTournaments = Math.max(1, Math.floor(totalTournaments * 0.01)); // At least 1% participation
-        }
-
-        const wins = Math.floor(userTournaments * winRate);
-        const losses = userTournaments - wins;
-
-        console.log('generateUserSpecificStats - userSeed:', userSeed);
-        console.log('generateUserSpecificStats - participationRate:', participationRate);
-        console.log('generateUserSpecificStats - userTournaments:', userTournaments);
-        console.log('generateUserSpecificStats - wins:', wins);
-        console.log('generateUserSpecificStats - losses:', losses);
-
-        // Calculate tokens based on actual games played
-        const tokensWon = userTournaments > 0 ? parseFloat((wins * 0.3 + userSeed % 10 * 0.1).toFixed(1)) : 0;
-        const tokensSpent = userTournaments > 0 ? parseFloat((userTournaments * 0.2 + userSeed % 5 * 0.1).toFixed(1)) : 0;
-        const netProfit = tokensWon - tokensSpent;
-
-        console.log('generateUserSpecificStats - tokensWon:', tokensWon);
-        console.log('generateUserSpecificStats - tokensSpent:', tokensSpent);
-        console.log('generateUserSpecificStats - netProfit:', netProfit);
-
-        // Calculate additional metrics
-        const tournamentsCreated = Math.max(1, Math.floor(userTournaments * 0.3));
-        // Tournaments won should be a subset of tournaments played, not based on individual wins
-        const tournamentsWon = Math.max(0, Math.floor(userTournaments * winRate));
-        const currentStreak = Math.max(0, Math.min(wins, 5));
-        const bestStreak = Math.max(1, Math.min(wins + (userSeed % 3), 8));
-
-        console.log('generateUserSpecificStats - tournamentsCreated:', tournamentsCreated);
-        console.log('generateUserSpecificStats - tournamentsWon:', tournamentsWon);
-        console.log('generateUserSpecificStats - currentStreak:', currentStreak);
-        console.log('generateUserSpecificStats - bestStreak:', bestStreak);
-
-        return {
-            gamesPlayed: userTournaments,
-            wins: wins,
-            losses: losses,
-            winRate: userTournaments > 0 ? Math.round(winRate * 100) : 0,
-            tokensWon: tokensWon,
-            tokensSpent: tokensSpent,
-            netProfit: parseFloat(netProfit.toFixed(1)),
-            tournamentsCreated: tournamentsCreated,
-            tournamentsWon: tournamentsWon,
-            currentStreak: currentStreak,
-            bestStreak: bestStreak
-        };
-    } catch (error) {
-        console.error('Error generating user-specific stats:', error);
-        // Fallback to basic stats
-        return {
-            gamesPlayed: 5,
-            wins: 3,
-            losses: 2,
-            winRate: 60,
-            tokensWon: 1.5,
-            tokensSpent: 0.8,
-            netProfit: 0.7,
-            tournamentsCreated: 2,
-            tournamentsWon: 1,
-            currentStreak: 2,
-            bestStreak: 3,
-        };
-    }
-}
-
-// Parse hex data from smart contract
-function parseUserStatsHex(hex: string): Partial<SimpleUserStats> | null {
-    try {
-        if (!hex || hex === '0x') return null;
-
-        // Remove 0x prefix if present
-        const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex;
-
-        // Try to parse the hex as a number (number of tournaments)
-        const numberOfTournaments = parseInt(cleanHex, 16);
-
-        if (!isNaN(numberOfTournaments)) {
-            // Use real data from contract
-            return {
-                gamesPlayed: numberOfTournaments,
-                wins: Math.floor(numberOfTournaments * 0.6), // Estimate 60% win rate
-                losses: Math.floor(numberOfTournaments * 0.4), // Estimate 40% loss rate
-                winRate: 60,
-                tokensWon: numberOfTournaments * 0.3, // Estimate tokens won
-                tokensSpent: numberOfTournaments * 0.2, // Estimate tokens spent
-                netProfit: numberOfTournaments * 0.1, // Estimate net profit
-                tournamentsCreated: Math.floor(numberOfTournaments * 0.3), // Estimate tournaments created
-                tournamentsWon: Math.floor(numberOfTournaments * 0.2), // Estimate tournaments won
-                currentStreak: Math.min(numberOfTournaments, 3), // Estimate current streak
-                bestStreak: Math.min(numberOfTournaments, 5) // Estimate best streak
-            };
-        }
-
-        // Fallback to mock data if parsing fails
-        return {
-            gamesPlayed: 5,
-            wins: 3,
-            losses: 2,
-            winRate: 60,
-            tokensWon: 1.5,
-            tokensSpent: 0.8,
-            netProfit: 0.7,
-            tournamentsCreated: 2,
-            tournamentsWon: 1,
-            currentStreak: 2,
-            bestStreak: 3,
-        };
-    } catch (error) {
-        console.error('Error parsing user stats hex:', error);
-        return null;
-    }
-}
+// Note: parseUserStatsHex function removed - now using the one from helpers/index.ts
 
 function parseTournamentStatsHex(hex: string): Partial<SimpleTournamentStats> | null {
     try {
@@ -419,7 +264,6 @@ export function useSimpleUserStats() {
 
     useEffect(() => {
         console.log('useEffect triggered for user stats, address:', address);
-        console.log('useEffect is running!');
         const fetchUserStats = async () => {
             if (!address) {
                 console.log('No address, skipping user stats fetch');
@@ -431,58 +275,48 @@ export function useSimpleUserStats() {
                 console.log('Starting user stats fetch for address:', address);
                 setStats(prev => ({ ...prev, loading: true, error: null }));
 
-                // Simple API call with delay to prevent rate limiting
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Get real user stats from smart contract
+                const realUserStats = await getUserStatsFromContract(address);
+                console.log('Real user stats from contract:', realUserStats);
 
-                // For MultiversX API, we need to convert Bech32 address to hex
-                // Using the proper MultiversX SDK method
-                console.log('=== NEW ADDRESS ENCODING METHOD ===');
-                console.log('Original address:', address);
-                let hexAddress;
-                try {
-                    const addressObj = Address.fromBech32(address);
-                    hexAddress = addressObj.hex();
-                    console.log('Encoded address (SDK method):', hexAddress);
-                    console.log('Address object:', addressObj);
-                } catch (error) {
-                    console.error('Error encoding address with SDK:', error);
-                    // Fallback to old method for debugging
-                    const addressBytes = Buffer.from(address, 'utf8');
-                    hexAddress = addressBytes.toString('hex');
-                    console.log('Fallback encoded address:', hexAddress);
+                if (realUserStats) {
+                    // Use real data from smart contract
+                    setStats(prev => ({
+                        ...prev,
+                        gamesPlayed: realUserStats.games_played,
+                        wins: realUserStats.wins,
+                        losses: realUserStats.losses,
+                        winRate: realUserStats.win_rate,
+                        tokensWon: realUserStats.tokens_won,
+                        tokensSpent: realUserStats.tokens_spent,
+                        netProfit: realUserStats.net_profit,
+                        tournamentsCreated: realUserStats.tournaments_created,
+                        tournamentsWon: realUserStats.tournaments_won,
+                        currentStreak: realUserStats.current_streak,
+                        bestStreak: realUserStats.best_streak,
+                        loading: false,
+                        error: null,
+                    }));
+                } else {
+                    // Fallback to default stats if no data found
+                    console.log('No user stats found, using default values');
+                    setStats(prev => ({
+                        ...prev,
+                        gamesPlayed: 0,
+                        wins: 0,
+                        losses: 0,
+                        winRate: 0,
+                        tokensWon: 0,
+                        tokensSpent: 0,
+                        netProfit: 0,
+                        tournamentsCreated: 0,
+                        tournamentsWon: 0,
+                        currentStreak: 0,
+                        bestStreak: 0,
+                        loading: false,
+                        error: null,
+                    }));
                 }
-                // Try to get basic tournament data using available functions
-                // Since getUserStats doesn't exist in ABI, we'll use available functions
-                const numberOfTournaments = await makeApiCall('getNumberOfTournaments', []);
-                const activeTournamentIds = await makeApiCall('getActiveTournamentIds', []);
-
-                console.log('Number of tournaments:', numberOfTournaments);
-                console.log('Active tournament IDs:', activeTournamentIds);
-
-                // If API calls fail, use fallback data
-                const fallbackTournaments = numberOfTournaments || "0x3e"; // 62 in hex
-                const fallbackActiveIds = activeTournamentIds || "0x0000000000000001";
-
-                // Create user-specific data by using the address as a seed
-                // This ensures different users get different stats
-                const userSpecificData = {
-                    numberOfTournaments: fallbackTournaments,
-                    userAddress: address,
-                    activeTournamentIds: fallbackActiveIds
-                };
-
-                console.log('User-specific data:', userSpecificData);
-
-                // Generate user-specific stats based on real contract data
-                const parsedStats = generateUserSpecificStats(userSpecificData);
-                console.log('Generated user-specific stats:', parsedStats);
-
-                setStats(prev => ({
-                    ...prev,
-                    ...parsedStats,
-                    loading: false,
-                    error: null,
-                }));
             } catch (error) {
                 console.error('Error fetching user stats:', error);
                 setStats(prev => ({
@@ -511,41 +345,94 @@ export function useSimpleTournamentStats() {
         error: null,
     });
 
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+    const refreshStats = () => {
+        setRefreshTrigger(prev => prev + 1);
+    };
+
     useEffect(() => {
         console.log('useEffect triggered for tournament stats');
-        console.log('Tournament useEffect is running!');
         const fetchTournamentStats = async () => {
             try {
-                console.log('Starting tournament stats fetch');
+                console.log('Starting tournament stats fetch with real data');
                 setStats(prev => ({ ...prev, loading: true, error: null }));
 
-                // Simple API call with delay to prevent rate limiting
-                await new Promise(resolve => setTimeout(resolve, 1500));
+                // Get all tournament IDs
+                const activeIds = await getActiveTournamentIds();
+                console.log('Active tournament IDs:', activeIds);
 
-                // Use available functions since getTournamentStats doesn't exist in ABI
-                const numberOfTournaments = await makeApiCall('getNumberOfTournaments', []);
-                const activeTournamentIds = await makeApiCall('getActiveTournamentIds', []);
+                if (!activeIds || activeIds.length === 0) {
+                    console.log('No active tournaments found');
+                    setStats(prev => ({
+                        ...prev,
+                        totalTournaments: 0,
+                        joiningTournaments: 0,
+                        readyToStartTournaments: 0,
+                        activeTournaments: 0,
+                        completedTournaments: 0,
+                        loading: false,
+                        error: null,
+                    }));
+                    return;
+                }
 
-                console.log('Number of tournaments:', numberOfTournaments);
-                console.log('Active tournament IDs:', activeTournamentIds);
+                // Fetch details for all tournaments
+                const tournamentPromises = activeIds.map(id =>
+                    getTournamentDetailsFromContract(id).catch(() => null)
+                );
+                const tournaments = await Promise.all(tournamentPromises);
+                const validTournaments = tournaments.filter(t => t !== null);
 
-                // If API calls fail, use fallback data
-                const fallbackTournaments = numberOfTournaments || "0x3e"; // 62 in hex
-                const fallbackActiveIds = activeTournamentIds || "0x0000000000000001";
+                console.log(`Found ${validTournaments.length} valid tournaments out of ${activeIds.length} total`);
 
-                // Generate tournament stats based on real contract data
-                const tournamentData = {
-                    numberOfTournaments: fallbackTournaments,
-                    activeTournamentIds: fallbackActiveIds
+                // Count tournaments by status
+                let joiningCount = 0;
+                let readyToStartCount = 0;
+                let activeCount = 0;
+                let completedCount = 0;
+
+                // Check each tournament's status
+                for (const tournament of validTournaments) {
+                    if (tournament.status === 0) joiningCount++;
+                    else if (tournament.status === 1) readyToStartCount++;
+                    else if (tournament.status === 2) activeCount++;
+                    else if (tournament.status === 4) completedCount++;
+                }
+
+                // Check for completed tournaments among fallback tournaments
+                const fallbackTournaments = activeIds.filter(id =>
+                    !validTournaments.some(t => t && Number((t as any).id) === Number(id))
+                );
+
+                console.log(`Checking ${fallbackTournaments.length} fallback tournaments for completion status...`);
+
+                const fallbackCompletionChecks = await Promise.all(
+                    fallbackTournaments.map(async (id) => {
+                        const isCompleted = await isTournamentCompletedByEvents(id);
+                        return { id, isCompleted };
+                    })
+                );
+
+                const completedFallbacks = fallbackCompletionChecks.filter(({ isCompleted }) => isCompleted);
+                completedCount += completedFallbacks.length;
+
+                console.log(`Found ${completedFallbacks.length} completed fallback tournaments`);
+
+                const totalTournaments = activeIds.length;
+                const finalStats = {
+                    totalTournaments,
+                    joiningTournaments: joiningCount,
+                    readyToStartTournaments: readyToStartCount,
+                    activeTournaments: activeCount,
+                    completedTournaments: completedCount,
                 };
 
-                // Generate tournament stats based on real contract data
-                const parsedStats = generateTournamentStats(tournamentData);
-                console.log('Generated tournament stats:', parsedStats);
+                console.log('Final tournament stats:', finalStats);
 
                 setStats(prev => ({
                     ...prev,
-                    ...parsedStats,
+                    ...finalStats,
                     loading: false,
                     error: null,
                 }));
@@ -560,7 +447,17 @@ export function useSimpleTournamentStats() {
         };
 
         fetchTournamentStats();
+    }, [refreshTrigger]);
+
+    // Auto-refresh every 30 seconds
+    useEffect(() => {
+        const interval = setInterval(() => {
+            console.log('Auto-refreshing tournament stats...');
+            setRefreshTrigger(prev => prev + 1);
+        }, 30000); // 30 seconds
+
+        return () => clearInterval(interval);
     }, []);
 
-    return stats;
+    return { ...stats, refreshStats };
 }

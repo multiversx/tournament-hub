@@ -8,11 +8,10 @@ export const PageWrapper = ({ children }: PropsWithChildren) => {
       flex="1"
       borderRadius="xl"
       bg="gray.900"
-      p={2}
+      p={4}
       flexDirection={{ base: 'column', sm: 'row' }}
       alignItems="center"
       justifyContent="center"
-      overflow="hidden"
     >
       {children}
     </Box>
