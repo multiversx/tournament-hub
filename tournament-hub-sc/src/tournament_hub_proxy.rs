@@ -463,6 +463,81 @@ where
             .raw_call("getTournamentStats")
             .original_result()
     }
+
+    pub fn get_max_prize_won(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getMaxPrizeWon")
+            .original_result()
+    }
+
+    pub fn get_total_prize_distributed(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTotalPrizeDistributed")
+            .original_result()
+    }
+
+    pub fn get_prize_stats(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, (BigUint<Env::Api>, BigUint<Env::Api>)> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getPrizeStats")
+            .original_result()
+    }
+
+    pub fn get_tournaments_basic_info<
+        Arg0: ProxyArg<&[u64]>,
+    >(
+        self,
+        tournament_ids: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, (u64, u64, u32, ManagedVec<Env::Api, ManagedAddress<Env::Api>>, ManagedAddress<Env::Api>, u32, u32, BigUint<Env::Api>, u64, ManagedBuffer<Env::Api>, u64)>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTournamentsBasicInfo")
+            .argument(&tournament_ids)
+            .original_result()
+    }
+
+    pub fn get_all_active_tournaments_basic_info(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, (u64, u64, u32, ManagedVec<Env::Api, ManagedAddress<Env::Api>>, ManagedAddress<Env::Api>, u32, u32, BigUint<Env::Api>, u64, ManagedBuffer<Env::Api>, u64)>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getAllActiveTournamentsBasicInfo")
+            .original_result()
+    }
+
+    pub fn get_tournaments_status<
+        Arg0: ProxyArg<&[u64]>,
+    >(
+        self,
+        tournament_ids: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, (u64, u32)>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTournamentsStatus")
+            .argument(&tournament_ids)
+            .original_result()
+    }
+
+    pub fn get_users_stats<
+        Arg0: ProxyArg<&[ManagedAddress<Env::Api>]>,
+    >(
+        self,
+        user_addresses: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, (ManagedAddress<Env::Api>, UserStats<Env::Api>)>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getUsersStats")
+            .argument(&user_addresses)
+            .original_result()
+    }
 }
 
 #[type_abi]
