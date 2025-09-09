@@ -12,9 +12,9 @@ export interface VersionInfo {
 }
 
 export const VERSION: VersionInfo = {
-    major: 1,
-    minor: 0,
-    patch: 2,
+    major: 0,
+    minor: 2,
+    patch: 1,
     build: process.env.VITE_BUILD_NUMBER || 'dev',
     timestamp: new Date().toISOString()
 };
