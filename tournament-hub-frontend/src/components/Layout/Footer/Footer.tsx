@@ -1,4 +1,5 @@
 import HeartIcon from 'assets/img/heart.svg?react';
+import { getVersionString } from 'config/version';
 
 export const Footer = () => {
   return (
@@ -18,6 +19,9 @@ export const Footer = () => {
           Made with <HeartIcon className='mx-1 fill-gray-400' /> by the
           MultiversX team
         </a>
+        <div className='mt-2 text-xs text-gray-500'>
+          Version {getVersionString()}
+        </div>
       </div>
     </footer>
   );

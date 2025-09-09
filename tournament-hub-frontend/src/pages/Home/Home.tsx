@@ -27,14 +27,14 @@ export const Home = () => {
 
   return (
     <PageWrapper>
-      <Container maxW="7xl" py={10}>
-        <VStack spacing={12} align="stretch">
+      <Container maxW="6xl" py={2} h="full" overflow="hidden">
+        <VStack spacing={4} align="stretch" h="full">
           {/* Hero Section */}
-          <Box textAlign={{ base: 'center', md: 'left' }} position="relative">
-            <VStack spacing={8} align={{ base: 'center', md: 'start' }}>
-              <VStack spacing={4} align={{ base: 'center', md: 'start' }}>
+          <Box textAlign={{ base: 'center', md: 'left' }} position="relative" flex="1">
+            <VStack spacing={4} align={{ base: 'center', md: 'start' }} h="full">
+              <VStack spacing={2} align={{ base: 'center', md: 'start' }}>
                 <Heading
-                  size="4xl"
+                  size="3xl"
                   bgGradient="linear(to-r, blue.400, purple.500, pink.400)"
                   bgClip="text"
                   fontWeight="extrabold"
@@ -44,16 +44,16 @@ export const Home = () => {
                   Tournament Hub
                 </Heading>
                 <Text
-                  fontSize="xl"
+                  fontSize="lg"
                   color="gray.300"
                   maxW="2xl"
                   fontWeight="medium"
-                  lineHeight="1.6"
+                  lineHeight="1.4"
                 >
                   Join competitive tournaments, compete with players worldwide, and win prizes on the MultiversX blockchain.
                 </Text>
                 <Text
-                  fontSize="lg"
+                  fontSize="md"
                   color="gray.400"
                   fontWeight="normal"
                 >
@@ -65,19 +65,19 @@ export const Home = () => {
               <Box
                 w="full"
                 maxW="2xl"
-                p={6}
+                p={4}
                 bg="gray.800"
-                borderRadius="2xl"
+                borderRadius="xl"
                 border="1px solid"
                 borderColor="gray.700"
                 _hover={{ borderColor: "gray.600" }}
                 transition="all 0.3s"
               >
-                <VStack spacing={4}>
-                  <Text fontSize="sm" color="gray.400" fontWeight="medium" textTransform="uppercase" letterSpacing="0.05em">
+                <VStack spacing={3}>
+                  <Text fontSize="xs" color="gray.400" fontWeight="medium" textTransform="uppercase" letterSpacing="0.05em">
                     Tournament Statistics
                   </Text>
-                  <SimpleGrid columns={{ base: 2, md: 4 }} spacing={6} w="full">
+                  <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4} w="full">
                     <VStack spacing={2}>
                       {loading ? (
                         <Skeleton height="40px" width="60px" borderRadius="lg" />
@@ -137,22 +137,22 @@ export const Home = () => {
               )}
 
               {/* Enhanced Action Buttons */}
-              <HStack spacing={4} flexWrap="wrap" justify={{ base: 'center', md: 'start' }}>
+              <HStack spacing={3} flexWrap="wrap" justify={{ base: 'center', md: 'start' }}>
                 <Button
                   as={RouterLink}
                   to="/tournaments"
-                  leftIcon={<Trophy size={20} />}
+                  leftIcon={<Trophy size={18} />}
                   colorScheme="blue"
-                  size="lg"
-                  px={8}
-                  py={6}
-                  fontSize="lg"
+                  size="md"
+                  px={6}
+                  py={4}
+                  fontSize="md"
                   fontWeight="semibold"
                   bgGradient="linear(to-r, blue.500, blue.600)"
                   _hover={{
                     bgGradient: "linear(to-r, blue.600, blue.700)",
-                    transform: 'translateY(-2px)',
-                    boxShadow: 'xl'
+                    transform: 'translateY(-1px)',
+                    boxShadow: 'lg'
                   }}
                   _active={{ transform: 'translateY(0)' }}
                 >
@@ -161,18 +161,18 @@ export const Home = () => {
                 <Button
                   as={RouterLink}
                   to="/tournaments/create"
-                  leftIcon={<Plus size={20} />}
+                  leftIcon={<Plus size={18} />}
                   colorScheme="green"
-                  size="lg"
-                  px={8}
-                  py={6}
-                  fontSize="lg"
+                  size="md"
+                  px={6}
+                  py={4}
+                  fontSize="md"
                   fontWeight="semibold"
                   bgGradient="linear(to-r, green.500, green.600)"
                   _hover={{
                     bgGradient: "linear(to-r, green.600, green.700)",
-                    transform: 'translateY(-2px)',
-                    boxShadow: 'xl'
+                    transform: 'translateY(-1px)',
+                    boxShadow: 'lg'
                   }}
                   _active={{ transform: 'translateY(0)' }}
                 >
@@ -185,13 +185,13 @@ export const Home = () => {
           {/* Available Tournaments Preview */}
           {(joiningTournaments + readyToStartTournaments + activeTournaments + completedTournaments) > 0 && (
             <Box>
-              <HStack spacing={3} mb={6}>
-                <Box p={2} bg="yellow.500" borderRadius="lg">
-                  <Gamepad2 size={20} color="white" />
+              <HStack spacing={2} mb={3}>
+                <Box p={1.5} bg="yellow.500" borderRadius="md">
+                  <Gamepad2 size={16} color="white" />
                 </Box>
                 <VStack spacing={0} align="start">
-                  <Heading size="lg">Available Tournaments</Heading>
-                  <Text color="gray.400" fontSize="sm">
+                  <Heading size="md">Available Tournaments</Heading>
+                  <Text color="gray.400" fontSize="xs">
                     {joiningTournaments + readyToStartTournaments + activeTournaments + completedTournaments} tournaments to view and join
                   </Text>
                 </VStack>
@@ -200,19 +200,19 @@ export const Home = () => {
           )}
 
           {/* Enhanced Features Grid */}
-          <VStack spacing={8} align="stretch">
-            <VStack spacing={2} align="center">
-              <Heading size="2xl" textAlign="center" fontWeight="bold">
+          <VStack spacing={4} align="stretch" flex="1">
+            <VStack spacing={1} align="center">
+              <Heading size="xl" textAlign="center" fontWeight="bold">
                 Why Choose Tournament Hub?
               </Heading>
-              <Text color="gray.400" textAlign="center" maxW="2xl">
+              <Text color="gray.400" textAlign="center" maxW="2xl" fontSize="sm">
                 Experience the future of competitive gaming on the blockchain
               </Text>
             </VStack>
 
-            <SimpleGrid columns={{ base: 1, md: 3 }} spacing={8}>
+            <SimpleGrid columns={{ base: 1, md: 3 }} spacing={6} flex="1">
               <Box
-                p={8}
+                p={6}
                 bg="gray.800"
                 borderRadius="2xl"
                 border="1px solid"
@@ -221,25 +221,25 @@ export const Home = () => {
                 overflow="hidden"
                 _hover={{
                   borderColor: "blue.500",
-                  transform: "translateY(-4px)",
+                  transform: "translateY(-3px)",
                   boxShadow: "xl"
                 }}
                 transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
               >
-                <VStack spacing={6} align="center">
+                <VStack spacing={4} align="center">
                   <Box
-                    p={4}
+                    p={3}
                     bgGradient="linear(to-br, blue.500, blue.600)"
-                    borderRadius="2xl"
+                    borderRadius="xl"
                     boxShadow="lg"
                   >
-                    <Trophy size={32} color="white" />
+                    <Trophy size={24} color="white" />
                   </Box>
                   <VStack spacing={3} align="center">
                     <Heading size="lg" textAlign="center" fontWeight="semibold">
                       Competitive Gaming
                     </Heading>
-                    <Text color="gray.400" textAlign="center" lineHeight="1.6">
+                    <Text color="gray.400" textAlign="center" lineHeight="1.5" fontSize="sm">
                       Join tournaments with players from around the world and compete for prizes on the blockchain.
                     </Text>
                   </VStack>
@@ -247,7 +247,7 @@ export const Home = () => {
               </Box>
 
               <Box
-                p={8}
+                p={6}
                 bg="gray.800"
                 borderRadius="2xl"
                 border="1px solid"
@@ -256,25 +256,25 @@ export const Home = () => {
                 overflow="hidden"
                 _hover={{
                   borderColor: "green.500",
-                  transform: "translateY(-4px)",
+                  transform: "translateY(-3px)",
                   boxShadow: "xl"
                 }}
                 transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
               >
-                <VStack spacing={6} align="center">
+                <VStack spacing={4} align="center">
                   <Box
-                    p={4}
+                    p={3}
                     bgGradient="linear(to-br, green.500, green.600)"
-                    borderRadius="2xl"
+                    borderRadius="xl"
                     boxShadow="lg"
                   >
-                    <Users size={32} color="white" />
+                    <Users size={24} color="white" />
                   </Box>
                   <VStack spacing={3} align="center">
                     <Heading size="lg" textAlign="center" fontWeight="semibold">
                       Community Driven
                     </Heading>
-                    <Text color="gray.400" textAlign="center" lineHeight="1.6">
+                    <Text color="gray.400" textAlign="center" lineHeight="1.5" fontSize="sm">
                       Create and manage your own tournaments or join existing ones. Build your gaming community.
                     </Text>
                   </VStack>
@@ -282,7 +282,7 @@ export const Home = () => {
               </Box>
 
               <Box
-                p={8}
+                p={6}
                 bg="gray.800"
                 borderRadius="2xl"
                 border="1px solid"
@@ -291,25 +291,25 @@ export const Home = () => {
                 overflow="hidden"
                 _hover={{
                   borderColor: "purple.500",
-                  transform: "translateY(-4px)",
+                  transform: "translateY(-3px)",
                   boxShadow: "xl"
                 }}
                 transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
               >
-                <VStack spacing={6} align="center">
+                <VStack spacing={4} align="center">
                   <Box
-                    p={4}
+                    p={3}
                     bgGradient="linear(to-br, purple.500, purple.600)"
-                    borderRadius="2xl"
+                    borderRadius="xl"
                     boxShadow="lg"
                   >
-                    <Calendar size={32} color="white" />
+                    <Calendar size={24} color="white" />
                   </Box>
                   <VStack spacing={3} align="center">
                     <Heading size="lg" textAlign="center" fontWeight="semibold">
                       Flexible Scheduling
                     </Heading>
-                    <Text color="gray.400" textAlign="center" lineHeight="1.6">
+                    <Text color="gray.400" textAlign="center" lineHeight="1.5" fontSize="sm">
                       Play immediately without waiting for deadlines. Start tournaments when you're ready.
                     </Text>
                   </VStack>

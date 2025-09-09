@@ -1033,11 +1033,6 @@ export const Tournaments = () => {
                         <Badge colorScheme="blue" fontSize="sm" px={2} py={1} borderRadius="md">
                             {activeTournaments.length}
                         </Badge>
-                        {completedTournaments.length > 0 && (
-                            <Text fontSize="sm" color="green.400" ml={2}>
-                                💡 {completedTournaments.length} completed tournaments have real data!
-                            </Text>
-                        )}
                         {activeTournaments.length > 0 && activeTournaments.some(t => t.isWorkaround) && (
                             <Text fontSize="sm" color="blue.400" ml={2}>
                                 ℹ️ Using workaround data (contract getTournament function has a bug)
