@@ -1,7 +1,7 @@
 {
   "name": "@multiversx/mx-template-dapp",
   "description": "MultiversX Dapp Template",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "author": "MultiversX",
   "license": "GPL-3.0-or-later",
   "repository": "@multiversx/mx-template-dapp",
@@ -39,7 +39,13 @@
     "copy-contract-abi": "cp ../tournament-hub-sc/output/tournament-hub.abi.json ./src/contracts/",
     "test": "jest",
     "wdio-smoke": "wdio run wdio/wdio.conf.ts",
-    "smoke": "wdio run wdio/wdio.conf.ts --suite smoke"
+    "smoke": "wdio run wdio/wdio.conf.ts --suite smoke",
+    "version:patch": "node scripts/version.js patch",
+    "version:minor": "node scripts/version.js minor",
+    "version:major": "node scripts/version.js major",
+    "version:build": "node scripts/version.js build",
+    "version:show": "node scripts/version.js show",
+    "version:test": "node scripts/test-version.js"
   },
   "browserslist": [
     ">0.2%",
