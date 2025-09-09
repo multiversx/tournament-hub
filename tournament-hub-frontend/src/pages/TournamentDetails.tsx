@@ -53,27 +53,7 @@ function getGameName(gameId: number): string {
     return gameConfig ? gameConfig.name : `Game ID: ${gameId}`;
 }
 
-function formatDuration(seconds: number): string {
-    const hours = Math.floor(seconds / 3600);
-    const days = Math.floor(hours / 24);
 
-    if (days > 0) {
-        return `${days} day${days > 1 ? 's' : ''}`;
-    } else if (hours > 0) {
-        return `${hours} hour${hours > 1 ? 's' : ''}`;
-    } else {
-        return `${Math.floor(seconds / 60)} minute${Math.floor(seconds / 60) > 1 ? 's' : ''}`;
-    }
-}
-
-function getTimeRemaining(createdAt: number, duration: number): { remaining: number; percentage: number } {
-    // createdAt is in seconds, so we need to convert current time to seconds
-    const now = Math.floor(Date.now() / 1000);
-    const endTime = createdAt + duration;
-    const remaining = Math.max(0, endTime - now);
-    const percentage = Math.max(0, Math.min(100, ((endTime - now) / duration) * 100));
-    return { remaining, percentage };
-}
 
 export const TournamentDetails = () => {
     const { id } = useParams();
@@ -87,7 +67,6 @@ export const TournamentDetails = () => {
     const { joinTournament } = useJoinTournamentTransaction();
     const [startingGame, setStartingGame] = useState(false);
     const [tournamentSession, setTournamentSession] = useState<TournamentSession | null>(null);
-    const [timeRemaining, setTimeRemaining] = useState<{ remaining: number; percentage: number }>({ remaining: 0, percentage: 100 });
     const [lastJoinSeenAt, setLastJoinSeenAt] = useState<number>(0);
 
     // Add start game transaction hook
@@ -118,9 +97,6 @@ export const TournamentDetails = () => {
                     }
                 }
 
-                // Calculate time remaining
-                const timeInfo = getTimeRemaining(Number(details.created_at), Number(details.duration));
-
                 setTournament({
                     ...details,
                     gameConfig,
@@ -131,7 +107,6 @@ export const TournamentDetails = () => {
                     resultTxHash,
                     entry_fee_egld: weiToEgld(details.entry_fee.toString()),
                 });
-                setTimeRemaining(timeInfo);
             } catch (err: any) {
                 setError(err.message || 'Failed to fetch tournament');
             } finally {
@@ -141,17 +116,6 @@ export const TournamentDetails = () => {
         fetchTournament();
     }, [id]);
 
-    // Update time remaining every minute
-    useEffect(() => {
-        if (!tournament) return;
-
-        const interval = setInterval(() => {
-            const timeInfo = getTimeRemaining(Number(tournament.created_at), Number(tournament.duration));
-            setTimeRemaining(timeInfo);
-        }, 60000); // Update every minute
-
-        return () => clearInterval(interval);
-    }, [tournament]);
 
     // Periodically refresh participants/status to reflect joins and game start without reload
     useEffect(() => {
@@ -372,8 +336,7 @@ export const TournamentDetails = () => {
     const canJoin = (tournament.status === 'Joining' || tournament.status === 'ReadyToStart') &&
         tournament.current_players < tournament.max_players &&
         !isParticipant &&
-        !!playerAddress && // Ensure wallet is connected
-        timeRemaining.remaining > 0; // Ensure tournament is still open
+        !!playerAddress; // Ensure wallet is connected
 
     // Show Start Game button if tournament is ready to start and user is a participant
     const minPlayersRequired = Number((tournament as any).min_players ?? 2);
@@ -388,27 +351,67 @@ export const TournamentDetails = () => {
         if (isParticipant) {
             return isCreator ? 'You Created This Tournament' : 'Already Joined';
         }
-        if (timeRemaining.remaining <= 0) return 'Registration Closed';
         return 'Join Tournament';
     };
 
     return (
         <Box maxW="7xl" mx="auto" py={10} px={4}>
             <VStack spacing={8} align="stretch">
-                {/* Header */}
-                <Box>
+                {/* Cool Header with Gradient */}
+                <Box
+                    textAlign="center"
+                    position="relative"
+                    bgGradient="radial(circle at 20% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%), radial(circle at 80% 20%, rgba(147, 51, 234, 0.1) 0%, transparent 50%), radial(circle at 40% 80%, rgba(236, 72, 153, 0.1) 0%, transparent 50%)"
+                    borderRadius="2xl"
+                    p={8}
+                    border="1px solid"
+                    borderColor="gray.700"
+                    _hover={{
+                        borderColor: "blue.400",
+                        boxShadow: "0 20px 40px rgba(59, 130, 246, 0.1)"
+                    }}
+                    transition="all 0.3s ease"
+                >
                     <HStack justify="space-between" align="start" mb={4}>
                         <VStack align="start" spacing={2}>
-                            <Heading size="xl">{tournament.name || `Tournament #${id}`}</Heading>
-                            <Badge colorScheme={statusColors[tournament.status] || 'gray'} fontSize="md" px={3} py={1} borderRadius="md">
+                            <Heading
+                                size="xl"
+                                bgGradient="linear(135deg, blue.400, purple.500, pink.400, blue.400)"
+                                bgClip="text"
+                                fontWeight="bold"
+                            >
+                                {tournament.name || `Tournament #${id}`}
+                            </Heading>
+                            <Badge
+                                bgGradient="linear(135deg, blue.500, purple.600)"
+                                color="white"
+                                fontSize="md"
+                                px={3}
+                                py={1}
+                                borderRadius="xl"
+                                boxShadow="0 4px 15px rgba(59, 130, 246, 0.3)"
+                            >
                                 {tournament.status}
                             </Badge>
                         </VStack>
                         {canStartGame ? (
                             <Button
                                 leftIcon={<Play size={20} />}
-                                colorScheme="green"
                                 size="lg"
+                                bgGradient="linear(135deg, green.500, emerald.600, green.700)"
+                                color="white"
+                                borderRadius="xl"
+                                boxShadow="0 8px 25px rgba(34, 197, 94, 0.4)"
+                                _hover={{
+                                    bgGradient: "linear(135deg, green.600, emerald.700, green.800)",
+                                    transform: "translateY(-2px)",
+                                    boxShadow: "0 12px 30px rgba(34, 197, 94, 0.6)"
+                                }}
+                                _active={{
+                                    transform: "translateY(0px)",
+                                    boxShadow: "0 6px 20px rgba(34, 197, 94, 0.5)"
+                                }}
+                                transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
                                 onClick={handleStartGame}
                                 isLoading={startingGame}
                                 loadingText="Starting Game..."
@@ -416,12 +419,45 @@ export const TournamentDetails = () => {
                                 Start Game
                             </Button>
                         ) : (tournament.status === 'ReadyToStart' && isParticipant && isCreator && !hasEnoughPlayers) ? (
-                            <Button size="lg" isDisabled variant="outline">Waiting for opponents...</Button>
+                            <Button
+                                size="lg"
+                                bgGradient="linear(135deg, green.500, emerald.600, green.700)"
+                                color="white"
+                                borderRadius="xl"
+                                boxShadow="0 8px 25px rgba(34, 197, 94, 0.4)"
+                                _hover={{
+                                    bgGradient: "linear(135deg, green.600, emerald.700, green.800)",
+                                    transform: "translateY(-2px)",
+                                    boxShadow: "0 12px 30px rgba(34, 197, 94, 0.6)"
+                                }}
+                                _active={{
+                                    transform: "translateY(0px)",
+                                    boxShadow: "0 6px 20px rgba(34, 197, 94, 0.5)"
+                                }}
+                                transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                                isDisabled
+                                opacity={0.7}
+                            >
+                                Waiting for opponents...
+                            </Button>
                         ) : (
                             <Button
                                 leftIcon={<Play size={20} />}
-                                colorScheme="blue"
                                 size="lg"
+                                bgGradient={isParticipant ? "linear(135deg, purple.500, pink.600, purple.700)" : "linear(135deg, blue.500, cyan.600, blue.700)"}
+                                color="white"
+                                borderRadius="xl"
+                                boxShadow={isParticipant ? "0 8px 25px rgba(147, 51, 234, 0.4)" : "0 8px 25px rgba(59, 130, 246, 0.4)"}
+                                _hover={{
+                                    bgGradient: isParticipant ? "linear(135deg, purple.600, pink.700, purple.800)" : "linear(135deg, blue.600, cyan.700, blue.800)",
+                                    transform: "translateY(-2px)",
+                                    boxShadow: isParticipant ? "0 12px 30px rgba(147, 51, 234, 0.6)" : "0 12px 30px rgba(59, 130, 246, 0.6)"
+                                }}
+                                _active={{
+                                    transform: "translateY(0px)",
+                                    boxShadow: isParticipant ? "0 6px 20px rgba(147, 51, 234, 0.5)" : "0 6px 20px rgba(59, 130, 246, 0.5)"
+                                }}
+                                transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
                                 onClick={handleJoinTournament}
                                 isLoading={joining}
                                 loadingText="Joining..."
@@ -431,81 +467,40 @@ export const TournamentDetails = () => {
                             </Button>
                         )}
                     </HStack>
-                    <Text color="gray.300" fontSize="lg" lineHeight="tall">
-                        {tournament.description}
-                    </Text>
                 </Box>
 
-                <SimpleGrid columns={columns} spacing={8}>
-                    {/* Tournament Information Card */}
-                    <Card bg="gray.800" border="1px solid" borderColor="gray.700">
-                        <CardHeader>
-                            <Heading size="md" color="white" fontWeight="bold">Tournament Information</Heading>
-                        </CardHeader>
-                        <CardBody>
-                            <VStack spacing={4} align="stretch">
-                                <HStack justify="space-between">
-                                    <Text color="gray.300" fontWeight="bold">Current Prize Pool:</Text>
-                                    <Text color="gray.100">{tournament.prize_pool}</Text>
-                                </HStack>
-                                <HStack justify="space-between">
-                                    <Text color="gray.300" fontWeight="bold">Max Prize Pool:</Text>
-                                    <Text color="gray.100">
-                                        {(parseFloat(tournament.entry_fee_egld) * tournament.max_players).toFixed(4)} EGLD
-                                    </Text>
-                                </HStack>
-                                <HStack justify="space-between">
-                                    <Text color="gray.300" fontWeight="bold">Entry Fee:</Text>
-                                    <Text color="gray.100">{tournament.entry_fee_egld} EGLD</Text>
-                                </HStack>
-                                <HStack justify="space-between">
-                                    <Text color="gray.300" fontWeight="bold">Players:</Text>
-                                    <Text color="gray.100">{tournament.current_players}/{tournament.max_players}</Text>
-                                </HStack>
-                                <HStack justify="space-between">
-                                    <Text color="gray.300" fontWeight="bold">Creator:</Text>
-                                    <Text color="blue.400" fontWeight="bold" fontSize="sm">{shortenAddress(tournament.creator)}</Text>
-                                </HStack>
-                                <HStack justify="space-between">
-                                    <Text color="gray.300" fontWeight="bold">Duration:</Text>
-                                    <Text color="gray.100">{formatDuration(Number(tournament.duration))}</Text>
-                                </HStack>
-                            </VStack>
-                        </CardBody>
-                    </Card>
-
-                    {/* Registration Status Card */}
-                    <Card bg="gray.800" border="1px solid" borderColor="gray.700">
-                        <CardHeader>
-                            <Heading size="md" color="white" fontWeight="bold">Registration Status</Heading>
-                        </CardHeader>
-                        <CardBody>
-                            <VStack spacing={4} align="stretch">
-                                {timeRemaining.remaining > 0 ? (
-                                    <>
-                                        <HStack justify="space-between">
-                                            <Text color="gray.300" fontWeight="bold">Time Remaining:</Text>
-                                            <Text color="gray.100">{formatDuration(timeRemaining.remaining)}</Text>
-                                        </HStack>
-                                        <Progress
-                                            value={timeRemaining.percentage}
-                                            colorScheme="blue"
-                                            size="sm"
-                                            borderRadius="md"
-                                        />
-                                        <Text color="gray.400" fontSize="sm" textAlign="center">
-                                            Registration closes in {formatDuration(timeRemaining.remaining)}
-                                        </Text>
-                                    </>
-                                ) : (
-                                    <Text color="red.400" fontWeight="bold" textAlign="center">
-                                        Registration Period Has Ended
-                                    </Text>
-                                )}
-                            </VStack>
-                        </CardBody>
-                    </Card>
-                </SimpleGrid>
+                {/* Tournament Information Card */}
+                <Card bg="gray.800" border="1px solid" borderColor="gray.700" maxW="600px" mx="auto">
+                    <CardHeader>
+                        <Heading size="md" color="white" fontWeight="bold">Tournament Information</Heading>
+                    </CardHeader>
+                    <CardBody>
+                        <VStack spacing={4} align="stretch">
+                            <HStack justify="space-between">
+                                <Text color="gray.300" fontWeight="bold">Current Prize Pool:</Text>
+                                <Text color="gray.100">{tournament.prize_pool}</Text>
+                            </HStack>
+                            <HStack justify="space-between">
+                                <Text color="gray.300" fontWeight="bold">Max Prize Pool:</Text>
+                                <Text color="gray.100">
+                                    {(parseFloat(tournament.entry_fee_egld) * tournament.max_players).toFixed(4)} EGLD
+                                </Text>
+                            </HStack>
+                            <HStack justify="space-between">
+                                <Text color="gray.300" fontWeight="bold">Entry Fee:</Text>
+                                <Text color="gray.100">{tournament.entry_fee_egld} EGLD</Text>
+                            </HStack>
+                            <HStack justify="space-between">
+                                <Text color="gray.300" fontWeight="bold">Players:</Text>
+                                <Text color="gray.100">{tournament.current_players}/{tournament.max_players}</Text>
+                            </HStack>
+                            <HStack justify="space-between">
+                                <Text color="gray.300" fontWeight="bold">Creator:</Text>
+                                <Text color="blue.400" fontWeight="bold" fontSize="sm">{shortenAddress(tournament.creator)}</Text>
+                            </HStack>
+                        </VStack>
+                    </CardBody>
+                </Card>
 
                 {/* Participants List - Compact UI */}
                 <Card
@@ -580,8 +575,21 @@ export const TournamentDetails = () => {
                                     Tournament is now active! The game should be starting...
                                 </Text>
                                 <Button
-                                    colorScheme="green"
                                     size="lg"
+                                    bgGradient="linear(135deg, teal.300, mint.400, teal.500)"
+                                    color="white"
+                                    borderRadius="xl"
+                                    boxShadow="0 8px 25px rgba(45, 212, 191, 0.4)"
+                                    _hover={{
+                                        bgGradient: "linear(135deg, teal.400, mint.500, teal.600)",
+                                        transform: "translateY(-2px)",
+                                        boxShadow: "0 12px 30px rgba(45, 212, 191, 0.6)"
+                                    }}
+                                    _active={{
+                                        transform: "translateY(0px)",
+                                        boxShadow: "0 6px 20px rgba(45, 212, 191, 0.5)"
+                                    }}
+                                    transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
                                     onClick={() => {
                                         // Navigate to the game session
                                         const gameType = getGameName(Number(tournament.game_id));
@@ -667,9 +675,22 @@ export const TournamentDetails = () => {
                 {isParticipant && tournament.status === 'Joining' && (
                     hasEnoughPlayers ? (
                         <Button
-                            colorScheme="green"
                             size="md"
                             mt={4}
+                            bgGradient="linear(135deg, green.500, emerald.600, green.700)"
+                            color="white"
+                            borderRadius="xl"
+                            boxShadow="0 8px 25px rgba(34, 197, 94, 0.4)"
+                            _hover={{
+                                bgGradient: "linear(135deg, green.600, emerald.700, green.800)",
+                                transform: "translateY(-2px)",
+                                boxShadow: "0 12px 30px rgba(34, 197, 94, 0.6)"
+                            }}
+                            _active={{
+                                transform: "translateY(0px)",
+                                boxShadow: "0 6px 20px rgba(34, 197, 94, 0.5)"
+                            }}
+                            transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
                             isLoading={startingGame}
                             loadingText="Starting Game..."
                             onClick={handleStartGame}
