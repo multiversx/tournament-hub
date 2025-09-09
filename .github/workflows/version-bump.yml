@@ -1,0 +1,98 @@
+name: Auto Version Bump
+
+on:
+  schedule:
+    # Run every Monday at 9 AM UTC (weekly patch version bump)
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - build
+
+jobs:
+  version-bump:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: tournament-hub-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: tournament-hub-frontend
+        run: npm ci
+
+      - name: Get current version
+        id: current-version
+        working-directory: tournament-hub-frontend
+        run: |
+          CURRENT_VERSION=$(npm run version:show --silent)
+          echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Bump version
+        id: bump-version
+        working-directory: tournament-hub-frontend
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION_TYPE="${{ github.event.inputs.version_type }}"
+          else
+            VERSION_TYPE="patch"
+          fi
+          
+          npm run version:$VERSION_TYPE
+          
+          NEW_VERSION=$(npm run version:show --silent)
+          echo "new=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "type=$VERSION_TYPE" >> $GITHUB_OUTPUT
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add tournament-hub-frontend/src/config/version.ts tournament-hub-frontend/package.json
+          git commit -m "chore: bump version ${{ steps.current-version.outputs.current }} → ${{ steps.bump-version.outputs.new }} (${{ steps.bump-version.outputs.type }})"
+          git push
+
+      - name: Create Release
+        if: steps.bump-version.outputs.type == 'major' || steps.bump-version.outputs.type == 'minor'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.bump-version.outputs.new }}
+          release_name: Release v${{ steps.bump-version.outputs.new }}
+          body: |
+            ## Changes in v${{ steps.bump-version.outputs.new }}
+            
+            This is an automated release created by the version bump workflow.
+            
+            **Version Type:** ${{ steps.bump-version.outputs.type }}
+            **Previous Version:** ${{ steps.current-version.outputs.current }}
+            **New Version:** ${{ steps.bump-version.outputs.new }}
+            
+            ### What's New
+            - Automated version bump
+            - Build improvements
+            - Bug fixes and enhancements
+            
+            ### Full Changelog
+            See the [full changelog](https://github.com/${{ github.repository }}/compare/v${{ steps.current-version.outputs.current }}...v${{ steps.bump-version.outputs.new }}) for details.
+          draft: false
+          prerelease: false
