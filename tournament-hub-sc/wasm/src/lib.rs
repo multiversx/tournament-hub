@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           33
+// Endpoints:                           37
 // Async Callback (empty):               1
-// Total number of exported functions:  36
+// Total number of exported functions:  40
 
 #![no_std]
 
@@ -53,6 +53,10 @@ multiversx_sc_wasm_adapter::endpoints! {
         getMaxPrizeWon => get_max_prize_won
         getTotalPrizeDistributed => get_total_prize_distributed
         getPrizeStats => get_prize_stats
+        getAllActiveTournamentsBasicInfo => get_all_active_tournaments_basic_info
+        getTournamentStatusSingle => get_tournament_status_single
+        getTournamentBasicInfoSingle => get_tournament_basic_info_single
+        getUserStatsSingle => get_user_stats_single
     )
 }
 
