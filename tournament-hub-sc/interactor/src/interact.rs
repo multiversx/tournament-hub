@@ -60,6 +60,7 @@ pub async fn tournament_hub_cli() {
         "getUserStatsByAddress" => interact.get_user_stats_by_address().await,
         "getTournamentBasicInfoById" => interact.get_tournament_basic_info_by_id().await,
         "getPrizePoolById" => interact.get_prize_pool_by_id().await,
+        "getPrizeStats" => interact.get_prize_stats().await,
         _ => panic!("unknown command: {}", &cmd),
     }
 }
@@ -210,7 +211,7 @@ impl ContractInteract {
     }
 
     pub async fn submit_results(&mut self) {
-        let tournament_id = 18usize;
+        let tournament_id = 1usize; // Use tournament ID 1 (first tournament)
         let mut winner_podium = ManagedVec::new();
         let alice_address = ManagedAddress::from(self.wallet_address.clone());
         winner_podium.push(alice_address);
@@ -274,11 +275,10 @@ impl ContractInteract {
     }
 
     pub async fn create_tournament(&mut self) {
-        let game_index = 1u64;
+        let game_index = 1u32;
         let max_players = 2u32;
         let min_players = 2u32;
-        let entry_fee = BigUint::from(35u64).mul(10u64.pow(16)); // 0.35 EGLD
-        let duration = 86400u64; // 24 hours in seconds
+        let entry_fee = BigUint::from(1u64).mul(10u64.pow(16)); // 0.01 EGLD (matching config)
         let name = ManagedBuffer::new_from_bytes(b"Test Fix Tournament");
 
         let response = self
@@ -292,10 +292,10 @@ impl ContractInteract {
                 game_index,
                 max_players,
                 min_players,
-                entry_fee,
-                duration,
+                entry_fee.clone(),
                 name,
             )
+            .egld(entry_fee) // Send the entry fee as payment
             .returns(ReturnsResultUnmanaged)
             .run()
             .await;
@@ -304,7 +304,7 @@ impl ContractInteract {
     }
 
     pub async fn start_game(&mut self) {
-        let tournament_id = 1u64;
+        let tournament_id = 1usize; // Use tournament ID 1 (first tournament)
 
         let response = self
             .interactor
@@ -322,9 +322,9 @@ impl ContractInteract {
     }
 
     pub async fn join_tournament(&mut self) {
-        let egld_amount = BigUint::<StaticApi>::from(0u128);
+        let egld_amount = BigUint::<StaticApi>::from(1u64).mul(10u64.pow(16)); // 0.01 EGLD (matching config)
 
-        let tournament_id = 3usize;
+        let tournament_id = 1usize; // Use tournament ID 1 (first tournament)
 
         let response = self
             .interactor
@@ -395,7 +395,7 @@ impl ContractInteract {
     }
 
     pub async fn get_tournament(&mut self) {
-        let tournament_id = 6usize;
+        let tournament_id = 13usize;
 
         let result_value = self
             .interactor
@@ -517,7 +517,7 @@ impl ContractInteract {
     }
 
     pub async fn get_tournament_basic_info(&mut self) {
-        let tournament_id = 1u64;
+        let tournament_id = 11usize;
 
         let result_value = self
             .interactor
@@ -674,7 +674,7 @@ impl ContractInteract {
     }
 
     pub async fn get_prize_pool(&mut self) {
-        let tournament_id = 1u64;
+        let tournament_id = 1usize;
 
         let result_value = self
             .interactor
@@ -737,7 +737,7 @@ impl ContractInteract {
                 .query()
                 .to(self.state.current_address())
                 .typed(proxy::TournamentHubProxy)
-                .get_tournament_basic_info(id as u64)
+                .get_tournament_basic_info(id as usize)
                 .returns(ReturnsResultUnmanaged)
                 .run()
                 .await;
@@ -815,7 +815,7 @@ impl ContractInteract {
     pub async fn get_tournament_basic_info_by_id(&mut self) {
         let args: Vec<String> = std::env::args().collect();
         let tournament_id = if args.len() > 2 {
-            args[2].parse::<u64>().unwrap_or(1)
+            args[2].parse::<usize>().unwrap_or(1)
         } else {
             1
         };
@@ -836,7 +836,7 @@ impl ContractInteract {
     pub async fn get_prize_pool_by_id(&mut self) {
         let args: Vec<String> = std::env::args().collect();
         let tournament_id = if args.len() > 2 {
-            args[2].parse::<u64>().unwrap_or(1)
+            args[2].parse::<usize>().unwrap_or(1)
         } else {
             1
         };
@@ -855,5 +855,19 @@ impl ContractInteract {
             "Prize pool for tournament {}: {result_value:?}",
             tournament_id
         );
+    }
+
+    pub async fn get_prize_stats(&mut self) {
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_prize_stats()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Prize stats: {result_value:?}");
     }
 }

@@ -10,31 +10,28 @@ pub trait ResultsManagementModule:
     #[endpoint(submitResults)]
     fn submit_results(
         &self,
-        tournament_index: u64,
+        tournament_index: usize,
         winner_podium: ManagedVec<ManagedAddress>,
         signed_result: ManagedBuffer,
     ) {
-        let tournaments_len = self.active_tournaments().len() as u64;
+        let tournaments_len = self.active_tournaments().len();
         require!(
             tournament_index > 0 && tournament_index <= tournaments_len,
             "Tournament does not exist"
         );
 
-        let mut tournament = self
-            .active_tournaments()
-            .get(tournament_index as usize)
-            .clone();
+        let mut tournament = self.active_tournaments().get(tournament_index).clone();
         let game_index = tournament.game_id as usize;
         let games_len = self.registered_games().len();
         require!(
             game_index > 0 && game_index <= games_len,
-            "Game config does not exist"
+            "Game not registered"
         );
         let game_config = self.registered_games().get(game_index).clone();
 
         require!(
             tournament.status == TournamentStatus::Active,
-            "Tournament is not active"
+            "UNIQUE_ERROR_MESSAGE_FOR_DEBUGGING_12345"
         );
 
         self.verify_result_signature(
@@ -74,8 +71,7 @@ pub trait ResultsManagementModule:
         );
 
         tournament.status = TournamentStatus::Completed;
-        self.active_tournaments()
-            .set(tournament_index as usize, &tournament);
+        self.active_tournaments().set(tournament_index, &tournament);
 
         // Update global statistics
         self.total_tournaments_completed()

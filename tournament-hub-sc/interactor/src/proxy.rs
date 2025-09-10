@@ -117,7 +117,7 @@ where
     }
 
     pub fn submit_results<
-        Arg0: ProxyArg<u64>,
+        Arg0: ProxyArg<usize>,
         Arg1: ProxyArg<ManagedVec<Env::Api, ManagedAddress<Env::Api>>>,
         Arg2: ProxyArg<ManagedBuffer<Env::Api>>,
     >(
@@ -136,7 +136,7 @@ where
     }
 
     pub fn place_spectator_bet<
-        Arg0: ProxyArg<u64>,
+        Arg0: ProxyArg<usize>,
         Arg1: ProxyArg<ManagedAddress<Env::Api>>,
     >(
         self,
@@ -164,20 +164,18 @@ where
     }
 
     pub fn create_tournament<
-        Arg0: ProxyArg<u64>,
+        Arg0: ProxyArg<usize>,
         Arg1: ProxyArg<u32>,
         Arg2: ProxyArg<u32>,
         Arg3: ProxyArg<BigUint<Env::Api>>,
-        Arg4: ProxyArg<u64>,
-        Arg5: ProxyArg<ManagedBuffer<Env::Api>>,
+        Arg4: ProxyArg<ManagedBuffer<Env::Api>>,
     >(
         self,
         game_index: Arg0,
         max_players: Arg1,
         min_players: Arg2,
         entry_fee: Arg3,
-        duration: Arg4,
-        name: Arg5,
+        name: Arg4,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("createTournament")
@@ -185,13 +183,12 @@ where
             .argument(&max_players)
             .argument(&min_players)
             .argument(&entry_fee)
-            .argument(&duration)
             .argument(&name)
             .original_result()
     }
 
     pub fn join_tournament<
-        Arg0: ProxyArg<u64>,
+        Arg0: ProxyArg<usize>,
     >(
         self,
         tournament_index: Arg0,
@@ -203,7 +200,7 @@ where
     }
 
     pub fn start_game<
-        Arg0: ProxyArg<u64>,
+        Arg0: ProxyArg<usize>,
     >(
         self,
         tournament_index: Arg0,
@@ -229,7 +226,7 @@ where
     }
 
     pub fn get_prize_pool<
-        Arg0: ProxyArg<u64>,
+        Arg0: ProxyArg<usize>,
     >(
         self,
         tournament_index: Arg0,
@@ -304,11 +301,11 @@ where
     }
 
     pub fn get_tournament_basic_info<
-        Arg0: ProxyArg<u64>,
+        Arg0: ProxyArg<usize>,
     >(
         self,
         tournament_id: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, (u64, u64, u32, ManagedVec<Env::Api, ManagedAddress<Env::Api>>, ManagedAddress<Env::Api>, u32, u32, BigUint<Env::Api>, u64, ManagedBuffer<Env::Api>, u64)> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, (u64, u64, u32, ManagedVec<Env::Api, ManagedAddress<Env::Api>>, ManagedAddress<Env::Api>, u32, u32, BigUint<Env::Api>, ManagedBuffer<Env::Api>, u64)> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getTournamentBasicInfo")
@@ -490,6 +487,54 @@ where
             .raw_call("getPrizeStats")
             .original_result()
     }
+
+    pub fn get_all_active_tournaments_basic_info(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, TournamentBasicInfo<Env::Api>>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getAllActiveTournamentsBasicInfo")
+            .original_result()
+    }
+
+    pub fn get_tournament_status_single<
+        Arg0: ProxyArg<usize>,
+    >(
+        self,
+        tournament_id: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u32> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTournamentStatusSingle")
+            .argument(&tournament_id)
+            .original_result()
+    }
+
+    pub fn get_tournament_basic_info_single<
+        Arg0: ProxyArg<usize>,
+    >(
+        self,
+        tournament_id: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, TournamentBasicInfo<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTournamentBasicInfoSingle")
+            .argument(&tournament_id)
+            .original_result()
+    }
+
+    pub fn get_user_stats_single<
+        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
+    >(
+        self,
+        user_address: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, UserStats<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getUserStatsSingle")
+            .argument(&user_address)
+            .original_result()
+    }
 }
 
 #[type_abi]
@@ -519,7 +564,6 @@ where
     pub max_players: u32,
     pub min_players: u32,
     pub entry_fee: BigUint<Api>,
-    pub duration: u64,
     pub name: ManagedBuffer<Api>,
     pub created_at: u64,
 }
@@ -545,7 +589,7 @@ where
 }
 
 #[type_abi]
-#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
+#[derive(TopEncode, TopDecode, ManagedVecItem, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
 pub struct UserStats<Api>
 where
     Api: ManagedTypeApi,
@@ -562,4 +606,22 @@ where
     pub best_streak: u32,
     pub last_activity: u64,
     pub member_since: u64,
+}
+
+#[type_abi]
+#[derive(TopEncode, TopDecode, ManagedVecItem, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
+pub struct TournamentBasicInfo<Api>
+where
+    Api: ManagedTypeApi,
+{
+    pub tournament_id: u64,
+    pub game_id: u64,
+    pub status: u32,
+    pub participants: ManagedVec<Api, ManagedAddress<Api>>,
+    pub creator: ManagedAddress<Api>,
+    pub max_players: u32,
+    pub min_players: u32,
+    pub entry_fee: BigUint<Api>,
+    pub name: ManagedBuffer<Api>,
+    pub created_at: u64,
 }
