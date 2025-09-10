@@ -10,6 +10,7 @@ import re
 from collections import deque
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.gzip import GZipMiddleware
 import requests
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -51,8 +52,12 @@ from colorrush_game_engine import create_colorrush_game, get_colorrush_game, rem
 from contract.submit_results import sign_results_for_tournament, submit_results_to_contract_with_signature
 from notifier_subscriber import start_notifier_subscriber
 from notifier_rabbitmq_subscriber import RabbitNotifierSubscriber
+from database_optimization import db_optimizer
 
 app = FastAPI(title="Tournament Hub Game Server", version="1.0.0")
+
+# Add compression middleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Add CORS middleware
 app.add_middleware(
@@ -63,15 +68,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add request logging middleware
+# Add request logging middleware with database optimization
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
+    start_time = time.time()
     logger.info(f"Request: {request.method} {request.url.path} - Query: {request.query_params}")
+    
     try:
         response = await call_next(request)
-        logger.info(f"Response: {response.status_code} for {request.method} {request.url.path}")
+        response_time_ms = int((time.time() - start_time) * 1000)
+        
+        # Log to database for analytics
+        db_optimizer.log_api_request(
+            endpoint=request.url.path,
+            method=request.method,
+            status_code=response.status_code,
+            response_time_ms=response_time_ms,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.client.host if request.client else None
+        )
+        
+        logger.info(f"Response: {response.status_code} for {request.method} {request.url.path} ({response_time_ms}ms)")
         return response
     except Exception as e:
+        response_time_ms = int((time.time() - start_time) * 1000)
+        
+        # Log error to database
+        db_optimizer.log_api_request(
+            endpoint=request.url.path,
+            method=request.method,
+            status_code=500,
+            response_time_ms=response_time_ms,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.client.host if request.client else None
+        )
+        
         logger.error(f"Error processing request {request.method} {request.url.path}: {e}")
         raise
 
@@ -589,6 +620,34 @@ async def health_check():
         "notifier_amqp_host": os.getenv("MX_AMQP_HOST", "not_set"),
         "root_path": os.getenv("ROOT_PATH", "not_set"),
     }
+
+@app.get("/performance")
+async def get_performance_stats():
+    """Get performance statistics and database metrics"""
+    try:
+        stats = db_optimizer.get_performance_stats()
+        return {
+            "status": "success",
+            "data": stats,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"Error getting performance stats: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.post("/optimize")
+async def optimize_database():
+    """Run database optimization"""
+    try:
+        db_optimizer.optimize_database()
+        return {
+            "status": "success",
+            "message": "Database optimization completed",
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"Error optimizing database: {e}")
+        return {"status": "error", "message": str(e)}
 
 @app.get("/")
 async def root():
@@ -1252,14 +1311,12 @@ async def get_game_config(game_type: str):
             "description": "Real-time cell battle game",
             "max_players": 8,
             "min_players": 1,
-            "game_duration": 600
         },
         "chess": {
             "name": "Chess",
             "description": "Strategic board game",
             "max_players": 2,
             "min_players": 2,
-            "game_duration": 1800
         }
     }
     
