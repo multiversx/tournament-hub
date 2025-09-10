@@ -56,6 +56,23 @@ export const useJoinTournamentTransaction = () => {
             transactionsDisplayInfo: JOIN_TRANSACTION_INFO
         });
 
+        // Trigger immediate cache invalidation to refresh the UI
+        try {
+            const { invalidateCacheByEvent, invalidateCacheByKey } = await import('../../helpers');
+
+            // Invalidate specific tournament caches
+            invalidateCacheByKey(`tournament_details_${params.tournamentId}`);
+            invalidateCacheByKey(`basic_${params.tournamentId}`);
+
+            // Invalidate general tournament events
+            invalidateCacheByEvent('tournament_joined');
+            invalidateCacheByEvent('tournament_updated');
+
+            console.log('joinTournament: Cache invalidated for immediate refresh');
+        } catch (error) {
+            console.error('joinTournament: Error invalidating cache:', error);
+        }
+
         return sessionId;
     };
 

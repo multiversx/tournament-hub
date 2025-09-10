@@ -43,17 +43,14 @@ export const useTournamentStats = (): TournamentStats => {
 
                 // Try to get stats from smart contract first
                 const contractStats = await getTournamentStatsFromContract();
+                console.log('Contract stats:', contractStats);
                 let prizeStats = await getPrizeStatsFromContract();
-
-                console.log('useTournamentStats: Contract stats:', contractStats);
-                console.log('useTournamentStats: Prize stats:', prizeStats);
+                console.log('Prize stats:', prizeStats);
 
                 // If prize stats failed due to rate limiting, try again after a delay
                 if (!prizeStats) {
-                    console.log('useTournamentStats: Prize stats failed, retrying after delay...');
                     await sleep(1000); // Wait 1 second
                     prizeStats = await getPrizeStatsFromContract();
-                    console.log('useTournamentStats: Prize stats retry result:', prizeStats);
                 }
 
                 if (contractStats) {
@@ -70,13 +67,6 @@ export const useTournamentStats = (): TournamentStats => {
                         loading: false,
                         error: null,
                     };
-                    console.log('useTournamentStats: Setting final stats:', finalStats);
-                    console.log('useTournamentStats: Prize stats details:', {
-                        max_prize_won: prizeStats?.max_prize_won,
-                        total_prize_distributed: prizeStats?.total_prize_distributed,
-                        isNull: prizeStats === null,
-                        isUndefined: prizeStats === undefined
-                    });
                     setStats(finalStats);
                     return;
                 }
@@ -163,8 +153,8 @@ export const useTournamentStats = (): TournamentStats => {
                     completedTournaments: completedCount,
                     highestAmountWon,
                     totalAmountPlayed,
-                    maxPrizeWon: 0, // Fallback doesn't calculate this
-                    totalPrizeDistributed: 0, // Fallback doesn't calculate this
+                    maxPrizeWon: prizeStats?.max_prize_won || 0,
+                    totalPrizeDistributed: prizeStats?.total_prize_distributed || 0,
                     loading: false,
                     error: null,
                 });

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { BACKEND_BASE_URL } from '../config/backend';
 import { useNavigate } from 'react-router-dom';
+import { useWebSocket } from '../hooks/useWebSocket';
 import {
     Box,
     Grid,
@@ -110,12 +111,31 @@ export const ChessGame: React.FC<ChessGameProps> = ({ sessionId, playerAddress }
         }
     }, [sessionId, playerAddress, toast]);
 
+    // Use WebSocket for real-time updates instead of polling
+    const { isConnected } = useWebSocket('game_state_updated', {
+        onMessage: (data) => {
+            if (data.sessionId === sessionId) {
+                setGameState(data.gameState);
+                setLoading(false);
+            }
+        },
+        onError: (error) => {
+            console.log('WebSocket not available, using polling fallback for ChessGame');
+        }
+    });
+
+    // Fallback polling if WebSocket is not connected
     useEffect(() => {
-        // Only start polling if we have a valid sessionId
+        if (!isConnected && sessionId && sessionId !== 'null' && sessionId.trim() !== '') {
+            const interval = setInterval(fetchGameState, 5000); // Poll every 5 seconds as fallback
+            return () => clearInterval(interval);
+        }
+    }, [isConnected, sessionId, fetchGameState]);
+
+    useEffect(() => {
+        // Only fetch initial state if we have a valid sessionId
         if (sessionId && sessionId !== 'null' && sessionId.trim() !== '') {
             fetchGameState();
-            const interval = setInterval(fetchGameState, 2000); // Poll every 2 seconds
-            return () => clearInterval(interval);
         } else {
             setLoading(false);
         }
