@@ -21,7 +21,6 @@ import { PageWrapper } from 'wrappers';
 import { useTournamentStats } from '../../hooks/useTournamentStats';
 import { UpcomingTournaments } from '../../components/UpcomingTournaments';
 import { useWallet } from '../../contexts/WalletContext';
-import { debugPrizeStats } from '../../helpers';
 
 export const Home = () => {
   const isMobile = useBreakpointValue({ base: true, md: false });
@@ -343,15 +342,6 @@ export const Home = () => {
 
               {/* Debug button for prize stats */}
               <HStack justify="center" mt={4}>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  colorScheme="purple"
-                  onClick={() => debugPrizeStats()}
-                  _hover={{ bg: 'purple.600', color: 'white' }}
-                >
-                  Debug Prize Stats
-                </Button>
               </HStack>
 
               {/* Cool Action Buttons with Enhanced Gradients */}
@@ -641,7 +631,7 @@ export const Home = () => {
                       Flexible Scheduling
                     </Heading>
                     <Text color="gray.300" textAlign="center" lineHeight="1.6" fontSize="md">
-                      Play immediately without waiting for deadlines. Start tournaments when you're ready.
+                      Play immediately and start tournaments when you're ready.
                     </Text>
                   </VStack>
                 </VStack>
