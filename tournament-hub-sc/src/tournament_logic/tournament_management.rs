@@ -12,7 +12,7 @@ pub trait TournamentManagementModule:
     #[payable("EGLD")]
     fn create_tournament(
         &self,
-        game_index: usize, // sequential index for the game (starting from 1)
+        game_index: u32, // sequential index for the game (starting from 1)
         max_players: u32,
         min_players: u32, // minimum players required to start
         entry_fee: BigUint,
@@ -24,7 +24,7 @@ pub trait TournamentManagementModule:
         // Check that the game exists
         let games_len = self.registered_games().len();
         require!(
-            game_index > 0 && game_index <= games_len,
+            game_index > 0 && game_index <= games_len as u32,
             "Game not registered"
         );
 
