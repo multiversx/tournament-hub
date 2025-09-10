@@ -9,21 +9,18 @@ pub trait SpectatorBettingModule:
 {
     #[endpoint(placeSpectatorBet)]
     #[payable("EGLD")]
-    fn place_spectator_bet(&self, tournament_index: u64, betting_on_player: ManagedAddress) {
+    fn place_spectator_bet(&self, tournament_index: usize, betting_on_player: ManagedAddress) {
         let payment = self.call_value().egld().clone_value();
         let caller = self.blockchain().get_caller();
 
         require!(payment > 0, "Bet amount must be greater than 0");
-        let tournaments_len = self.active_tournaments().len() as u64;
+        let tournaments_len = self.active_tournaments().len();
         require!(
             tournament_index > 0 && tournament_index <= tournaments_len,
             "Tournament does not exist"
         );
 
-        let tournament = self
-            .active_tournaments()
-            .get(tournament_index as usize)
-            .clone();
+        let tournament = self.active_tournaments().get(tournament_index).clone();
 
         // Verify betting_on_player is a participant
         let found = tournament
