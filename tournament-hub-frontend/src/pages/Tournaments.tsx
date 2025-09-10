@@ -31,7 +31,7 @@ import {
     Progress,
 } from '@chakra-ui/react';
 import { Users, Award, Calendar, Plus, Search, Filter, ChevronDown, ChevronUp, Trophy, Clock, Copy, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
-import { getActiveTournamentIds, getTournamentDetailsFromContract, getGameConfig, getPrizePoolFromContract, getTournamentsFromBlockchain, findTournamentsByTesting, getSubmitResultsTransactionHash, debugContractResponse, clearApiCaches, getRecentNotifierEvents, getAnyJoinTs, isTournamentCompletedByEvents, parseTournamentHex } from '../helpers';
+import { getActiveTournamentIds, getTournamentDetailsFromContract, getTournamentDetailsFromContractFresh, getGameConfig, getPrizePoolFromContract, getTournamentsFromBlockchain, findTournamentsByTesting, getSubmitResultsTransactionHash, clearApiCaches, getRecentNotifierEvents, getAnyJoinTs, isTournamentCompletedByEvents, parseTournamentHex, forceRefreshTournaments, forceRefreshAllTournaments } from '../helpers';
 import { getContractAddress, getNetwork } from '../config/contract';
 
 // Using helper to clear caches instead of accessing internals
@@ -398,28 +398,6 @@ const TournamentCard = React.memo(({ tournament, onLoadDetails, onRetryTournamen
 
                 {!tournament.gameConfigLoaded && (
                     <HStack spacing={2} w="full">
-                        <Button
-                            size="md"
-                            variant="outline"
-                            colorScheme="blue"
-                            borderRadius="xl"
-                            border="2px solid"
-                            borderColor="blue.500"
-                            color="blue.300"
-                            fontWeight="semibold"
-                            onClick={() => onLoadDetails(tournament.id)}
-                            isLoading={tournament.loadingDetails}
-                            _hover={{
-                                bg: "blue.600",
-                                color: "white",
-                                transform: "translateY(-2px)",
-                                boxShadow: "0 8px 20px rgba(59, 130, 246, 0.3)"
-                            }}
-                            transition="all 0.2s ease"
-                            flex="1"
-                        >
-                            Load Details
-                        </Button>
                         {tournament.isFallback && tournament.status === 4 && onRetryTournament && (
                             <Button
                                 size="md"
@@ -555,7 +533,7 @@ export const Tournaments = () => {
 
                     // Use getTournament endpoint (getTournamentBasicInfo doesn't exist in deployed contract)
                     console.log(`loadBasicTournamentData: Fetching tournament ${id} using getTournament...`);
-                    const details = await getTournamentDetailsFromContract(id);
+                    const details = await getTournamentDetailsFromContractFresh(id);
                     console.log(`loadBasicTournamentData: Details for tournament ${id}:`, details);
 
                     if (details) {
@@ -766,17 +744,6 @@ export const Tournaments = () => {
         }
     }, [loadBasicTournamentData, toast]);
 
-    // Function to clear all caches and force refresh
-    const clearAllCachesAndRefresh = useCallback(async () => {
-        console.log('Clearing all caches and forcing refresh...');
-
-        // Clear all caches
-        tournamentCache.clear();
-        clearApiCaches();
-
-        // Force refresh by reloading the page
-        window.location.reload();
-    }, []);
 
     // Optimized details loading
     const loadTournamentDetails = useCallback(async (id: bigint) => {
@@ -846,6 +813,36 @@ export const Tournaments = () => {
         }
     }, [loadingDetails]);
 
+    // Listen for force clear events
+    useEffect(() => {
+        const handleForceClear = () => {
+            setTournaments([]);
+            setLoading(false);
+            setRefreshing(false);
+        };
+
+        window.addEventListener('forceClearTournaments', handleForceClear);
+        return () => window.removeEventListener('forceClearTournaments', handleForceClear);
+    }, []);
+
+    // Automatic cache refresh every 5 minutes to prevent stale data
+    useEffect(() => {
+        const interval = setInterval(async () => {
+            try {
+                // Silently refresh tournaments in the background
+                const freshTournaments = await forceRefreshAllTournaments();
+                if (freshTournaments.length !== tournaments.length) {
+                    setTournaments(freshTournaments);
+                    setLastRefresh(Date.now());
+                }
+            } catch (error) {
+                // Silently fail - don't show errors for background refresh
+            }
+        }, 1000); // 1 second
+
+        return () => clearInterval(interval);
+    }, [tournaments.length]);
+
     // Refresh function
     const refreshTournaments = useCallback(async () => {
         setRefreshing(true);
@@ -887,6 +884,9 @@ export const Tournaments = () => {
             setLoading(true);
             setError(null);
             try {
+                // Clear any stale cache data on initial load
+                clearApiCaches();
+
                 // Begin tournament discovery
 
                 let tournamentIds = await getActiveTournamentIds();
@@ -944,28 +944,16 @@ export const Tournaments = () => {
                     .filter(result => result.status === 'fulfilled' && result.value !== null)
                     .map(result => (result as PromiseFulfilledResult<any>).value);
 
-                console.log(`Successfully loaded ${validTournaments.length} tournaments (including ${validTournaments.filter(t => t.isFallback).length} fallback tournaments)`);
-
-                // Debug: Log all tournament IDs to check for duplicates
-                const tournamentIdStrings = validTournaments.map(t => t.id.toString());
-                const uniqueIds = [...new Set(tournamentIdStrings)];
-                if (tournamentIdStrings.length !== uniqueIds.length) {
-                    console.warn(`Duplicate tournament IDs detected in initial load:`, tournamentIdStrings);
-                }
+                // Successfully loaded tournaments
 
                 // Deduplicate tournaments before setting state (include ALL tournaments, not just real ones)
                 const deduplicatedTournaments = deduplicateTournaments(validTournaments);
-                if (deduplicatedTournaments.length !== validTournaments.length) {
-                    console.log(`Removed ${validTournaments.length - deduplicatedTournaments.length} duplicate tournaments`);
-                }
 
-                console.log(`Setting tournaments state with ${deduplicatedTournaments.length} tournaments (including ${deduplicatedTournaments.filter(t => t.isFallback).length} fallback tournaments)`);
                 setTournaments(deduplicatedTournaments);
 
                 // Try to load real data for fallback tournaments in the background
                 const fallbackTournaments = validTournaments.filter(t => t.isFallback);
                 if (fallbackTournaments.length > 0) {
-                    console.log(`Attempting to load real data for ${fallbackTournaments.length} fallback tournaments...`);
 
                     // Prioritize completed tournaments (status 4) for loading
                     const completedFallbacks = fallbackTournaments.filter(t => t.status === 4);
@@ -1055,7 +1043,7 @@ export const Tournaments = () => {
         let lastSeenTs = 0;
         let lastJoinTs = 0;
         let consecutiveErrors = 0;
-        let pollInterval = 3000; // Start with 3 seconds
+        let pollInterval = 1000; // Start with 1 second for faster updates
 
         const pollNotifier = async () => {
             try {
@@ -1070,7 +1058,7 @@ export const Tournaments = () => {
                 if (!mounted || events.length === 0) {
                     // Reset error count on successful API call
                     consecutiveErrors = 0;
-                    pollInterval = 3000;
+                    pollInterval = 1000;
                     return;
                 }
                 // Process only new events
@@ -1078,7 +1066,7 @@ export const Tournaments = () => {
                 if (newEvents.length === 0) {
                     // Reset error count on successful API call
                     consecutiveErrors = 0;
-                    pollInterval = 3000;
+                    pollInterval = 1000;
                     return;
                 }
                 lastSeenTs = Math.max(lastSeenTs, ...newEvents.map(e => e.ts));
@@ -1087,7 +1075,7 @@ export const Tournaments = () => {
                 if (created.length === 0) {
                     // Reset error count on successful API call
                     consecutiveErrors = 0;
-                    pollInterval = 3000;
+                    pollInterval = 1000;
                     return;
                 }
                 const uniqueIds = Array.from(new Set(created.map(e => BigInt(e.tournament_id))));
@@ -1124,7 +1112,7 @@ export const Tournaments = () => {
 
                 // Increase polling interval on consecutive errors to reduce server load
                 if (consecutiveErrors >= 3) {
-                    pollInterval = Math.min(pollInterval * 1.5, 30000); // Max 30 seconds
+                    pollInterval = Math.min(pollInterval * 1.5, 10000); // Max 10 seconds
                     console.log(`Increased polling interval to ${pollInterval}ms due to errors`);
                 }
             }
@@ -1177,20 +1165,7 @@ export const Tournaments = () => {
 
             return matchesSearch && matchesStatus;
         });
-        console.log(`Filtered tournaments: ${filtered.length} (total tournaments: ${tournaments.length}, search: "${deferredSearch}", status: "${statusFilter}")`);
-
-        // Debug: Log details of each tournament
-        console.log('Tournament details:');
-        filtered.forEach((tournament, index) => {
-            console.log(`Tournament ${index + 1}:`, {
-                id: tournament.id,
-                name: tournament.name,
-                status: tournament.status,
-                isFallback: tournament.isFallback,
-                participants: tournament.participants?.length || 0,
-                creator: tournament.creator
-            });
-        });
+        // Filtered tournaments
 
 
         return filtered;
@@ -1198,17 +1173,19 @@ export const Tournaments = () => {
 
     // Optimized sorting
     const activeTournaments = useMemo(() => {
+
+        // Filter for active tournaments (status 0: Joining, 1: ReadyToStart, 2: Active)
         const active = filteredTournaments
-            .filter(t => t.status !== 4) // Not completed (status 4)
+            .filter(t => t.status !== undefined && t.status <= 2) // Only show joining, ready to start, and active tournaments
             .sort((a, b) => Number(b.id) - Number(a.id));
-        console.log(`Active tournaments: ${active.length} (total filtered: ${filteredTournaments.length})`);
+
+
         return active;
     }, [filteredTournaments]);
     const completedTournaments = useMemo(() => {
         const completed = tournaments
             .filter(t => t.status === 4) // Completed (status 4) - include fallback tournaments too
             .sort((a, b) => Number(b.id) - Number(a.id));
-        console.log(`Completed tournaments: ${completed.length} (total tournaments: ${tournaments.length})`);
         return completed;
     }, [tournaments]);
 
@@ -1348,17 +1325,6 @@ export const Tournaments = () => {
                         </HStack>
                     </Button>
                 </HStack>
-                <Button
-                    leftIcon={<RefreshCw size={18} />}
-                    colorScheme="orange"
-                    variant="outline"
-                    size="lg"
-                    onClick={clearAllCachesAndRefresh}
-                    _hover={{ bg: 'orange.600', color: 'white' }}
-                    _focus={{ bg: 'orange.600', color: 'white' }}
-                >
-                    Clear Cache & Refresh
-                </Button>
             </Box>
 
             {/* Cool Search and Filters */}
@@ -1704,6 +1670,62 @@ export const Tournaments = () => {
                             </VStack>
                         </HStack>
                         <HStack spacing={3}>
+                            <Button
+                                onClick={async () => {
+                                    try {
+                                        // Clear all caches automatically
+                                        clearApiCaches();
+                                        tournamentCache.clear();
+                                        localStorage.removeItem(PERSISTENT_CACHE_KEY);
+
+                                        // Invalidate specific tournament events
+                                        const { invalidateCacheByEvent } = await import('../helpers');
+                                        invalidateCacheByEvent('tournament_created');
+                                        invalidateCacheByEvent('tournament_joined');
+                                        invalidateCacheByEvent('tournament_updated');
+
+                                        // Force refresh with fresh data
+                                        const freshTournaments = await forceRefreshAllTournaments();
+                                        setTournaments(freshTournaments);
+                                        setLastRefresh(Date.now());
+
+                                        toast({
+                                            title: 'Tournaments Refreshed',
+                                            description: `Loaded ${freshTournaments.length} tournaments`,
+                                            status: 'success',
+                                            duration: 2000,
+                                            isClosable: true,
+                                        });
+                                    } catch (error) {
+                                        console.error('Error refreshing tournaments:', error);
+                                        toast({
+                                            title: 'Refresh Failed',
+                                            description: 'Could not refresh tournaments. Please try again.',
+                                            status: 'error',
+                                            duration: 3000,
+                                            isClosable: true,
+                                        });
+                                    }
+                                }}
+                                size="md"
+                                colorScheme="blue"
+                                variant="outline"
+                                borderRadius="xl"
+                                leftIcon={<RefreshCw size={18} />}
+                                fontWeight="bold"
+                                _hover={{
+                                    bg: "blue.600",
+                                    transform: 'translateY(-2px)',
+                                    boxShadow: '0 10px 25px rgba(59, 130, 246, 0.4)'
+                                }}
+                                _active={{
+                                    transform: 'translateY(-1px)',
+                                    boxShadow: '0 8px 25px rgba(59, 130, 246, 0.5)'
+                                }}
+                                transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                            >
+                                Refresh
+                            </Button>
                             <Button
                                 onClick={() => window.location.href = '/tournaments/create'}
                                 size="md"

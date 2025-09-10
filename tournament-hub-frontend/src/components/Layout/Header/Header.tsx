@@ -1,17 +1,39 @@
 import { useNavigate } from 'react-router-dom';
 import { Box, Text, HStack, VStack } from '@chakra-ui/react';
 import { Button, MxLink } from 'components';
+import { useEffect } from 'react';
 
-import { getAccountProvider, useGetIsLoggedIn, useGetAccountInfo, useGetNetworkConfig, DECIMALS, DIGITS, FormatAmountController } from 'lib';
+import { getAccountProvider, useGetIsLoggedIn, useGetNetworkConfig, DECIMALS, DIGITS, FormatAmountController } from 'lib';
 import { RouteNamesEnum } from 'localConstants';
 import { NotificationsButton } from './components/NotificationsButton';
+import { useRefreshAccountInfo } from '../../../hooks/useRefreshAccountInfo';
 
 export const Header = () => {
   const isLoggedIn = useGetIsLoggedIn();
-  const { address, account } = useGetAccountInfo();
+  const { address, account } = useRefreshAccountInfo();
   const { network } = useGetNetworkConfig();
   const navigate = useNavigate();
   const provider = getAccountProvider();
+
+  // Refresh account info periodically to update balance
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const refreshAccountInfo = async () => {
+      try {
+        // Try to refresh the account info by dispatching a custom event
+        // This will trigger a re-render of components that listen to this event
+        window.dispatchEvent(new CustomEvent('refreshAccountInfo'));
+      } catch (error) {
+        console.error('Failed to refresh account info:', error);
+      }
+    };
+
+    // Refresh every 5 seconds
+    const interval = setInterval(refreshAccountInfo, 5000);
+
+    return () => clearInterval(interval);
+  }, [isLoggedIn]);
 
   const handleLogout = async () => {
     await provider.logout();
@@ -81,6 +103,9 @@ export const Header = () => {
             </MxLink>
             <MxLink to="/dashboard" className="text-gray-300 hover:text-purple-400 transition-colors font-medium">
               Dashboard
+            </MxLink>
+            <MxLink to="/admin" className="text-gray-300 hover:text-orange-400 transition-colors font-medium">
+              Admin
             </MxLink>
           </HStack>
 

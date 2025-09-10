@@ -19,7 +19,7 @@ import {
     IconButton,
     Progress,
 } from '@chakra-ui/react';
-import { Users, Award, Calendar, Play, Trophy, CopyIcon, Clock, Coins } from 'lucide-react';
+import { Users, Award, Calendar, Play, Trophy, CopyIcon, Clock, Coins, RefreshCw } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     startTournamentSession,
@@ -27,7 +27,7 @@ import {
     TournamentSession,
     GAME_CONFIGS
 } from '../services/tournamentService';
-import { getTournamentDetailsFromContract, getGameConfig, getPrizePoolFromContract, getRecentJoins, getRecentGameStart } from '../helpers';
+import { getTournamentDetailsFromContract, getTournamentDetailsFromContractFresh, getGameConfig, getPrizePoolFromContract, getRecentJoins, getRecentGameStart } from '../helpers';
 import { getSubmitResultsTransactionHash } from '../helpers';
 import { weiToEgld } from '../utils/contractUtils';
 import { useGetAccount } from 'lib';
@@ -116,6 +116,52 @@ export const TournamentDetails = () => {
         fetchTournament();
     }, [id]);
 
+    // Fresh fetch function that bypasses all caching
+    const fetchTournamentFresh = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            console.log('fetchTournamentFresh: Fetching fresh tournament data...');
+            if (!id) throw new Error('No tournament id');
+
+            // Use fresh data fetching that bypasses all caches
+            let details = await getTournamentDetailsFromContractFresh(BigInt(id));
+            if (!details) throw new Error('Tournament not found');
+
+            console.log('fetchTournamentFresh: Fresh details:', details);
+
+            const gameConfig = await getGameConfig(details.game_id);
+            const prizePool = await getPrizePoolFromContract(BigInt(id));
+
+            // Fetch transaction hash for completed tournaments
+            let resultTxHash = null;
+            if (details.status === 2) { // Completed status
+                try {
+                    resultTxHash = await getSubmitResultsTransactionHash(BigInt(id));
+                } catch (e) {
+                    console.error('Error fetching transaction hash:', e);
+                    resultTxHash = null;
+                }
+            }
+
+            setTournament({
+                ...details,
+                gameConfig,
+                prize_pool: prizePool ? (Number(prizePool) / 1e18).toFixed(4) + ' EGLD' : '-',
+                status: ['Joining', 'ReadyToStart', 'Active', 'ProcessingResults', 'Completed'][details.status] || 'unknown',
+                current_players: details.participants.length,
+                description: details.name || getGameName(Number(details.game_id)),
+                resultTxHash,
+                entry_fee_egld: weiToEgld(details.entry_fee.toString()),
+            });
+            console.log('fetchTournamentFresh: Tournament updated with fresh data');
+        } catch (err: any) {
+            console.error('Error fetching fresh tournament:', err);
+            setError(err.message || 'Failed to load tournament details');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // Periodically refresh participants/status to reflect joins and game start without reload
     useEffect(() => {
@@ -123,7 +169,7 @@ export const TournamentDetails = () => {
         let mounted = true;
         const interval = setInterval(async () => {
             try {
-                const latest = await getTournamentDetailsFromContract(BigInt(id));
+                const latest = await getTournamentDetailsFromContractFresh(BigInt(id));
                 if (!mounted || !latest) return;
                 setTournament((prev: any) => {
                     if (!prev) return prev;
@@ -141,7 +187,7 @@ export const TournamentDetails = () => {
                     };
                 });
             } catch { }
-        }, 2000);
+        }, 1000);
         return () => { mounted = false; clearInterval(interval); };
     }, [id]);
 
@@ -157,7 +203,7 @@ export const TournamentDetails = () => {
                 if (!mounted || !Array.isArray(joins)) return;
                 if (joins.length > prevCount) {
                     // Fetch latest participants and diff to be robust against encoding differences
-                    const latest = await getTournamentDetailsFromContract(BigInt(id));
+                    const latest = await getTournamentDetailsFromContractFresh(BigInt(id));
                     if (latest && Array.isArray(latest.participants)) {
                         const prevSet = new Set<string>(tournament.participants);
                         const newOnes = latest.participants.filter((p: string) => !prevSet.has(p));
@@ -176,7 +222,7 @@ export const TournamentDetails = () => {
                     prevCount = joins.length;
                 }
             } catch { /* ignore */ }
-        }, 3000);
+        }, 1500);
         return () => { mounted = false; clearInterval(interval); };
     }, [id, tournament, playerAddress, toast]);
 
@@ -202,7 +248,7 @@ export const TournamentDetails = () => {
                     });
                 }
             } catch { /* ignore */ }
-        }, 3000);
+        }, 1500);
         return () => { mounted = false; clearInterval(interval); };
     }, [id, tournament, playerAddress, toast]);
 
@@ -225,6 +271,30 @@ export const TournamentDetails = () => {
                 entryFee: tournament.entry_fee.toString()
             });
 
+            // Trigger immediate cache invalidation and refetch
+            try {
+                const { invalidateCacheByEvent, invalidateCacheByKey } = await import('../helpers');
+
+                // Invalidate specific tournament details cache
+                const tournamentId = parseInt(id || '0');
+                console.log('DEBUG: Invalidating caches for tournament', tournamentId);
+                invalidateCacheByKey(`tournament_details_${tournamentId}`);
+                invalidateCacheByKey(`basic_${tournamentId}`);
+
+                // Invalidate general tournament events
+                invalidateCacheByEvent('tournament_joined');
+                invalidateCacheByEvent('tournament_updated');
+
+                console.log('DEBUG: Cache invalidated for immediate refresh');
+
+                // Force refetch tournament details with fresh data
+                console.log('DEBUG: Fetching fresh tournament data...');
+                await fetchTournamentFresh();
+                console.log('DEBUG: Fresh tournament data fetched');
+            } catch (error) {
+                console.error('handleJoinTournament: Error invalidating cache:', error);
+            }
+
             toast({
                 title: 'Success!',
                 description: 'You have joined the tournament successfully! Please wait to be matched.',
@@ -232,10 +302,6 @@ export const TournamentDetails = () => {
                 duration: 5000,
                 isClosable: true,
             });
-            // Refetch tournament details to show updated participant list
-            if (typeof window !== 'undefined') {
-                window.location.reload();
-            }
         } catch (err) {
             console.error('Error joining tournament:', err);
             toast({
@@ -333,6 +399,16 @@ export const TournamentDetails = () => {
     // Only show Join Tournament button if user is not already a participant
     const isParticipant = playerAddress ? tournament.participants.includes(playerAddress) : false;
     const isCreator = playerAddress === tournament.creator;
+
+    // Debug logging for address comparison
+    if (playerAddress && tournament.participants) {
+        console.log('DEBUG: Address comparison for tournament', id);
+        console.log('DEBUG: Current player address:', playerAddress);
+        console.log('DEBUG: Tournament participants:', tournament.participants);
+        console.log('DEBUG: Is participant:', isParticipant);
+        console.log('DEBUG: Is creator:', isCreator);
+        console.log('DEBUG: Tournament creator:', tournament.creator);
+    }
     const canJoin = (tournament.status === 'Joining' || tournament.status === 'ReadyToStart') &&
         tournament.current_players < tournament.max_players &&
         !isParticipant &&
@@ -472,7 +548,43 @@ export const TournamentDetails = () => {
                 {/* Tournament Information Card */}
                 <Card bg="gray.800" border="1px solid" borderColor="gray.700" maxW="600px" mx="auto">
                     <CardHeader>
-                        <Heading size="md" color="white" fontWeight="bold">Tournament Information</Heading>
+                        <HStack justify="space-between" align="center">
+                            <Heading size="md" color="white" fontWeight="bold">Tournament Information</Heading>
+                            <Button
+                                size="sm"
+                                colorScheme="blue"
+                                variant="outline"
+                                leftIcon={<RefreshCw size={16} />}
+                                onClick={async () => {
+                                    try {
+                                        await fetchTournamentFresh();
+                                        toast({
+                                            title: 'Tournament refreshed',
+                                            description: 'Fetched latest data from blockchain',
+                                            status: 'success',
+                                            duration: 2000,
+                                            isClosable: true,
+                                        });
+                                    } catch (error) {
+                                        console.error('Error refreshing tournament:', error);
+                                        toast({
+                                            title: 'Refresh failed',
+                                            description: 'Failed to fetch fresh data',
+                                            status: 'error',
+                                            duration: 3000,
+                                            isClosable: true,
+                                        });
+                                    }
+                                }}
+                                _hover={{
+                                    bg: "blue.600",
+                                    transform: "translateY(-1px)",
+                                }}
+                                transition="all 0.2s"
+                            >
+                                Refresh
+                            </Button>
+                        </HStack>
                     </CardHeader>
                     <CardBody>
                         <VStack spacing={4} align="stretch">

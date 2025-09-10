@@ -44,7 +44,6 @@ interface TournamentDetails {
     max_players: number;
     min_players: number;
     entry_fee: string;
-    duration: number;
     name: string;
     created_at: number;
 }
@@ -80,15 +79,6 @@ const formatEGLD = (wei: string): string => {
     return egld.toFixed(2);
 };
 
-const formatDuration = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-
-    if (hours > 0) {
-        return `${hours}h ${minutes}m`;
-    }
-    return `${minutes}m`;
-};
 
 const formatTimeAgo = (timestamp: number): string => {
     const now = Date.now() / 1000;
@@ -348,12 +338,6 @@ export const UpcomingTournaments: React.FC = () => {
                                                     <StatLabel fontSize="xs" color="gray.500">Entry Fee</StatLabel>
                                                     <StatNumber fontSize="sm">
                                                         {formatEGLD(tournament.entry_fee)} EGLD
-                                                    </StatNumber>
-                                                </Stat>
-                                                <Stat size="sm">
-                                                    <StatLabel fontSize="xs" color="gray.500">Duration</StatLabel>
-                                                    <StatNumber fontSize="sm">
-                                                        {formatDuration(tournament.duration)}
                                                     </StatNumber>
                                                 </Stat>
                                             </SimpleGrid>

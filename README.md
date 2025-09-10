@@ -37,7 +37,7 @@ tournament-hub-sc/
 
 - **Modular Design**: Each logical area is in its own file, making the codebase easy to navigate and extend.
 - **Owner-Only Game Registration**: Only the contract owner can register new games.
-- **Tournament Lifecycle**: Create, join, and start tournaments, with deadlines and entry fees.
+- **Tournament Lifecycle**: Create, join, and start tournaments with entry fees.
 - **Result Submission**: Secure result submission and prize distribution, including house fees and podium splits.
 - **Spectator Betting**: Spectators can bet on players, with winnings distributed based on final results.
 - **View Endpoints**: Query all relevant contract state for games, tournaments, and bets.
@@ -208,7 +208,7 @@ mxpy contract call <CONTRACT_ADDRESS> \
   --recall-nonce --send
 ```
 
-#### 2.3 Start Tournament (after join deadline)
+#### 2.3 Start Tournament
 ```bash
 mxpy contract call <CONTRACT_ADDRESS> \
   --function startTournament \
@@ -304,7 +304,7 @@ mxpy contract query <CONTRACT_ADDRESS> \
 ### Common Issues and Solutions
 
 #### Issue: "Tournament is not in playing phase"
-**Solution**: Make sure to call `startTournament` after the join deadline has passed.
+**Solution**: Make sure to call `startTournament` when the tournament is ready to start.
 
 #### Issue: "ed25519 verify error"
 **Causes**:
@@ -330,7 +330,7 @@ pip uninstall signing
 - [ ] Game registration succeeds
 - [ ] Tournament creation succeeds
 - [ ] Players can join tournament
-- [ ] Tournament can be started after deadline
+- [ ] Tournament can be started when ready
 - [ ] Server can sign results
 - [ ] Off-chain signature verification works
 - [ ] On-chain result submission succeeds
@@ -351,7 +351,7 @@ For load testing, you can:
 1. **Unauthorized Access**: Try calling admin functions with non-admin accounts
 2. **Signature Forgery**: Submit results with invalid signatures
 3. **Replay Attacks**: Try reusing old signatures
-4. **Timing Attacks**: Test deadline enforcement
+4. **Timing Attacks**: Test tournament state transitions
 5. **Overflow/Underflow**: Test with extreme values
 
 ---

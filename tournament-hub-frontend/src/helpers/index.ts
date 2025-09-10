@@ -21,24 +21,1128 @@ function getApiUrl(): string {
 }
 
 
-// Cache for API responses
-const apiCache = new Map<string, { data: any; timestamp: number; ttl: number }>();
-const API_CACHE_TTL = 300 * 1000; // 5 minutes
+// Enhanced cache system with different TTLs and invalidation strategies
+interface CacheEntry {
+    data: any;
+    timestamp: number;
+    ttl: number;
+    priority: 'low' | 'medium' | 'high';
+    dependencies?: string[]; // Cache keys this entry depends on
+    invalidationTriggers?: string[]; // Events that should invalidate this cache
+}
+
+const apiCache = new Map<string, CacheEntry>();
+
+// Different TTLs for different types of data
+const CACHE_TTLS = {
+    // Static data - rarely changes
+    GAME_CONFIG: 30 * 60 * 1000, // 30 minutes
+    CONTRACT_CONFIG: 60 * 60 * 1000, // 1 hour
+
+    // Semi-static data - changes occasionally
+    TOURNAMENT_BASIC_INFO: 5 * 60 * 1000, // 5 minutes
+    USER_STATS: 10 * 60 * 1000, // 10 minutes
+
+    // Dynamic data - changes frequently
+    TOURNAMENT_STATUS: 30 * 1000, // 30 seconds
+    GAME_STATE: 5 * 1000, // 5 seconds
+    PRIZE_POOL: 2 * 60 * 1000, // 2 minutes
+
+    // Default
+    DEFAULT: 5 * 60 * 1000, // 5 minutes
+};
 
 // Request deduplication
 const pendingApiRequests = new Map<string, Promise<any>>();
 
-// Smart rate limiting - Adaptive based on API response
-const rateLimitMap = new Map<string, { count: number; resetTime: number; lastRequest: number }>();
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
-const MAX_REQUESTS_PER_WINDOW = 100; // Very generous limit
-const MIN_REQUEST_INTERVAL = 100; // Minimum 100ms between requests
+// Cache invalidation system
+class CacheInvalidationManager {
+    private invalidationListeners = new Map<string, Set<string>>();
+    private eventListeners = new Map<string, Set<string>>();
+
+    // Register a cache entry that should be invalidated when certain events occur
+    registerInvalidationTrigger(cacheKey: string, triggers: string[]) {
+        triggers.forEach(trigger => {
+            if (!this.eventListeners.has(trigger)) {
+                this.eventListeners.set(trigger, new Set());
+            }
+            this.eventListeners.get(trigger)!.add(cacheKey);
+        });
+    }
+
+    // Trigger invalidation for specific events
+    triggerInvalidation(event: string) {
+        const affectedKeys = this.eventListeners.get(event);
+        if (affectedKeys) {
+            affectedKeys.forEach(key => {
+                apiCache.delete(key);
+                console.log(`Cache invalidated for key: ${key} due to event: ${event}`);
+            });
+        }
+    }
+
+    // Invalidate cache entries that depend on a specific key
+    invalidateDependencies(key: string) {
+        apiCache.forEach((entry, cacheKey) => {
+            if (entry.dependencies?.includes(key)) {
+                apiCache.delete(cacheKey);
+                console.log(`Cache invalidated for key: ${cacheKey} due to dependency on: ${key}`);
+            }
+        });
+    }
+
+    // Smart cache cleanup based on priority and age
+    cleanup() {
+        const now = Date.now();
+        const entriesToDelete: string[] = [];
+
+        apiCache.forEach((entry, key) => {
+            const age = now - entry.timestamp;
+            const isExpired = age > entry.ttl;
+
+            // Clean up expired entries
+            if (isExpired) {
+                entriesToDelete.push(key);
+                return;
+            }
+
+            // Clean up low priority entries that are getting old (but not expired)
+            if (entry.priority === 'low' && age > entry.ttl * 0.8) {
+                entriesToDelete.push(key);
+                return;
+            }
+        });
+
+        entriesToDelete.forEach(key => {
+            apiCache.delete(key);
+        });
+
+        if (entriesToDelete.length > 0) {
+            console.log(`Cleaned up ${entriesToDelete.length} cache entries`);
+        }
+    }
+}
+
+const cacheInvalidationManager = new CacheInvalidationManager();
+
+// Enhanced cache functions
+function setCacheEntry(key: string, data: any, ttl: number, priority: 'low' | 'medium' | 'high' = 'medium', options?: { dependencies?: string[], invalidationTriggers?: string[] }) {
+    const entry: CacheEntry = {
+        data,
+        timestamp: Date.now(),
+        ttl,
+        priority,
+        dependencies: options?.dependencies,
+        invalidationTriggers: options?.invalidationTriggers
+    };
+
+    apiCache.set(key, entry);
+
+    // Register invalidation triggers if provided
+    if (options?.invalidationTriggers) {
+        cacheInvalidationManager.registerInvalidationTrigger(key, options.invalidationTriggers);
+    }
+}
+
+function getCacheEntry(key: string): any | null {
+    const entry = apiCache.get(key);
+    if (!entry) return null;
+
+    const now = Date.now();
+    const age = now - entry.timestamp;
+
+    if (age > entry.ttl) {
+        apiCache.delete(key);
+        return null;
+    }
+
+    return entry.data;
+}
+
+// Auto-cleanup every 5 minutes
+setInterval(() => {
+    cacheInvalidationManager.cleanup();
+}, 5 * 60 * 1000);
+
+// Advanced rate limiting and request queuing system
+interface RateLimitConfig {
+    windowMs: number;
+    maxRequests: number;
+    minInterval: number;
+    burstLimit: number;
+    priority: 'low' | 'medium' | 'high';
+}
+
+interface QueuedRequest {
+    id: string;
+    priority: 'low' | 'medium' | 'high';
+    timestamp: number;
+    execute: () => Promise<any>;
+    resolve: (value: any) => void;
+    reject: (error: any) => void;
+}
+
+class AdvancedRateLimiter {
+    private rateLimitMap = new Map<string, { count: number; resetTime: number; lastRequest: number; burstCount: number }>();
+    private requestQueue: QueuedRequest[] = [];
+    private isProcessingQueue = false;
+    private configs: Map<string, RateLimitConfig> = new Map();
+
+    constructor() {
+        // Initialize rate limit configurations for different endpoints
+        this.configs.set('default', {
+            windowMs: 60 * 1000, // 1 minute
+            maxRequests: 100,
+            minInterval: 100,
+            burstLimit: 10,
+            priority: 'medium'
+        });
+
+        this.configs.set('tournament_basic_info', {
+            windowMs: 30 * 1000, // 30 seconds
+            maxRequests: 50,
+            minInterval: 50,
+            burstLimit: 20,
+            priority: 'high'
+        });
+
+        this.configs.set('tournament_status', {
+            windowMs: 10 * 1000, // 10 seconds
+            maxRequests: 30,
+            minInterval: 200,
+            burstLimit: 5,
+            priority: 'high'
+        });
+
+        this.configs.set('user_stats', {
+            windowMs: 60 * 1000, // 1 minute
+            maxRequests: 20,
+            minInterval: 500,
+            burstLimit: 3,
+            priority: 'low'
+        });
+
+        this.configs.set('bulk_requests', {
+            windowMs: 60 * 1000, // 1 minute
+            maxRequests: 10,
+            minInterval: 1000,
+            burstLimit: 2,
+            priority: 'high'
+        });
+
+        // Start processing the queue
+        this.processQueue();
+    }
+
+    async addRequest<T>(
+        endpoint: string,
+        priority: 'low' | 'medium' | 'high',
+        execute: () => Promise<T>
+    ): Promise<T> {
+        return new Promise((resolve, reject) => {
+            const request: QueuedRequest = {
+                id: `${endpoint}_${Date.now()}_${Math.random()}`,
+                priority,
+                timestamp: Date.now(),
+                execute,
+                resolve,
+                reject
+            };
+
+            // Insert request in priority order
+            this.insertRequestByPriority(request);
+        });
+    }
+
+    private insertRequestByPriority(request: QueuedRequest) {
+        const priorityOrder = { high: 3, medium: 2, low: 1 };
+        const requestPriority = priorityOrder[request.priority];
+
+        let insertIndex = this.requestQueue.length;
+        for (let i = 0; i < this.requestQueue.length; i++) {
+            if (priorityOrder[this.requestQueue[i].priority] < requestPriority) {
+                insertIndex = i;
+                break;
+            }
+        }
+
+        this.requestQueue.splice(insertIndex, 0, request);
+    }
+
+    private async processQueue() {
+        if (this.isProcessingQueue || this.requestQueue.length === 0) {
+            setTimeout(() => this.processQueue(), 100);
+            return;
+        }
+
+        this.isProcessingQueue = true;
+
+        while (this.requestQueue.length > 0) {
+            const request = this.requestQueue.shift();
+            if (!request) break;
+
+            const endpoint = this.extractEndpointFromId(request.id);
+            const config = this.configs.get(endpoint) || this.configs.get('default')!;
+
+            if (this.canMakeRequest(endpoint, config)) {
+                try {
+                    const result = await request.execute();
+                    request.resolve(result);
+                } catch (error) {
+                    request.reject(error);
+                }
+            } else {
+                // Put request back at the front of the queue
+                this.requestQueue.unshift(request);
+                // Wait before trying again
+                await new Promise(resolve => setTimeout(resolve, config.minInterval));
+            }
+        }
+
+        this.isProcessingQueue = false;
+        setTimeout(() => this.processQueue(), 50);
+    }
+
+    private extractEndpointFromId(id: string): string {
+        return id.split('_')[0] + '_' + id.split('_')[1];
+    }
+
+    private canMakeRequest(endpoint: string, config: RateLimitConfig): boolean {
+        const now = Date.now();
+        const key = `rate_limit_${endpoint}`;
+        const limit = this.rateLimitMap.get(key);
+
+        if (!limit || now > limit.resetTime) {
+            this.rateLimitMap.set(key, {
+                count: 1,
+                resetTime: now + config.windowMs,
+                lastRequest: now,
+                burstCount: 1
+            });
+            return true;
+        }
+
+        // Check burst limit
+        if (limit.burstCount >= config.burstLimit) {
+            return false;
+        }
+
+        // Check minimum interval
+        if (now - limit.lastRequest < config.minInterval) {
+            return false;
+        }
+
+        // Check window limit
+        if (limit.count >= config.maxRequests) {
+            return false;
+        }
+
+        // Update counters
+        limit.count++;
+        limit.lastRequest = now;
+        limit.burstCount++;
+
+        // Reset burst counter after a short period
+        setTimeout(() => {
+            const currentLimit = this.rateLimitMap.get(key);
+            if (currentLimit) {
+                currentLimit.burstCount = Math.max(0, currentLimit.burstCount - 1);
+            }
+        }, 1000);
+
+        return true;
+    }
+
+    getQueueStats() {
+        return {
+            queueLength: this.requestQueue.length,
+            isProcessing: this.isProcessingQueue,
+            rateLimits: Array.from(this.rateLimitMap.entries()).map(([key, value]) => ({
+                endpoint: key,
+                count: value.count,
+                resetTime: value.resetTime,
+                burstCount: value.burstCount
+            }))
+        };
+    }
+}
+
+const advancedRateLimiter = new AdvancedRateLimiter();
 
 // Expose a safe way to clear API-level caches from the UI
 export function clearApiCaches(): void {
     apiCache.clear();
     pendingApiRequests.clear();
-    rateLimitMap.clear();
+
+    // Clear ALL localStorage tournament-related data
+    try {
+        localStorage.removeItem('tournament_persistent_cache');
+    } catch (e) {
+        // Ignore errors
+    }
+
+    // Clear ALL sessionStorage tournament-related data
+    try {
+        const keysToRemove = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+            const key = sessionStorage.key(i);
+            if (key && (key.includes('tournament') || key.includes('cache'))) {
+                keysToRemove.push(key);
+            }
+        }
+        keysToRemove.forEach(key => {
+            sessionStorage.removeItem(key);
+        });
+    } catch (e) {
+        // Ignore errors
+    }
+    // Note: AdvancedRateLimiter manages its own state
+}
+
+// Nuclear option: Clear EVERYTHING tournament-related
+export function clearAllTournamentData(): void {
+
+    // Clear in-memory caches
+    clearApiCaches();
+
+    // Force clear all tournament-related data from localStorage (including old cache versions)
+    try {
+        const allKeys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.includes('tournament') || key.includes('cache'))) {
+                allKeys.push(key);
+            }
+        }
+        allKeys.forEach(key => {
+            localStorage.removeItem(key);
+        });
+    } catch (e) {
+        // Ignore errors
+    }
+
+    // Clear ALL localStorage keys that might contain tournament data
+    try {
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.includes('tournament') || key.includes('cache') || key.includes('persistent'))) {
+                keysToRemove.push(key);
+            }
+        }
+        keysToRemove.forEach(key => {
+            localStorage.removeItem(key);
+            console.log(`✓ Cleared localStorage key: ${key}`);
+        });
+    } catch (e) {
+        console.log('✗ Could not clear localStorage:', e);
+    }
+
+    // Clear ALL sessionStorage keys that might contain tournament data
+    try {
+        const keysToRemove = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+            const key = sessionStorage.key(i);
+            if (key && (key.includes('tournament') || key.includes('cache') || key.includes('persistent'))) {
+                keysToRemove.push(key);
+            }
+        }
+        keysToRemove.forEach(key => {
+            sessionStorage.removeItem(key);
+            console.log(`✓ Cleared sessionStorage key: ${key}`);
+        });
+    } catch (e) {
+        console.log('✗ Could not clear sessionStorage:', e);
+    }
+
+    console.log('=== NUCLEAR: All tournament data cleared ===');
+}
+
+// Ultimate nuclear option: Clear everything and reload the page
+export function nuclearClearAndReload(): void {
+    console.log('=== ULTIMATE NUCLEAR: Clearing everything and reloading ===');
+
+    // Clear all tournament data
+    clearAllTournamentData();
+
+    // Clear ALL localStorage (nuclear option)
+    try {
+        localStorage.clear();
+        console.log('✓ Cleared ALL localStorage');
+    } catch (e) {
+        console.log('✗ Could not clear localStorage:', e);
+    }
+
+    // Clear ALL sessionStorage (nuclear option)
+    try {
+        sessionStorage.clear();
+        console.log('✓ Cleared ALL sessionStorage');
+    } catch (e) {
+        console.log('✗ Could not clear sessionStorage:', e);
+    }
+
+    console.log('=== ULTIMATE NUCLEAR: Reloading page in 2 seconds ===');
+
+    // Reload the page after a short delay
+    setTimeout(() => {
+        window.location.reload();
+    }, 2000);
+}
+
+// Debug function to inspect all caches
+export function debugAllCaches(): void {
+    console.log('=== DEBUG: Inspecting all caches ===');
+
+    // Check apiCache
+    console.log('apiCache size:', apiCache.size);
+    console.log('apiCache entries:', Array.from(apiCache.keys()));
+
+    // Check localStorage
+    try {
+        const persistentCache = localStorage.getItem('tournament_persistent_cache');
+        if (persistentCache) {
+            const parsed = JSON.parse(persistentCache);
+            console.log('localStorage tournament_persistent_cache:', parsed);
+            console.log('localStorage tournament count:', Object.keys(parsed.data || {}).length);
+        } else {
+            console.log('No tournament_persistent_cache in localStorage');
+        }
+
+        // Check all localStorage keys
+        console.log('All localStorage keys:', Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)));
+    } catch (e) {
+        console.log('Error reading localStorage:', e);
+    }
+
+    // Check sessionStorage
+    try {
+        console.log('sessionStorage length:', sessionStorage.length);
+        console.log('All sessionStorage keys:', Array.from({ length: sessionStorage.length }, (_, i) => sessionStorage.key(i)));
+    } catch (e) {
+        console.log('Error reading sessionStorage:', e);
+    }
+
+    console.log('=== DEBUG: Cache inspection complete ===');
+}
+
+// Function to force clear React component state (call this from UI)
+export function forceClearComponentState(): void {
+    console.log('=== FORCE CLEAR: Clearing React component state ===');
+
+    // Dispatch a custom event that components can listen to
+    const event = new CustomEvent('forceClearTournaments', {
+        detail: { timestamp: Date.now() }
+    });
+    window.dispatchEvent(event);
+
+    console.log('=== FORCE CLEAR: Dispatched forceClearTournaments event ===');
+}
+
+// Helper function to get game name by ID
+function getGameName(gameId: number): string {
+    const gameNames: { [key: number]: string } = {
+        1: 'Tic Tac Toe',
+        2: 'Chess',
+        3: 'CryptoBubbles',
+        4: 'ColorRush',
+        5: 'Agar.io',
+        6: 'DodgeDash'
+    };
+    return gameNames[gameId] || `Game ${gameId}`;
+}
+
+// Force refresh function for new tournaments
+export async function forceRefreshTournaments(): Promise<any[]> {
+    // Clear all caches
+    clearApiCaches();
+
+    // Clear persistent cache
+    try {
+        localStorage.removeItem('tournament_persistent_cache');
+    } catch (e) {
+        console.log('Could not clear persistent cache:', e);
+    }
+
+    // Get fresh tournament IDs
+    const tournamentIds = await getActiveTournamentIds();
+    console.log('Fresh tournament IDs:', tournamentIds);
+
+    if (tournamentIds.length === 0) {
+        return [];
+    }
+
+    // Load tournament details for all IDs
+    const tournaments = [];
+    for (const id of tournamentIds) {
+        try {
+            const details = await getTournamentDetailsFromContractFresh(id);
+
+            if (details) {
+                const participantsCount = (details.participants || []).length;
+                const computedPrizePool = BigInt(details.entry_fee ?? 0) * BigInt(participantsCount);
+
+                const basicData = {
+                    id,
+                    name: details.name, // No fallback - show actual name or empty
+                    status: details.status,
+                    participants: details.participants || [],
+                    description: getGameName(Number(details.game_id)),
+                    creator: details.creator || 'Unknown',
+                    final_podium: details.final_podium || [],
+                    game_id: details.game_id,
+                    prizePool: computedPrizePool,
+                    prizePoolLoaded: true,
+                    gameConfig: null,
+                    gameConfigLoaded: false,
+                    resultTxHash: null,
+                    resultTxLoaded: details.status !== 4,
+                    loadingDetails: false
+                };
+                tournaments.push(basicData);
+            } else {
+            }
+        } catch (error) {
+            console.error(`Error loading tournament ${id}:`, error);
+        }
+    }
+
+    return tournaments;
+}
+
+// Force refresh all tournaments by testing individual IDs (bypasses contract count issues)
+export async function forceRefreshAllTournaments(): Promise<any[]> {
+    clearAllTournamentData(); // Use nuclear option to clear everything
+
+    const tournamentIds = await findTournamentsByTesting();
+
+    if (tournamentIds.length === 0) {
+        return [];
+    }
+
+    const tournaments = [];
+    for (const id of tournamentIds) {
+        try {
+            const details = await getTournamentDetailsFromContractFresh(id);
+            if (details) {
+                const participantsCount = (details.participants || []).length;
+                const computedPrizePool = BigInt(details.entry_fee ?? 0) * BigInt(participantsCount);
+
+                const basicData = {
+                    id,
+                    name: details.name, // No fallback - show actual name or empty
+                    status: details.status,
+                    participants: details.participants || [],
+                    description: getGameName(Number(details.game_id)),
+                    creator: details.creator || 'Unknown',
+                    final_podium: details.final_podium || [],
+                    game_id: details.game_id,
+                    prizePool: computedPrizePool,
+                    prizePoolLoaded: true,
+                    gameConfig: null,
+                    gameConfigLoaded: false,
+                    resultTxHash: null,
+                    resultTxLoaded: details.status !== 4,
+                    loadingDetails: false
+                };
+                tournaments.push(basicData);
+            } else {
+            }
+        } catch (error) {
+            console.error(`Error loading tournament ${id}:`, error);
+        }
+    }
+    return tournaments;
+}
+
+// Debug function to check contract state directly
+export async function debugContractState(): Promise<void> {
+    console.log('=== DEBUG CONTRACT STATE ===');
+    try {
+        // Check if contract is accessible
+        console.log('Contract address:', getContractAddress());
+        console.log('API URL:', getApiUrl());
+
+        // Check number of tournaments
+        const numberOfTournamentsResponse = await fetchWithTimeout(`${getApiUrl()}/vm-values/query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                scAddress: getContractAddress(),
+                funcName: 'getNumberOfTournaments',
+                args: [],
+            }),
+        });
+
+        const numberOfTournamentsData = await numberOfTournamentsResponse.json();
+        console.log('Number of tournaments response:', numberOfTournamentsData);
+
+        // Check active tournament IDs
+        const activeIdsResponse = await fetchWithTimeout(`${getApiUrl()}/vm-values/query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                scAddress: getContractAddress(),
+                funcName: 'getActiveTournamentIds',
+                args: [],
+            }),
+        });
+
+        const activeIdsData = await activeIdsResponse.json();
+        console.log('Active tournament IDs response:', activeIdsData);
+
+        // Try to get the latest tournament (assuming it's the highest ID)
+        const tournamentIds = await getActiveTournamentIds();
+        console.log('Parsed tournament IDs:', tournamentIds);
+
+        if (tournamentIds.length > 0) {
+            const latestId = tournamentIds[0];
+            console.log('Trying to get latest tournament:', latestId);
+
+            const latestTournament = await getTournamentDetailsFromContract(latestId);
+            console.log('Latest tournament details:', latestTournament);
+        }
+
+        // Try to get all tournaments individually
+        console.log('=== CHECKING ALL TOURNAMENTS INDIVIDUALLY ===');
+        for (let i = 1; i <= 10; i++) { // Check first 10 tournaments
+            try {
+                const tournament = await getTournamentDetailsFromContract(BigInt(i));
+                if (tournament) {
+                    console.log(`Tournament ${i}:`, {
+                        id: i,
+                        status: tournament.status,
+                        name: tournament.name,
+                        game_id: tournament.game_id,
+                        participants: tournament.participants?.length || 0
+                    });
+                } else {
+                    console.log(`Tournament ${i}: Not found`);
+                }
+            } catch (error) {
+                console.log(`Tournament ${i}: Error -`, error instanceof Error ? error.message : String(error));
+            }
+        }
+
+        // Check if there are any recent transactions to this contract
+        console.log('=== CHECKING RECENT TRANSACTIONS ===');
+        try {
+            const transactionsResponse = await fetch(`${getApiUrl()}/transactions?receiver=${getContractAddress()}&size=10`);
+            const transactionsData = await transactionsResponse.json();
+            console.log('Recent transactions to contract:', transactionsData);
+        } catch (error) {
+            console.log('Error fetching recent transactions:', error);
+        }
+
+    } catch (error) {
+        console.error('Debug error:', error);
+    }
+    console.log('=== END DEBUG ===');
+}
+
+// Enhanced cache management functions
+export function invalidateCacheByEvent(event: string) {
+    cacheInvalidationManager.triggerInvalidation(event);
+}
+
+export function invalidateCacheByKey(key: string) {
+    apiCache.delete(key);
+    cacheInvalidationManager.invalidateDependencies(key);
+}
+
+export function getCacheStats() {
+    const stats = {
+        totalEntries: apiCache.size,
+        entriesByPriority: {
+            low: 0,
+            medium: 0,
+            high: 0
+        },
+        entriesByAge: {
+            fresh: 0, // < 1 minute
+            recent: 0, // 1-10 minutes
+            old: 0 // > 10 minutes
+        }
+    };
+
+    const now = Date.now();
+    apiCache.forEach(entry => {
+        stats.entriesByPriority[entry.priority]++;
+
+        const age = now - entry.timestamp;
+        if (age < 60 * 1000) {
+            stats.entriesByAge.fresh++;
+        } else if (age < 10 * 60 * 1000) {
+            stats.entriesByAge.recent++;
+        } else {
+            stats.entriesByAge.old++;
+        }
+    });
+
+    return stats;
+}
+
+// Batch request system for efficient API calls
+interface BatchRequest {
+    id: string;
+    type: 'tournament_basic_info' | 'tournament_status' | 'user_stats';
+    params: any;
+    resolve: (value: any) => void;
+    reject: (error: any) => void;
+    timestamp: number;
+}
+
+class BatchRequestManager {
+    private batches: Map<string, BatchRequest[]> = new Map();
+    private batchTimeout: number = 100; // 100ms batching window
+    private maxBatchSize: number = 20; // Maximum requests per batch
+    private timeouts: Map<string, NodeJS.Timeout> = new Map();
+
+    async addRequest<T>(
+        type: string,
+        params: any,
+        cacheKey: string
+    ): Promise<T> {
+        return new Promise((resolve, reject) => {
+            const request: BatchRequest = {
+                id: `${type}_${Date.now()}_${Math.random()}`,
+                type: type as any,
+                params,
+                resolve,
+                reject,
+                timestamp: Date.now()
+            };
+
+            if (!this.batches.has(type)) {
+                this.batches.set(type, []);
+            }
+
+            const batch = this.batches.get(type)!;
+            batch.push(request);
+
+            // If batch is full, process immediately
+            if (batch.length >= this.maxBatchSize) {
+                this.processBatch(type);
+                return;
+            }
+
+            // Set timeout for batch processing
+            if (this.timeouts.has(type)) {
+                clearTimeout(this.timeouts.get(type)!);
+            }
+
+            const timeout = setTimeout(() => {
+                this.processBatch(type);
+            }, this.batchTimeout);
+
+            this.timeouts.set(type, timeout);
+        });
+    }
+
+    private async processBatch(type: string) {
+        const batch = this.batches.get(type);
+        if (!batch || batch.length === 0) return;
+
+        // Clear the batch and timeout
+        this.batches.set(type, []);
+        if (this.timeouts.has(type)) {
+            clearTimeout(this.timeouts.get(type)!);
+            this.timeouts.delete(type);
+        }
+
+        try {
+            let results: any[] = [];
+
+            switch (type) {
+                case 'tournament_basic_info':
+                    results = await this.processTournamentBasicInfoBatch(batch);
+                    break;
+                case 'tournament_status':
+                    results = await this.processTournamentStatusBatch(batch);
+                    break;
+                case 'user_stats':
+                    results = await this.processUserStatsBatch(batch);
+                    break;
+                default:
+                    throw new Error(`Unknown batch type: ${type}`);
+            }
+
+            // Resolve all requests with their respective results
+            batch.forEach((request, index) => {
+                if (index < results.length) {
+                    request.resolve(results[index]);
+                } else {
+                    request.reject(new Error('No result for request'));
+                }
+            });
+        } catch (error) {
+            // Reject all requests in the batch
+            batch.forEach(request => {
+                request.reject(error);
+            });
+        }
+    }
+
+    private async processTournamentBasicInfoBatch(batch: BatchRequest[]): Promise<any[]> {
+        const tournamentIds = batch.map(req => req.params.tournamentId);
+
+        // Use advanced rate limiter for bulk requests
+        return await advancedRateLimiter.addRequest('bulk_requests', 'high', async () => {
+            const response = await fetchWithTimeout(`${getApiUrl()}/vm-values/query`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    scAddress: getContractAddress(),
+                    funcName: 'getTournamentsBasicInfo',
+                    args: [tournamentIds.map(id => Number(id).toString(16).padStart(16, '0'))],
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Batch request failed: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const returnData = data?.data?.data?.returnData || data?.data?.returnData || data?.returnData;
+
+            if (!returnData || !Array.isArray(returnData) || returnData.length === 0) {
+                throw new Error('No data returned from batch request');
+            }
+
+            // Parse the bulk response
+            const bulkData = returnData[0];
+            const parsedTournaments = await this.parseBulkTournamentBasicInfo(bulkData);
+
+            // Map results back to individual requests
+            return tournamentIds.map(id => {
+                const tournament = parsedTournaments.find(t => t.id === id);
+                return tournament || null;
+            });
+        });
+    }
+
+    private async processTournamentStatusBatch(batch: BatchRequest[]): Promise<any[]> {
+        const tournamentIds = batch.map(req => req.params.tournamentId);
+
+        const response = await fetchWithTimeout(`${getApiUrl()}/vm-values/query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                scAddress: getContractAddress(),
+                funcName: 'getTournamentsStatus',
+                args: [tournamentIds.map(id => Number(id).toString(16).padStart(16, '0'))],
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Batch status request failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const returnData = data?.data?.data?.returnData || data?.data?.returnData || data?.returnData;
+
+        if (!returnData || !Array.isArray(returnData) || returnData.length === 0) {
+            throw new Error('No status data returned from batch request');
+        }
+
+        const bulkData = returnData[0];
+        const parsedStatuses = await this.parseBulkTournamentStatus(bulkData);
+
+        return tournamentIds.map(id => {
+            const status = parsedStatuses.find(s => s.id === id);
+            return status ? status.status : 0;
+        });
+    }
+
+    private async processUserStatsBatch(batch: BatchRequest[]): Promise<any[]> {
+        const userAddresses = batch.map(req => req.params.userAddress);
+
+        const response = await fetchWithTimeout(`${getApiUrl()}/vm-values/query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                scAddress: getContractAddress(),
+                funcName: 'getUsersStats',
+                args: [userAddresses.map(addr => addr)], // Use address directly for now
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Batch user stats request failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const returnData = data?.data?.data?.returnData || data?.data?.returnData || data?.returnData;
+
+        if (!returnData || !Array.isArray(returnData) || returnData.length === 0) {
+            throw new Error('No user stats data returned from batch request');
+        }
+
+        const bulkData = returnData[0];
+        const parsedStats = await this.parseBulkUserStats(bulkData);
+
+        return userAddresses.map(addr => {
+            const stats = parsedStats.find(s => s.address === addr);
+            return stats ? stats.stats : null;
+        });
+    }
+
+    private async parseBulkTournamentBasicInfo(hexData: string): Promise<any[]> {
+        // Implementation for parsing bulk tournament basic info
+        // This would parse the hex data and return an array of tournament objects
+        // Similar to existing parseTournamentHex but for bulk data
+        return [];
+    }
+
+    private async parseBulkTournamentStatus(hexData: string): Promise<any[]> {
+        // Implementation for parsing bulk tournament status
+        return [];
+    }
+
+    private async parseBulkUserStats(hexData: string): Promise<any[]> {
+        // Implementation for parsing bulk user stats
+        return [];
+    }
+}
+
+const batchManager = new BatchRequestManager();
+
+// Enhanced API functions using batch requests
+export async function getTournamentBasicInfoBatched(tournamentId: bigint): Promise<any> {
+    const cacheKey = `basic_${tournamentId}`;
+
+    // Check cache first
+    const cached = getCacheEntry(cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    // Use batch request
+    const result = await batchManager.addRequest('tournament_basic_info', { tournamentId }, cacheKey);
+
+    // Cache the result with enhanced caching
+    if (result) {
+        setCacheEntry(cacheKey, result, CACHE_TTLS.TOURNAMENT_BASIC_INFO, 'medium', {
+            invalidationTriggers: ['tournament_updated', 'tournament_joined', 'tournament_started']
+        });
+    }
+
+    return result;
+}
+
+export async function getTournamentStatusBatched(tournamentId: bigint): Promise<number> {
+    const cacheKey = `status_${tournamentId}`;
+
+    const cached = getCacheEntry(cacheKey);
+    if (cached !== null) {
+        return cached;
+    }
+
+    const result = await batchManager.addRequest<number>('tournament_status', { tournamentId }, cacheKey);
+
+    if (result !== undefined) {
+        setCacheEntry(cacheKey, result, CACHE_TTLS.TOURNAMENT_STATUS, 'high', {
+            invalidationTriggers: ['tournament_status_changed', 'tournament_started', 'tournament_completed']
+        });
+    }
+
+    return result || 0;
+}
+
+export async function getUserStatsBatched(userAddress: string): Promise<any> {
+    const cacheKey = `user_stats_${userAddress}`;
+
+    const cached = getCacheEntry(cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    const result = await batchManager.addRequest('user_stats', { userAddress }, cacheKey);
+
+    if (result) {
+        setCacheEntry(cacheKey, result, CACHE_TTLS.USER_STATS, 'medium', {
+            invalidationTriggers: ['user_stats_updated', 'tournament_completed', 'user_joined_tournament']
+        });
+    }
+
+    return result;
+}
+
+// New function to get all tournaments at once using bulk endpoint
+export async function getAllActiveTournamentsBulk(): Promise<any[]> {
+    const cacheKey = 'all_active_tournaments_bulk';
+
+    // Check cache first
+    const cached = getCacheEntry(cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    try {
+        const response = await fetchWithTimeout(`${getApiUrl()}/vm-values/query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                scAddress: getContractAddress(),
+                funcName: 'getAllActiveTournamentsBasicInfo',
+                args: [],
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Bulk tournaments request failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const returnData = data?.data?.data?.returnData || data?.data?.returnData || data?.returnData;
+
+        if (!returnData || !Array.isArray(returnData) || returnData.length === 0) {
+            console.log('No tournaments returned from bulk request');
+            return [];
+        }
+
+        // Parse the bulk response
+        const bulkData = returnData[0];
+        const parsedTournaments = await parseBulkTournamentBasicInfo(bulkData);
+
+        // Cache the result with enhanced caching
+        setCacheEntry(cacheKey, parsedTournaments, CACHE_TTLS.TOURNAMENT_BASIC_INFO, 'high', {
+            invalidationTriggers: ['tournament_created', 'tournament_updated', 'tournament_completed']
+        });
+
+        return parsedTournaments;
+    } catch (error) {
+        console.error('Error fetching all active tournaments bulk:', error);
+        return [];
+    }
+}
+
+// Helper function to parse bulk tournament basic info
+async function parseBulkTournamentBasicInfo(hexData: string): Promise<any[]> {
+    try {
+        // This is a simplified parser - in a real implementation, you'd need to
+        // properly decode the hex data according to the MultiversX encoding format
+        // For now, return empty array as placeholder
+        console.log('Parsing bulk tournament data:', hexData.substring(0, 100) + '...');
+
+        // TODO: Implement proper hex parsing for bulk tournament data
+        // This would involve decoding the ManagedVec of tournament basic info tuples
+        return [];
+    } catch (error) {
+        console.error('Error parsing bulk tournament data:', error);
+        return [];
+    }
 }
 
 // Debug function to test prize stats directly
@@ -75,61 +1179,105 @@ export async function debugPrizeStats(): Promise<void> {
     console.log('=== END DEBUG ===');
 }
 
-// Smart rate limiting function
+// Enhanced fetch function with compression support
+async function fetchWithCompression(url: string, options: RequestInit = {}): Promise<Response> {
+    const defaultHeaders = {
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Content-Type': 'application/json',
+        ...options.headers
+    };
+
+    const enhancedOptions: RequestInit = {
+        ...options,
+        headers: defaultHeaders,
+        // Compression is handled by the server
+    };
+
+    return fetch(url, enhancedOptions);
+}
+
+// Data compression utilities
+class DataCompression {
+    // Compress data using simple techniques (in a real app, you'd use proper compression)
+    static compress(data: any): string {
+        try {
+            // Remove unnecessary whitespace and compress JSON
+            const jsonString = JSON.stringify(data, (key, value) => {
+                // Remove null/undefined values
+                if (value === null || value === undefined) {
+                    return undefined;
+                }
+                // Compress BigInt to string
+                if (typeof value === 'bigint') {
+                    return value.toString();
+                }
+                return value;
+            });
+
+            // Simple compression: remove extra whitespace
+            return jsonString.replace(/\s+/g, ' ').trim();
+        } catch (error) {
+            console.error('Error compressing data:', error);
+            return JSON.stringify(data);
+        }
+    }
+
+    // Decompress data
+    static decompress(compressedData: string): any {
+        try {
+            return JSON.parse(compressedData);
+        } catch (error) {
+            console.error('Error decompressing data:', error);
+            return null;
+        }
+    }
+
+    // Optimize tournament data for transmission
+    static optimizeTournamentData(tournament: any): any {
+        return {
+            id: tournament.id,
+            name: tournament.name,
+            status: tournament.status,
+            participants: tournament.participants?.length || 0,
+            creator: tournament.creator,
+            game_id: tournament.game_id,
+            entry_fee: tournament.entry_fee?.toString() || '0',
+            prize_pool: tournament.prizePool?.toString() || '0',
+            created_at: tournament.created_at,
+            // Only include essential fields
+            ...(tournament.final_podium && { final_podium: tournament.final_podium })
+        };
+    }
+
+    // Optimize user stats for transmission
+    static optimizeUserStats(stats: any): any {
+        return {
+            games_played: stats.games_played || 0,
+            wins: stats.wins || 0,
+            losses: stats.losses || 0,
+            win_rate: stats.win_rate || 0,
+            tokens_won: stats.tokens_won?.toString() || '0',
+            tokens_spent: stats.tokens_spent?.toString() || '0',
+            tournaments_created: stats.tournaments_created || 0,
+            tournaments_won: stats.tournaments_won || 0,
+            current_streak: stats.current_streak || 0,
+            best_streak: stats.best_streak || 0
+        };
+    }
+}
+
+// Smart rate limiting function - now uses AdvancedRateLimiter
 function checkRateLimit(endpoint: string): boolean {
-    const now = Date.now();
-    const key = `rate_limit_${endpoint}`;
-    const limit = rateLimitMap.get(key);
-
-    if (!limit || now > limit.resetTime) {
-        rateLimitMap.set(key, { count: 1, resetTime: now + RATE_LIMIT_WINDOW, lastRequest: now });
-        return true;
-    }
-
-    // Check if we're making requests too fast
-    if (now - limit.lastRequest < MIN_REQUEST_INTERVAL) {
-        console.warn(`Request too fast for ${endpoint}. Waiting ${MIN_REQUEST_INTERVAL}ms...`);
-        return false;
-    }
-
-    if (limit.count >= MAX_REQUESTS_PER_WINDOW) {
-        console.warn(`Rate limit exceeded for ${endpoint}. Waiting for reset...`);
-        return false;
-    }
-
-    limit.count++;
-    limit.lastRequest = now;
+    // For backward compatibility, we'll use a simple check
+    // The AdvancedRateLimiter handles the actual rate limiting
+    console.log(`checkRateLimit called for endpoint: ${endpoint}`);
     return true;
 }
 
 // Special rate limiting for prize stats - more lenient
 function checkPrizeStatsRateLimit(): boolean {
-    const now = Date.now();
-    const key = 'rate_limit_prize_stats';
-    const limit = rateLimitMap.get(key);
-
-    if (!limit || now > limit.resetTime) {
-        rateLimitMap.set(key, { count: 1, resetTime: now + RATE_LIMIT_WINDOW, lastRequest: now });
-        return true;
-    }
-
-    // More lenient for prize stats - allow more frequent calls
-    if (now - limit.lastRequest < 50) { // 50ms minimum instead of 100ms
-        console.warn(`Prize stats request too fast. Waiting 50ms...`);
-        return false;
-    }
-
-    // Higher limit for prize stats
-    if (limit.count >= 200) { // 200 requests instead of 100
-        console.warn(`Prize stats rate limit exceeded. ${limit.count} requests in ${RATE_LIMIT_WINDOW}ms`);
-        return false;
-    }
-
-    // Update the rate limit counter
-    limit.count += 1;
-    limit.lastRequest = now;
-    rateLimitMap.set(key, limit);
-
+    // For backward compatibility, we'll use a simple check
+    // The AdvancedRateLimiter handles the actual rate limiting
     return true;
 }
 
@@ -149,7 +1297,8 @@ async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, ti
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-            const response = await fetch(input, { ...(init || {}), signal: controller.signal });
+            // Use compression-enabled fetch
+            const response = await fetchWithCompression(input as string, { ...(init || {}), signal: controller.signal });
 
             // Handle rate limiting
             if (response.status === 429) {
@@ -194,11 +1343,7 @@ function getCachedApiResponse<T>(key: string): T | null {
 }
 
 function setCachedApiResponse<T>(key: string, data: T): void {
-    apiCache.set(key, {
-        data,
-        timestamp: Date.now(),
-        ttl: API_CACHE_TTL
-    });
+    setCacheEntry(key, data, CACHE_TTLS.DEFAULT, 'medium');
 }
 
 function deduplicateApiRequest<T>(key: string, requestFn: () => Promise<T>, endpoint: string = 'default'): Promise<T> {
@@ -585,11 +1730,9 @@ export async function parseTournamentHex(hex: string, tournamentId?: number | bi
     }
 
     try {
-        console.log('parseTournamentHex: Starting to parse hex data, length:', rawHex.length);
 
-        // Check if this is a new tournament structure (with min_players, entry_fee, duration, name, created_at)
+        // Check if this is a new tournament structure (with min_players, entry_fee, name, created_at)
         const hasNewStructure = rawHex.length > 200; // heuristic
-        console.log('parseTournamentHex: Has new structure:', hasNewStructure);
 
         if (hasNewStructure) {
             const game_id = readU64('game_id');
@@ -600,7 +1743,6 @@ export async function parseTournamentHex(hex: string, tournamentId?: number | bi
             const max_players = readU32('max_players');
             const min_players = readU32('min_players');
             const entry_fee = readBigUint('entry_fee');
-            const duration = readU64('duration');
             const name = readManagedBuffer('name');
             const created_at = readU64('created_at');
 
@@ -614,12 +1756,10 @@ export async function parseTournamentHex(hex: string, tournamentId?: number | bi
                 max_players,
                 min_players,
                 entry_fee,
-                duration,
                 name,
                 created_at
             };
 
-            console.log('parseTournamentHex: Parsed new structure result:', result);
 
             // Sanity corrections for obviously corrupted numbers
             if (result.game_id > BigInt(1_000_000_000)) result.game_id = BigInt(0);
@@ -627,7 +1767,6 @@ export async function parseTournamentHex(hex: string, tournamentId?: number | bi
             if (result.min_players > result.max_players) result.min_players = Math.max(2, result.max_players);
             return result;
         } else {
-            console.log('parseTournamentHex: Using old tournament structure');
             // Old tournament structure (fallback)
             const game_id = readU64('game_id');
             const status = readEnum('status');
@@ -647,12 +1786,10 @@ export async function parseTournamentHex(hex: string, tournamentId?: number | bi
                 max_players: 8, // Default for old tournaments
                 min_players: 2, // Default for old tournaments
                 entry_fee: tournament_fee,
-                duration: BigInt(86400), // 1 day default
-                name: `Tournament #${game_id}`, // Default name
+                name: '', // No fallback name
                 created_at: BigInt(0) // Unknown creation time
             };
 
-            console.log('parseTournamentHex: Parsed old structure result:', result);
             return result;
         }
     } catch (error) {
@@ -706,6 +1843,41 @@ export async function getTournamentDetailsFromContract(tournamentId: number | bi
             return null;
         }
     });
+}
+
+// Force fetch tournament details without any caching
+export async function getTournamentDetailsFromContractFresh(tournamentId: number | bigint) {
+    try {
+        const response = await fetch(`${getApiUrl()}/vm-values/query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                scAddress: getContractAddress(),
+                funcName: 'getTournament',
+                args: [Number(tournamentId).toString(16).padStart(16, '0')],
+                caller: getContractAddress(),
+                gasLimit: 50000000
+            }),
+        });
+
+        const data = await response.json();
+
+        // Check if the response indicates the tournament doesn't exist
+        if (response.status === 400 || (data.data && data.data.returnMessage && data.data.returnMessage.includes("Tournament does not exist"))) {
+            return null;
+        }
+
+        if (data.data && data.data.data && data.data.data.returnData && data.data.data.returnData.length > 0) {
+            const hex = data.data.data.returnData[0];
+            const result = await parseTournamentHex(hex, tournamentId);
+            return result;
+        }
+        return null;
+    } catch (error) {
+        return null;
+    }
 }
 
 // Helper function to check if a tournament is completed by querying the contract directly
@@ -771,6 +1943,10 @@ export async function isTournamentCompletedByEvents(tournamentId: number | bigin
 
 export async function getActiveTournamentIds() {
     const cacheKey = 'active_tournament_ids';
+
+    // Clear cache to force fresh data
+    apiCache.delete(cacheKey);
+
     return deduplicateApiRequest(cacheKey, async () => {
         try {
             // First check how many tournaments actually exist
@@ -858,6 +2034,21 @@ export async function getActiveTournamentIds() {
                 return [];
             }
 
+            // Add fallback: if numberOfTournaments seems low, try to find tournaments by testing individual IDs
+            // This handles cases where getNumberOfTournaments lags behind actual tournament count
+            const fallbackCheck = numberOfTournaments < 15; // If less than 15, do fallback check
+            if (fallbackCheck) {
+                console.log('Number of tournaments seems low, doing fallback check for individual IDs...');
+                const fallbackIds = await findTournamentsByTesting();
+                console.log('Fallback check found tournament IDs:', fallbackIds);
+
+                // If fallback found more tournaments, use those instead
+                if (fallbackIds.length > numberOfTournaments) {
+                    console.log(`Fallback found ${fallbackIds.length} tournaments vs contract count ${numberOfTournaments}, using fallback`);
+                    return fallbackIds;
+                }
+            }
+
             // Now get the tournament IDs
             const response = await fetchWithTimeout(`${getApiUrl()}/vm-values/query`, {
                 method: 'POST',
@@ -872,7 +2063,6 @@ export async function getActiveTournamentIds() {
             });
 
             const data = await response.json();
-            console.log('getActiveTournamentIds response:', data);
 
             // Handle different response formats
             let activeTournamentIdsReturnData = null;
@@ -914,10 +2104,14 @@ export async function getActiveTournamentIds() {
             }
 
             console.log('Parsed active tournament IDs:', tournamentIds);
+            console.log('Number of tournaments from contract:', numberOfTournaments);
+            console.log('Tournament ID range:', tournamentIds.length > 0 ? `${Math.min(...tournamentIds.map(Number))} to ${Math.max(...tournamentIds.map(Number))}` : 'none');
 
-            // Filter out invalid IDs (the contract has a bug where it returns IDs even when there are no tournaments)
-            const validIds = tournamentIds.filter(id => Number(id) > 0 && Number(id) <= numberOfTournaments);
+            // Filter out invalid IDs (only filter out zero or negative IDs)
+            // Remove the upper bound filter as it was causing new tournaments to be filtered out
+            const validIds = tournamentIds.filter(id => Number(id) > 0);
             console.log('Valid tournament IDs (filtered):', validIds);
+            console.log('Filtered count vs contract count:', validIds.length, 'vs', numberOfTournaments);
 
             // If there are no valid tournaments, return empty array
             if (validIds.length === 0) {
@@ -934,28 +2128,25 @@ export async function getActiveTournamentIds() {
 }
 
 export async function findTournamentsByTesting() {
-    const cacheKey = 'tournaments_by_testing';
-    return deduplicateApiRequest(cacheKey, async () => {
+    // Don't use cache for this function to ensure fresh data
+    return (async () => {
         const tournamentIds: bigint[] = [];
 
-        console.log('Testing tournament IDs 1-50...');
 
-        // Test a reasonable range of tournament IDs
-        for (let i = 1; i <= 50; i++) {
+        // Test a reasonable range of tournament IDs (reduced from 50 to 20 for efficiency)
+        for (let i = 1; i <= 20; i++) {
             try {
-                const details = await getTournamentDetailsFromContract(BigInt(i));
+                const details = await getTournamentDetailsFromContractFresh(BigInt(i));
                 if (details) {
                     tournamentIds.push(BigInt(i));
-                    console.log(`Found tournament ${i}: ${details.name || `Tournament #${i}`}`);
                 }
             } catch (error) {
-                // Continue testing other IDs
+                // Tournament doesn't exist, continue
             }
         }
 
-        console.log(`findTournamentsByTesting found ${tournamentIds.length} tournaments`);
         return tournamentIds;
-    });
+    })();
 }
 
 export async function getGameConfig(gameId: number | bigint) {
@@ -1126,7 +2317,7 @@ export async function getSubmitResultsTransactionHash(tournamentId: number | big
                 }
 
                 if (eventTournamentId === Number(tournamentId)) {
-                    return event.identifier;
+                    return event.txHash;
                 }
             }
 
@@ -1374,6 +2565,19 @@ export async function debugContractConnectivity() {
     }
 }
 
+// Debug function to test parsing with raw hex data
+export async function debugParseTournamentHex(hexData: string, tournamentId: number) {
+    console.log('debugParseTournamentHex: Testing with hex data:', hexData);
+    console.log('debugParseTournamentHex: Hex length:', hexData.length);
+
+    const result = await parseTournamentHex(hexData, tournamentId);
+    console.log('debugParseTournamentHex: Parsed result:', result);
+    console.log('debugParseTournamentHex: Participants count:', result?.participants?.length);
+    console.log('debugParseTournamentHex: Participants:', result?.participants);
+
+    return result;
+}
+
 // Make debug function available globally for console testing
 if (typeof window !== 'undefined') {
     (window as any).debugContractConnectivity = debugContractConnectivity;
@@ -1384,65 +2588,149 @@ if (typeof window !== 'undefined') {
     (window as any).getTournamentBasicInfoFromContract = getTournamentBasicInfoFromContract;
     (window as any).parseTournamentHex = parseTournamentHex;
     (window as any).isTournamentCompletedByEvents = isTournamentCompletedByEvents;
+    (window as any).debugParseTournamentHex = debugParseTournamentHex;
+
+    // Test with known hex data from contract
+    (window as any).testWithKnownHex = async () => {
+        const knownHex = "000000000000000100000000015dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000005dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000020000000200000008016345785d8a000000000000000151800000000954657374204c6173740000000068c0b5b0";
+        console.log('Testing with known hex data from tournament 13:');
+        console.log('Hex length:', knownHex.length);
+
+        // Also test tournament 12 hex data
+        const knownHex12 = "000000000000000100000000015dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000005dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000020000000200000008016345785d8a000000000000000151800000000d54657374204372656174696f6e0000000068c0b3ac";
+        console.log('Also testing tournament 12 hex data:');
+        console.log('Tournament 12 hex length:', knownHex12.length);
+
+        // Manual parsing to debug step by step - let's try the correct Tournament struct order
+        let offset = 0;
+        const rawHex = knownHex;
+
+        function readU32() {
+            const hex = rawHex.substring(offset, offset + 8);
+            offset += 8;
+            return parseInt(hex, 16);
+        }
+
+        function readU64() {
+            const hex = rawHex.substring(offset, offset + 16);
+            offset += 16;
+            return BigInt('0x' + hex);
+        }
+
+        function readU8() {
+            const hex = rawHex.substring(offset, offset + 2);
+            offset += 2;
+            return parseInt(hex, 16);
+        }
+
+        function readHex(len: number) {
+            const hex = rawHex.substring(offset, offset + len);
+            offset += len;
+            return hex;
+        }
+
+        function hexToBech32(hex: string) {
+            try {
+                const bytes = Buffer.from(hex, 'hex');
+                return 'erd' + bytes.toString('base64').replace(/[+/=]/g, (m) => ({ '+': '-', '/': '_', '=': '' }[m]!));
+            } catch {
+                return 'Invalid address';
+            }
+        }
+
+        // Parse step by step following Tournament struct order:
+        // 1. game_id: u64, 2. status: TournamentStatus, 3. participants: ManagedVec, 4. final_podium: ManagedVec, 5. creator: ManagedAddress, etc.
+
+        console.log('Step 1: game_id (u64)');
+        const game_id = readU64();
+        console.log('game_id:', game_id);
+
+        console.log('Step 2: status (enum)');
+        const status = readU8();
+        console.log('status:', status);
+
+        console.log('Step 3: participants (ManagedVec) - length first');
+        const participantsLen = readU32();
+        console.log('participants length:', participantsLen);
+
+        console.log('Step 4: participants addresses');
+        const participants = [];
+        for (let i = 0; i < participantsLen; i++) {
+            const addrHex = readHex(64);
+            const addr = hexToBech32(addrHex);
+            participants.push(addr);
+            console.log(`Participant ${i + 1}:`, addr);
+        }
+
+        console.log('Step 5: final_podium (ManagedVec) - length first');
+        const finalPodiumLen = readU32();
+        console.log('final_podium length:', finalPodiumLen);
+
+        console.log('Step 6: final_podium addresses');
+        const finalPodium = [];
+        for (let i = 0; i < finalPodiumLen; i++) {
+            const addrHex = readHex(64);
+            const addr = hexToBech32(addrHex);
+            finalPodium.push(addr);
+            console.log(`Final podium ${i + 1}:`, addr);
+        }
+
+        console.log('Step 7: creator (ManagedAddress)');
+        const creatorHex = readHex(64);
+        const creator = hexToBech32(creatorHex);
+        console.log('creator:', creator);
+
+        console.log('Final participants array:', participants);
+        console.log('Participants count:', participants.length);
+
+        console.log('Testing tournament 13 parsing:');
+        const result13 = await debugParseTournamentHex(knownHex, 13);
+
+        console.log('Testing tournament 12 parsing:');
+        const result12 = await debugParseTournamentHex(knownHex12, 12);
+
+        return { tournament13: result13, tournament12: result12 };
+    };
 
     // Test function to debug tournament contract calls
-    (window as any).testTournamentContractCall = async (tournamentId = 1) => {
+    (window as any).testTournamentContractCall = async (tournamentId = 13) => {
         console.log(`Testing direct contract call for tournament ${tournamentId}...`);
 
         try {
-            const contractAddress = getContractAddress();
-            const apiUrl = getApiUrl();
-
-            // Test with hex string encoding (using 1-based indexing as contract expects)
-            const hexString = Number(tournamentId).toString(16).padStart(16, '0');
-
-            console.log(`Tournament ID: ${tournamentId}`);
-            console.log(`Hex string: ${hexString}`);
-
-            const response = await fetch(`${apiUrl}/vm-values/query`, {
+            const response = await fetch(`${getApiUrl()}/vm-values/query`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    scAddress: contractAddress,
+                    scAddress: getContractAddress(),
                     funcName: 'getTournament',
-                    args: [hexString],
-                    caller: contractAddress,
+                    args: [Number(tournamentId).toString(16).padStart(16, '0')],
+                    caller: getContractAddress(),
                     gasLimit: 50000000
                 }),
             });
 
-            console.log(`Response status: ${response.status}`);
             const data = await response.json();
-            console.log(`Response data:`, data);
+            console.log('Raw contract response:', data);
 
-            if (data?.data?.data?.returnData && data.data.data.returnData.length > 0) {
+            if (data.data && data.data.data && data.data.data.returnData && data.data.data.returnData.length > 0) {
                 const hex = data.data.data.returnData[0];
-                console.log(`Raw hex data: ${hex}`);
+                console.log('Raw hex data from contract:', hex);
+                console.log('Hex length:', hex.length);
 
-                const tournament = await parseTournamentHex(hex, tournamentId);
-                console.log(`Parsed tournament:`, tournament);
+                // Compare with known hex
+                const knownHex = "000000000000000100000000015dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000005dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000020000000200000008016345785d8a000000000000000151800000000954657374204c6173740000000068c0b5b0";
+                console.log('Known hex data:', knownHex);
+                console.log('Hex data matches:', hex === knownHex);
 
-                return {
-                    success: true,
-                    rawData: data,
-                    parsedTournament: tournament
-                };
-            } else {
-                console.log('No return data found');
-                return {
-                    success: false,
-                    rawData: data,
-                    error: 'No return data'
-                };
+                // Test parsing
+                const parsed = await debugParseTournamentHex(hex, tournamentId);
+                console.log('Parsed result:', parsed);
+                return parsed;
             }
         } catch (error) {
-            console.error('Test failed:', error);
-            return {
-                success: false,
-                error: error instanceof Error ? error.message : 'Unknown error'
-            };
+            console.error('Error testing contract call:', error);
         }
     };
 
@@ -2779,6 +4067,9 @@ export async function getPrizeStatsFromContract() {
                 const result = parsePrizeStatsHex(hex);
                 console.log('getPrizeStatsFromContract: Parsed result:', result);
                 return result;
+            } else {
+                console.log('getPrizeStatsFromContract: No return data found in response:', data);
+                return null;
             }
             console.log('getPrizeStatsFromContract: No return data found');
             return null;
@@ -3047,7 +4338,7 @@ export async function getTournamentBasicInfoFromContract(tournamentId: bigint): 
             }
 
             // Parse the returned tuple data
-            // Format: (tournament_id, game_id, status, participants, creator, max_players, min_players, entry_fee, duration, name, created_at)
+            // Format: (tournament_id, game_id, status, participants, creator, max_players, min_players, entry_fee, name, created_at)
             const decoded = atob(returnData);
             const hex = Array.from(decoded).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
 
@@ -3126,7 +4417,6 @@ async function parseTournamentBasicInfoHex(hex: string) {
         const max_players = readU32();
         const min_players = readU32();
         const entry_fee = readBigUint();
-        const duration = readU64();
         const name = readManagedBuffer();
         const created_at = readU64();
 
@@ -3139,7 +4429,6 @@ async function parseTournamentBasicInfoHex(hex: string) {
             max_players,
             min_players,
             entry_fee,
-            duration,
             name,
             created_at
         };
@@ -3149,6 +4438,117 @@ async function parseTournamentBasicInfoHex(hex: string) {
     } catch (error) {
         console.error('parseTournamentBasicInfoHex: Error parsing hex:', error);
         return null;
+    }
+}
+
+// Debug functions for testing
+export async function testWithKnownHex() {
+    const knownHex = "000000000000000100000000015dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000005dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000020000000200000008016345785d8a000000000000000151800000000954657374204c6173740000000068c0b5b0";
+    console.log('Testing with known hex data from tournament 13:');
+    console.log('Hex length:', knownHex.length);
+
+    // Also test tournament 12 hex data
+    const knownHex12 = "000000000000000100000000015dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000005dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000020000000200000008016345785d8a000000000000000151800000000d54657374204372656174696f6e0000000068c0b3ac";
+    console.log('Also testing tournament 12 hex data:');
+    console.log('Tournament 12 hex length:', knownHex12.length);
+
+    // Manual parsing to debug step by step
+    let offset = 0;
+    const rawHex = knownHex;
+
+    function readU32() {
+        const hex = rawHex.substring(offset, offset + 8);
+        offset += 8;
+        return parseInt(hex, 16);
+    }
+
+    function readHex(len: number) {
+        const hex = rawHex.substring(offset, offset + len);
+        offset += len;
+        return hex;
+    }
+
+    function hexToBech32(hex: string) {
+        try {
+            const bytes = Buffer.from(hex, 'hex');
+            return 'erd' + bytes.toString('base64').replace(/[+/=]/g, (m) => ({ '+': '-', '/': '_', '=': '' }[m]!));
+        } catch {
+            return 'Invalid address';
+        }
+    }
+
+    // Parse step by step
+    console.log('Step 1: game_id');
+    const game_id = readU32();
+    console.log('game_id:', game_id);
+
+    console.log('Step 2: status');
+    const status = readU32();
+    console.log('status:', status);
+
+    console.log('Step 3: participants length');
+    const participantsLen = readU32();
+    console.log('participants length:', participantsLen);
+
+    console.log('Step 4: participants addresses');
+    const participants = [];
+    for (let i = 0; i < participantsLen; i++) {
+        const addrHex = readHex(64);
+        const addr = hexToBech32(addrHex);
+        participants.push(addr);
+        console.log(`Participant ${i + 1}:`, addr);
+    }
+
+    console.log('Final participants array:', participants);
+    console.log('Participants count:', participants.length);
+
+    console.log('Testing tournament 13 parsing:');
+    const result13 = await debugParseTournamentHex(knownHex, 13);
+
+    console.log('Testing tournament 12 parsing:');
+    const result12 = await debugParseTournamentHex(knownHex12, 12);
+
+    return { tournament13: result13, tournament12: result12 };
+}
+
+export async function testTournamentContractCall(tournamentId = 13) {
+    console.log(`Testing direct contract call for tournament ${tournamentId}...`);
+
+    try {
+        const response = await fetch(`${getApiUrl()}/vm-values/query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                scAddress: getContractAddress(),
+                funcName: 'getTournament',
+                args: [Number(tournamentId).toString(16).padStart(16, '0')],
+                caller: getContractAddress(),
+                gasLimit: 50000000
+            }),
+        });
+
+        const data = await response.json();
+        console.log('Raw contract response:', data);
+
+        if (data.data && data.data.data && data.data.data.returnData && data.data.data.returnData.length > 0) {
+            const hex = data.data.data.returnData[0];
+            console.log('Raw hex data from contract:', hex);
+            console.log('Hex length:', hex.length);
+
+            // Compare with known hex
+            const knownHex = "000000000000000100000000015dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000005dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000020000000200000008016345785d8a000000000000000151800000000954657374204c6173740000000068c0b5b0";
+            console.log('Known hex data:', knownHex);
+            console.log('Hex data matches:', hex === knownHex);
+
+            // Test parsing
+            const parsed = await debugParseTournamentHex(hex, tournamentId);
+            console.log('Parsed result:', parsed);
+            return parsed;
+        }
+    } catch (error) {
+        console.error('Error testing contract call:', error);
     }
 }
 

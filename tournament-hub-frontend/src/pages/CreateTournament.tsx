@@ -160,10 +160,7 @@ export const CreateTournament: React.FC = () => {
 
         try {
             // Debug logging
-            console.log('=== Create Tournament Form Submission ===');
-            console.log('Form data:', formData);
-            console.log('Entry fee (string):', formData.entryFee);
-            console.log('Entry fee (number):', parseFloat(formData.entryFee));
+            // Creating tournament...
 
             const sessionId = await createTournament({
                 gameId: parseInt(formData.gameType),
@@ -976,11 +973,15 @@ export const CreateTournament: React.FC = () => {
                                                     <Text color="gray.300" fontSize="xs" mb={2} textAlign="center">
                                                         Or enter custom amount:
                                                     </Text>
-                                                    <NumberInput
+                                                    <Input
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0.01"
+                                                        max="100"
                                                         value={formData.entryFee}
-                                                        onChange={(value) => {
+                                                        onChange={(e) => {
                                                             setIsManualInput(true);
-                                                            handleInputChange('entryFee', value || '');
+                                                            handleInputChange('entryFee', e.target.value);
                                                         }}
                                                         onBlur={() => {
                                                             // Update slider when user finishes typing
@@ -999,33 +1000,25 @@ export const CreateTournament: React.FC = () => {
                                                                 setIsManualInput(false);
                                                             }
                                                         }}
-                                                        min={0}
-                                                        precision={4}
-                                                        size="sm"
-                                                    >
-                                                        <NumberInputField
-                                                            bg="gray.600"
-                                                            border="1px solid"
-                                                            borderColor="gray.500"
-                                                            borderRadius="lg"
-                                                            _hover={{
-                                                                borderColor: "yellow.400",
-                                                                transform: "translateY(-1px)",
-                                                                boxShadow: "0 2px 8px rgba(250, 204, 21, 0.2)"
-                                                            }}
-                                                            _focus={{
-                                                                borderColor: "yellow.500",
-                                                                boxShadow: "0 0 0 2px rgba(250, 204, 21, 0.1)"
-                                                            }}
-                                                            sx={{
-                                                                color: 'white !important',
-                                                                '&::placeholder': { color: 'gray.400' }
-                                                            }}
-                                                            transition="all 0.2s ease"
-                                                            textAlign="center"
-                                                            placeholder="0.1"
-                                                        />
-                                                    </NumberInput>
+                                                        size="md"
+                                                        bg="gray.700"
+                                                        border="2px solid"
+                                                        borderColor="gray.600"
+                                                        borderRadius="xl"
+                                                        _hover={{
+                                                            borderColor: "yellow.400",
+                                                            transform: "translateY(-1px)",
+                                                            boxShadow: "0 4px 12px rgba(255, 255, 0, 0.2)"
+                                                        }}
+                                                        _focus={{
+                                                            borderColor: "yellow.400",
+                                                            boxShadow: "0 0 0 3px rgba(255, 255, 0, 0.1)"
+                                                        }}
+                                                        _placeholder={{
+                                                            color: "gray.400"
+                                                        }}
+                                                        placeholder="0.22"
+                                                    />
                                                 </Box>
                                             </VStack>
                                         </Box>
@@ -1187,8 +1180,8 @@ export const CreateTournament: React.FC = () => {
                         </form>
                     </CardBody>
                 </Card>
-            </VStack>
-        </Container>
+            </VStack >
+        </Container >
     );
 };
 
