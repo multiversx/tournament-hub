@@ -163,6 +163,13 @@ export const ColorRush: React.FC<ColorRushGameProps> = ({ sessionId, playerAddre
 
     // Fetch game state
     const fetchGameState = useCallback(async () => {
+        // Don't fetch if sessionId is null or invalid
+        if (!sessionId || sessionId === 'null' || sessionId.trim() === '') {
+            console.log('ColorRush: Skipping fetch - sessionId is null or invalid');
+            setIsLoading(false);
+            return;
+        }
+
         try {
             const response = await fetch(`${BACKEND_BASE_URL}/colorrush_game_state?sessionId=${sessionId}`);
             if (!response.ok) {

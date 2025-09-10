@@ -45,6 +45,13 @@ export const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ sessionId, playerA
     const navigate = useNavigate();
 
     const fetchGameState = useCallback(async () => {
+        // Don't fetch if sessionId is null or invalid
+        if (!sessionId || sessionId === 'null' || sessionId.trim() === '') {
+            console.log('TicTacToeGame: Skipping fetch - sessionId is null or invalid');
+            setLoading(false);
+            return;
+        }
+
         try {
             const response = await fetch(`${BACKEND_BASE_URL}/tictactoe_game_state?sessionId=${sessionId}`);
             if (!response.ok) {
@@ -74,10 +81,15 @@ export const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ sessionId, playerA
     }, [sessionId, playerAddress, toast]);
 
     useEffect(() => {
-        fetchGameState();
-        const interval = setInterval(fetchGameState, 2000); // Poll every 2 seconds
-        return () => clearInterval(interval);
-    }, [fetchGameState]);
+        // Only start polling if we have a valid sessionId
+        if (sessionId && sessionId !== 'null' && sessionId.trim() !== '') {
+            fetchGameState();
+            const interval = setInterval(fetchGameState, 2000); // Poll every 2 seconds
+            return () => clearInterval(interval);
+        } else {
+            setLoading(false);
+        }
+    }, [fetchGameState, sessionId]);
 
     const handleCellClick = async (row: number, col: number) => {
         if (!gameState || !isMyTurn || gameState.game_over) return;

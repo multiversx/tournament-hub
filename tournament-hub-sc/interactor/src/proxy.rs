@@ -463,6 +463,33 @@ where
             .raw_call("getTournamentStats")
             .original_result()
     }
+
+    pub fn get_max_prize_won(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getMaxPrizeWon")
+            .original_result()
+    }
+
+    pub fn get_total_prize_distributed(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTotalPrizeDistributed")
+            .original_result()
+    }
+
+    pub fn get_prize_stats(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, (BigUint<Env::Api>, BigUint<Env::Api>)> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getPrizeStats")
+            .original_result()
+    }
 }
 
 #[type_abi]

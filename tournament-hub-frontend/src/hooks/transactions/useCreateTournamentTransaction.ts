@@ -24,7 +24,6 @@ export const useCreateTournamentTransaction = () => {
         maxPlayers: number;
         minPlayers: number;
         entryFee: string; // EGLD amount as string
-        duration: number; // duration in seconds
         name: string;
     }) => {
         if (!address) {
@@ -42,12 +41,16 @@ export const useCreateTournamentTransaction = () => {
             weiHex: BigInt(entryFeeWei).toString(16)
         });
 
+        // Set default duration to 24 hours (86400 seconds)
+        const defaultDuration = 24 * 60 * 60; // 24 hours in seconds
+        console.log('createTournament: Using default duration:', defaultDuration, 'seconds (24 hours)');
+
         // Encode arguments per MultiversX serialization rules
         const gameIdHex = BigInt(params.gameId).toString(16).padStart(16, '0');
         const maxPlayersHex = BigInt(params.maxPlayers).toString(16).padStart(8, '0');
         const minPlayersHex = BigInt(params.minPlayers).toString(16).padStart(8, '0');
         const entryFeeHex = BigInt(entryFeeWei).toString(16).padStart(16, '0');
-        const durationHex = BigInt(params.duration).toString(16).padStart(16, '0');
+        const durationHex = BigInt(defaultDuration).toString(16).padStart(16, '0');
 
         // Encode name as hex string (ManagedBuffer is sent as single argument)
         const nameHex = Buffer.from(params.name, 'utf8').toString('hex');

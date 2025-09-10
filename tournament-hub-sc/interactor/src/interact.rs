@@ -274,12 +274,12 @@ impl ContractInteract {
     }
 
     pub async fn create_tournament(&mut self) {
-        let game_index = 5u64;
-        let max_players = 4u32;
+        let game_index = 1u64;
+        let max_players = 2u32;
         let min_players = 2u32;
-        let entry_fee = BigUint::from(1u64).mul(10u64.pow(17)); // 0.1 EGLD
+        let entry_fee = BigUint::from(35u64).mul(10u64.pow(16)); // 0.35 EGLD
         let duration = 86400u64; // 24 hours in seconds
-        let name = ManagedBuffer::new_from_bytes(b"Test Tournament (Creator Auto-Joined)");
+        let name = ManagedBuffer::new_from_bytes(b"Test Fix Tournament");
 
         let response = self
             .interactor
@@ -379,7 +379,7 @@ impl ContractInteract {
     }
 
     pub async fn get_game_config(&mut self) {
-        let game_id = 0usize;
+        let game_id = 1usize;
 
         let result_value = self
             .interactor
@@ -395,7 +395,7 @@ impl ContractInteract {
     }
 
     pub async fn get_tournament(&mut self) {
-        let tournament_id = 1usize;
+        let tournament_id = 6usize;
 
         let result_value = self
             .interactor
@@ -565,7 +565,7 @@ impl ContractInteract {
 
     pub async fn get_user_stats(&mut self) {
         let user_address =
-            bech32::decode("erd1qyu5wthldzr8wx5c9ucg8kjagg0jfs53s8nr3zpz3hypefsdd8ssycr6th");
+            bech32::decode("erd1thvc8uzzdvkq4nuvqygfdkqu32evkkh3fdtt8hc672085ed3dthqhrkvvm");
 
         let result_value = self
             .interactor

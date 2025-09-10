@@ -20,6 +20,7 @@ function getApiUrl(): string {
     }
 }
 
+
 // Cache for API responses
 const apiCache = new Map<string, { data: any; timestamp: number; ttl: number }>();
 const API_CACHE_TTL = 300 * 1000; // 5 minutes
@@ -38,6 +39,40 @@ export function clearApiCaches(): void {
     apiCache.clear();
     pendingApiRequests.clear();
     rateLimitMap.clear();
+}
+
+// Debug function to test prize stats directly
+export async function debugPrizeStats(): Promise<void> {
+    console.log('=== DEBUG PRIZE STATS ===');
+    try {
+        const response = await fetch(`${getApiUrl()}/vm-values/query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                scAddress: getContractAddress(),
+                funcName: 'getPrizeStats',
+                args: [],
+            }),
+        });
+
+        console.log('Debug response status:', response.status);
+        const data = await response.json();
+        console.log('Debug response data:', data);
+
+        if (data?.data?.data?.returnData && data.data.data.returnData.length > 0) {
+            const hex = data.data.data.returnData[0];
+            console.log('Debug raw hex:', hex);
+            const result = parsePrizeStatsHex(hex);
+            console.log('Debug parsed result:', result);
+        } else {
+            console.log('Debug: No return data found');
+        }
+    } catch (error) {
+        console.error('Debug error:', error);
+    }
+    console.log('=== END DEBUG ===');
 }
 
 // Smart rate limiting function
@@ -67,9 +102,40 @@ function checkRateLimit(endpoint: string): boolean {
     return true;
 }
 
+// Special rate limiting for prize stats - more lenient
+function checkPrizeStatsRateLimit(): boolean {
+    const now = Date.now();
+    const key = 'rate_limit_prize_stats';
+    const limit = rateLimitMap.get(key);
+
+    if (!limit || now > limit.resetTime) {
+        rateLimitMap.set(key, { count: 1, resetTime: now + RATE_LIMIT_WINDOW, lastRequest: now });
+        return true;
+    }
+
+    // More lenient for prize stats - allow more frequent calls
+    if (now - limit.lastRequest < 50) { // 50ms minimum instead of 100ms
+        console.warn(`Prize stats request too fast. Waiting 50ms...`);
+        return false;
+    }
+
+    // Higher limit for prize stats
+    if (limit.count >= 200) { // 200 requests instead of 100
+        console.warn(`Prize stats rate limit exceeded. ${limit.count} requests in ${RATE_LIMIT_WINDOW}ms`);
+        return false;
+    }
+
+    // Update the rate limit counter
+    limit.count += 1;
+    limit.lastRequest = now;
+    rateLimitMap.set(key, limit);
+
+    return true;
+}
+
 // Add delay between API calls
 let lastApiCall = 0;
-const MIN_API_DELAY = 200; // 200ms between API calls - much faster
+const MIN_API_DELAY = 100; // 100ms between API calls - reasonable delay
 
 // Exponential backoff for retries
 async function sleep(ms: number): Promise<void> {
@@ -331,11 +397,15 @@ export async function getTournamentsFromBlockchain() {
 export async function getRecentNotifierEvents(): Promise<Array<{ identifier: string; tournament_id: number; ts: number; game_id?: number; player?: string }>> {
     try {
         const res = await fetch(`${BACKEND_BASE_URL}/notifier/recent`);
-        if (!res.ok) return [];
+        if (!res.ok) {
+            console.warn(`Notifier API error: ${res.status} ${res.statusText}`);
+            return [];
+        }
         const data = await res.json();
         if (!Array.isArray(data)) return [];
         return data;
-    } catch {
+    } catch (error) {
+        console.warn('Failed to fetch notifier events:', error);
         return [];
     }
 }
@@ -366,10 +436,14 @@ export async function getRecentGameStart(tournamentId: string | number): Promise
 export async function getAnyJoinTs(): Promise<number> {
     try {
         const res = await fetch(`${BACKEND_BASE_URL}/notifier/joins-any`);
-        if (!res.ok) return 0;
+        if (!res.ok) {
+            console.warn(`Notifier joins-any API error: ${res.status} ${res.statusText}`);
+            return 0;
+        }
         const data = await res.json();
         return Number(data.ts || 0);
-    } catch {
+    } catch (error) {
+        console.warn('Failed to fetch joins-any timestamp:', error);
         return 0;
     }
 }
@@ -382,7 +456,7 @@ function hexToBech32(hex: string): string {
     }
 }
 
-export async function parseTournamentHex(hex: string) {
+export async function parseTournamentHex(hex: string, tournamentId?: number | bigint) {
     // Decode base64 to raw hex if needed. First check if input is already hex.
     let rawHex = hex;
     try {
@@ -531,6 +605,7 @@ export async function parseTournamentHex(hex: string) {
             const created_at = readU64('created_at');
 
             const result = {
+                id: tournamentId || BigInt(0), // Add the tournament ID to the result
                 game_id,
                 status,
                 participants,
@@ -620,7 +695,7 @@ export async function getTournamentDetailsFromContract(tournamentId: number | bi
             if (data.data && data.data.data && data.data.data.returnData && data.data.data.returnData.length > 0) {
                 const hex = data.data.data.returnData[0];
                 console.log(`getTournamentDetailsFromContract: Parsing hex for tournament ${tournamentId}:`, hex);
-                const result = await parseTournamentHex(hex);
+                const result = await parseTournamentHex(hex, tournamentId);
                 console.log(`getTournamentDetailsFromContract: Parsed result for tournament ${tournamentId}:`, result);
                 return result;
             }
@@ -629,6 +704,67 @@ export async function getTournamentDetailsFromContract(tournamentId: number | bi
         } catch (error) {
             console.error(`getTournamentDetailsFromContract: Error for tournament ${tournamentId}:`, error);
             return null;
+        }
+    });
+}
+
+// Helper function to check if a tournament is completed by querying the contract directly
+export async function isTournamentCompletedByEvents(tournamentId: number | bigint): Promise<boolean> {
+    const cacheKey = `tournament_completed_direct_${tournamentId}`;
+    return deduplicateApiRequest(cacheKey, async () => {
+        try {
+            const contractAddress = getContractAddress();
+            const id = Number(tournamentId);
+
+            console.log(`isTournamentCompletedByEvents: Checking tournament ${tournamentId} for completion via contract query...`);
+
+            // Query the contract directly to get tournament details
+            const response = await fetch(`${getApiUrl()}/vm-values/query`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    scAddress: contractAddress,
+                    funcName: 'getTournament',
+                    args: [Number(tournamentId).toString(16).padStart(16, '0')],
+                    caller: contractAddress,
+                    gasLimit: 50000000
+                })
+            });
+
+            if (!response.ok) {
+                console.error(`isTournamentCompletedByEvents: Contract query failed ${response.status}: ${response.statusText}`);
+                return false;
+            }
+
+            const data = await response.json();
+            console.log(`isTournamentCompletedByEvents: Contract response for tournament ${tournamentId}:`, data);
+
+            if (data && data.data && data.data.data && data.data.data.returnData && data.data.data.returnData.length > 0) {
+                // Parse the tournament data using the existing function
+                const tournamentHex = data.data.data.returnData[0];
+                if (tournamentHex) {
+                    try {
+                        const tournament = await parseTournamentHex(tournamentHex, tournamentId);
+                        if (tournament) {
+                            // Status 4 means completed (based on the smart contract TournamentStatus enum)
+                            const isCompleted = tournament.status === 4;
+                            console.log(`isTournamentCompletedByEvents: Tournament ${tournamentId} completion status: ${isCompleted} (status: ${tournament.status})`);
+                            return isCompleted;
+                        }
+                    } catch (error) {
+                        console.error(`isTournamentCompletedByEvents: Error parsing tournament data for ${tournamentId}:`, error);
+                        return false;
+                    }
+                }
+            }
+
+            console.log(`isTournamentCompletedByEvents: No tournament data found for tournament ${tournamentId}`);
+            return false;
+        } catch (error) {
+            console.error(`isTournamentCompletedByEvents: Error checking completion for tournament ${tournamentId}:`, error);
+            return false;
         }
     });
 }
@@ -1247,6 +1383,68 @@ if (typeof window !== 'undefined') {
     (window as any).getTournamentDetailsFromContract = getTournamentDetailsFromContract;
     (window as any).getTournamentBasicInfoFromContract = getTournamentBasicInfoFromContract;
     (window as any).parseTournamentHex = parseTournamentHex;
+    (window as any).isTournamentCompletedByEvents = isTournamentCompletedByEvents;
+
+    // Test function to debug tournament contract calls
+    (window as any).testTournamentContractCall = async (tournamentId = 1) => {
+        console.log(`Testing direct contract call for tournament ${tournamentId}...`);
+
+        try {
+            const contractAddress = getContractAddress();
+            const apiUrl = getApiUrl();
+
+            // Test with hex string encoding (using 1-based indexing as contract expects)
+            const hexString = Number(tournamentId).toString(16).padStart(16, '0');
+
+            console.log(`Tournament ID: ${tournamentId}`);
+            console.log(`Hex string: ${hexString}`);
+
+            const response = await fetch(`${apiUrl}/vm-values/query`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    scAddress: contractAddress,
+                    funcName: 'getTournament',
+                    args: [hexString],
+                    caller: contractAddress,
+                    gasLimit: 50000000
+                }),
+            });
+
+            console.log(`Response status: ${response.status}`);
+            const data = await response.json();
+            console.log(`Response data:`, data);
+
+            if (data?.data?.data?.returnData && data.data.data.returnData.length > 0) {
+                const hex = data.data.data.returnData[0];
+                console.log(`Raw hex data: ${hex}`);
+
+                const tournament = await parseTournamentHex(hex, tournamentId);
+                console.log(`Parsed tournament:`, tournament);
+
+                return {
+                    success: true,
+                    rawData: data,
+                    parsedTournament: tournament
+                };
+            } else {
+                console.log('No return data found');
+                return {
+                    success: false,
+                    rawData: data,
+                    error: 'No return data'
+                };
+            }
+        } catch (error) {
+            console.error('Test failed:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    };
 
     // Add a simple test function
     (window as any).testDashboard = async () => {
@@ -1577,7 +1775,7 @@ if (typeof window !== 'undefined') {
                 body: JSON.stringify({
                     scAddress: getContractAddress(),
                     funcName: 'getTournament',
-                    args: [Number(tournamentId).toString(16).padStart(16, '0')], // Send as hex-encoded string
+                    args: [Number(tournamentId).toString(16).padStart(16, '0')], // Send as base64-encoded string
                 }),
             });
 
@@ -1590,7 +1788,7 @@ if (typeof window !== 'undefined') {
 
                 // Test parsing the hex
                 console.log('4. Testing hex parsing...');
-                const parsed = await parseTournamentHex(hex);
+                const parsed = await parseTournamentHex(hex, tournamentId);
                 console.log('Parsed data:', parsed);
             }
 
@@ -1804,7 +2002,7 @@ if (typeof window !== 'undefined') {
                                 console.log('Hex data:', hex);
 
                                 try {
-                                    const parsed = await parseTournamentHex(hex);
+                                    const parsed = await parseTournamentHex(hex, tournamentId);
                                     console.log('✅ Parsed tournament data:', parsed);
                                     return { success: true, method: testCase.name, data: parsed };
                                 } catch (parseError) {
@@ -2338,7 +2536,7 @@ if (typeof window !== 'undefined') {
                 body: JSON.stringify({
                     scAddress: contractAddress,
                     funcName: 'getTournament',
-                    args: [Number(tournamentId).toString(16).padStart(16, '0')], // Send as hex-encoded string
+                    args: [Number(tournamentId).toString(16).padStart(16, '0')], // Send as base64-encoded string
                 }),
             });
 
@@ -2422,16 +2620,33 @@ export async function getUserStatsFromContract(userAddress: string) {
     const cacheKey = `user_stats_${userAddress}`;
     return deduplicateApiRequest(cacheKey, async () => {
         try {
+            // Convert bech32 address to hex format for the smart contract
+            let hexAddress;
+            try {
+                const addressObj = Address.fromBech32(userAddress);
+                hexAddress = addressObj.hex();
+                console.log('getUserStatsFromContract - Original address:', userAddress);
+                console.log('getUserStatsFromContract - Hex address:', hexAddress);
+            } catch (error) {
+                console.error('Error encoding address:', error);
+                return null;
+            }
+
+            const requestBody = {
+                scAddress: getContractAddress(),
+                funcName: 'getUserStats',
+                args: [hexAddress],
+            };
+
+            console.log('getUserStatsFromContract - Request body:', requestBody);
+            console.log('getUserStatsFromContract - API URL:', `${getApiUrl()}/vm-values/query`);
+
             const response = await fetchWithTimeout(`${getApiUrl()}/vm-values/query`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    scAddress: getContractAddress(),
-                    funcName: 'getUserStats',
-                    args: [userAddress],
-                }),
+                body: JSON.stringify(requestBody),
             }, 20000, 2); // 20s timeout, 2 retries
 
             if (!response.ok) {
@@ -2443,10 +2658,35 @@ export async function getUserStatsFromContract(userAddress: string) {
             }
 
             const data = await response.json();
+            console.log('getUserStatsFromContract - Response data:', data);
+
             if (data?.data?.data?.returnData && data.data.data.returnData.length > 0) {
-                const hex = data.data.data.returnData[0];
-                return parseUserStatsHex(hex);
+                const encodedData = data.data.data.returnData[0];
+                console.log('getUserStatsFromContract - Encoded data:', encodedData);
+
+                // Convert base64 to hex if needed
+                let hex;
+                if (encodedData.includes('=') || /^[A-Za-z0-9+/]+$/.test(encodedData)) {
+                    // It's base64 encoded, convert to hex
+                    try {
+                        const decoded = atob(encodedData);
+                        hex = Array.from(decoded).map(char => char.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+                        console.log('getUserStatsFromContract - Converted base64 to hex:', hex);
+                    } catch (error) {
+                        console.error('Error decoding base64:', error);
+                        return null;
+                    }
+                } else {
+                    // It's already hex
+                    hex = encodedData.startsWith('0x') ? encodedData.slice(2) : encodedData;
+                }
+
+                console.log('getUserStatsFromContract - Final hex data:', hex);
+                const parsedStats = parseUserStatsHex(hex);
+                console.log('getUserStatsFromContract - Parsed stats:', parsedStats);
+                return parsedStats;
             }
+            console.log('getUserStatsFromContract - No return data found');
             return null;
         } catch (error) {
             console.error('Error fetching user stats:', error);
@@ -2490,6 +2730,63 @@ export async function getTournamentStatsFromContract() {
             return null;
         }
     }, 'vm-values-query');
+}
+
+export async function getPrizeStatsFromContract() {
+    const cacheKey = 'prize_stats';
+    return deduplicateApiRequest(cacheKey, async () => {
+        try {
+            console.log('getPrizeStatsFromContract: Starting to fetch prize stats...');
+
+            // Check special rate limit for prize stats
+            if (!checkPrizeStatsRateLimit()) {
+                console.warn('Prize stats rate limit exceeded. Using cached data or returning null.');
+                return null;
+            }
+
+            // Use a longer delay for prize stats to avoid rate limiting
+            await sleep(200);
+
+            const response = await fetchWithTimeout(`${getApiUrl()}/vm-values/query`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    scAddress: getContractAddress(),
+                    funcName: 'getPrizeStats',
+                    args: [],
+                }),
+            }, 20000, 3); // 20s timeout, 3 retries
+
+            console.log('getPrizeStatsFromContract: Response status:', response.status);
+            if (!response.ok) {
+                if (response.status === 429) {
+                    console.warn('Rate limited when fetching prize stats, will retry...');
+                    // Wait longer before retrying
+                    await sleep(1000);
+                    return null;
+                }
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            console.log('getPrizeStatsFromContract: Response data:', data);
+
+            if (data?.data?.data?.returnData && data.data.data.returnData.length > 0) {
+                const hex = data.data.data.returnData[0];
+                console.log('getPrizeStatsFromContract: Raw hex data:', hex);
+                const result = parsePrizeStatsHex(hex);
+                console.log('getPrizeStatsFromContract: Parsed result:', result);
+                return result;
+            }
+            console.log('getPrizeStatsFromContract: No return data found');
+            return null;
+        } catch (error) {
+            console.error('getPrizeStatsFromContract: Error fetching prize stats:', error);
+            return null;
+        }
+    }, 'prize-stats-query'); // Use different endpoint key to avoid conflicts
 }
 
 // Parse tournament stats from base64/hex data
@@ -2568,6 +2865,9 @@ function parseTournamentStatsHex(hex: string) {
 }
 
 function parseUserStatsHex(hex: string) {
+    console.log('parseUserStatsHex - Input hex:', hex);
+    console.log('parseUserStatsHex - Hex length:', hex.length);
+
     let offset = 0;
 
     function readHex(len: number) {
@@ -2578,22 +2878,30 @@ function parseUserStatsHex(hex: string) {
 
     function readU32() {
         const hex = readHex(8);
-        return parseInt(hex, 16);
+        const value = parseInt(hex, 16);
+        console.log(`readU32: hex=${hex}, value=${value}`);
+        return value;
     }
 
     function readU64() {
         const hex = readHex(16);
-        return BigInt('0x' + hex);
+        const value = BigInt('0x' + hex);
+        console.log(`readU64: hex=${hex}, value=${value}`);
+        return value;
     }
 
     function readBigUint() {
         const len = readU32();
+        console.log(`readBigUint: len=${len}`);
         if (len === 0) return BigInt(0);
         const hex = readHex(len * 2);
-        return BigInt('0x' + hex);
+        const value = BigInt('0x' + hex);
+        console.log(`readBigUint: hex=${hex}, value=${value}`);
+        return value;
     }
 
     try {
+        console.log('Starting to parse user stats...');
         const games_played = readU32();
         const wins = readU32();
         const losses = readU32();
@@ -2607,7 +2915,7 @@ function parseUserStatsHex(hex: string) {
         const last_activity = readU64();
         const member_since = readU64();
 
-        return {
+        const result = {
             games_played,
             wins,
             losses,
@@ -2622,8 +2930,78 @@ function parseUserStatsHex(hex: string) {
             last_activity: Number(last_activity),
             member_since: Number(member_since)
         };
+
+        console.log('parseUserStatsHex - Final result:', result);
+        return result;
     } catch (error) {
         console.error('Error parsing user stats hex:', error);
+        console.error('Hex data that failed to parse:', hex);
+        console.error('Current offset when error occurred:', offset);
+        return null;
+    }
+}
+
+// Parse prize stats from base64/hex data
+function parsePrizeStatsHex(hex: string) {
+    try {
+        console.log('parsePrizeStatsHex - Input hex:', hex);
+        console.log('parsePrizeStatsHex - Hex length:', hex.length);
+
+        if (!hex || hex === '0x') return null;
+
+        let cleanHex = hex;
+
+        // Check if this is base64 encoded data
+        if (hex.includes('=') || /^[A-Za-z0-9+/]+$/.test(hex)) {
+            try {
+                // Decode base64 to get hex string
+                const decoded = atob(hex);
+                // Convert each character to its hex representation
+                cleanHex = Array.from(decoded).map(char => char.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+                console.log('parsePrizeStatsHex - Decoded base64 to hex:', cleanHex);
+            } catch (e) {
+                console.error('parsePrizeStatsHex - Error decoding base64:', e);
+                return null;
+            }
+        } else {
+            // Remove 0x prefix if present
+            cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex;
+        }
+
+        // The smart contract returns (max_prize_won, total_prize_distributed) as two BigUint values
+        // Each BigUint is encoded as: length (4 bytes) + data (length bytes)
+        let offset = 0;
+
+        function readBigUint() {
+            // Read length (4 bytes = 8 hex chars)
+            const lenHex = cleanHex.slice(offset, offset + 8);
+            const len = parseInt(lenHex, 16);
+            offset += 8;
+
+            if (len === 0) return BigInt(0);
+
+            // Read data (len * 2 hex chars)
+            const dataHex = cleanHex.slice(offset, offset + len * 2);
+            offset += len * 2;
+
+            return BigInt('0x' + dataHex);
+        }
+
+        const maxPrizeWon = readBigUint();
+        const totalPrizeDistributed = readBigUint();
+
+        const result = {
+            max_prize_won: Number(maxPrizeWon) / 1e18, // Convert from wei to EGLD
+            total_prize_distributed: Number(totalPrizeDistributed) / 1e18 // Convert from wei to EGLD
+        };
+
+        console.log('parsePrizeStatsHex - Raw BigInt values:', { maxPrizeWon, totalPrizeDistributed });
+        console.log('parsePrizeStatsHex - Converted to EGLD:', result);
+        console.log('parsePrizeStatsHex - Final result:', result);
+        return result;
+    } catch (error) {
+        console.error('Error parsing prize stats hex:', error);
+        console.error('Hex data that failed to parse:', hex);
         return null;
     }
 }

@@ -21,7 +21,8 @@ pub trait ViewsModule: crate::storage::StorageModule {
             tournament_index > 0 && tournament_index <= tournaments_len,
             "Tournament does not exist"
         );
-        self.active_tournaments().get(tournament_index).clone()
+        // Convert 1-based index to 0-based for VecMapper access
+        self.active_tournaments().get(tournament_index - 1).clone()
     }
 
     #[view(getNumberOfTournaments)]
@@ -237,5 +238,160 @@ pub trait ViewsModule: crate::storage::StorageModule {
         }
 
         (joining, ready_to_start, active, completed, total_created)
+    }
+
+    #[view(getMaxPrizeWon)]
+    fn get_max_prize_won(&self) -> BigUint {
+        self.max_prize_won().get()
+    }
+
+    #[view(getTotalPrizeDistributed)]
+    fn get_total_prize_distributed(&self) -> BigUint {
+        self.total_prize_distributed().get()
+    }
+
+    #[view(getPrizeStats)]
+    fn get_prize_stats(&self) -> (BigUint, BigUint) {
+        (
+            self.max_prize_won().get(),
+            self.total_prize_distributed().get(),
+        )
+    }
+
+    // Bulk endpoint: Get multiple tournaments basic info at once
+    #[view(getTournamentsBasicInfo)]
+    fn get_tournaments_basic_info(
+        &self,
+        tournament_ids: &[u64],
+    ) -> ManagedVec<Self::Api, (u64, u64, u32, ManagedVec<Self::Api, ManagedAddress<Self::Api>>, ManagedAddress<Self::Api>, u32, u32, BigUint<Self::Api>, u64, ManagedBuffer<Self::Api>, u64)> {
+        let mut results = ManagedVec::new();
+        let tournaments_len = self.active_tournaments().len();
+
+        for &tournament_id in tournament_ids {
+            if tournament_id > 0 && tournament_id <= tournaments_len as u64 {
+                let tournament = self.active_tournaments().get(tournament_id as usize);
+                let status_num = match tournament.status {
+                    TournamentStatus::Joining => 0u32,
+                    TournamentStatus::ReadyToStart => 1u32,
+                    TournamentStatus::Active => 2u32,
+                    TournamentStatus::ProcessingResults => 3u32,
+                    TournamentStatus::Completed => 4u32,
+                };
+
+                results.push((
+                    tournament_id,
+                    tournament.game_id,
+                    status_num,
+                    tournament.participants,
+                    tournament.creator,
+                    tournament.max_players,
+                    tournament.min_players,
+                    tournament.entry_fee,
+                    tournament.duration,
+                    tournament.name,
+                    tournament.created_at,
+                ));
+            }
+        }
+
+        results
+    }
+
+    // Bulk endpoint: Get all active tournaments basic info
+    #[view(getAllActiveTournamentsBasicInfo)]
+    fn get_all_active_tournaments_basic_info(
+        &self,
+    ) -> ManagedVec<Self::Api, (u64, u64, u32, ManagedVec<Self::Api, ManagedAddress<Self::Api>>, ManagedAddress<Self::Api>, u32, u32, BigUint<Self::Api>, u64, ManagedBuffer<Self::Api>, u64)> {
+        let mut results = ManagedVec::new();
+        let tournaments_len = self.active_tournaments().len();
+
+        for id in 1..=tournaments_len {
+            let tournament = self.active_tournaments().get(id);
+            let status_num = match tournament.status {
+                TournamentStatus::Joining => 0u32,
+                TournamentStatus::ReadyToStart => 1u32,
+                TournamentStatus::Active => 2u32,
+                TournamentStatus::ProcessingResults => 3u32,
+                TournamentStatus::Completed => 4u32,
+            };
+
+            results.push((
+                id as u64,
+                tournament.game_id,
+                status_num,
+                tournament.participants,
+                tournament.creator,
+                tournament.max_players,
+                tournament.min_players,
+                tournament.entry_fee,
+                tournament.duration,
+                tournament.name,
+                tournament.created_at,
+            ));
+        }
+
+        results
+    }
+
+    // Bulk endpoint: Get tournament statuses for multiple tournaments
+    #[view(getTournamentsStatus)]
+    fn get_tournaments_status(
+        &self,
+        tournament_ids: &[u64],
+    ) -> ManagedVec<Self::Api, (u64, u32)> {
+        let mut results = ManagedVec::new();
+        let tournaments_len = self.active_tournaments().len();
+
+        for &tournament_id in tournament_ids {
+            if tournament_id > 0 && tournament_id <= tournaments_len as u64 {
+                let tournament = self.active_tournaments().get(tournament_id as usize);
+                let status_num = match tournament.status {
+                    TournamentStatus::Joining => 0u32,
+                    TournamentStatus::ReadyToStart => 1u32,
+                    TournamentStatus::Active => 2u32,
+                    TournamentStatus::ProcessingResults => 3u32,
+                    TournamentStatus::Completed => 4u32,
+                };
+
+                results.push((tournament_id, status_num));
+            }
+        }
+
+        results
+    }
+
+    // Bulk endpoint: Get user stats for multiple users
+    #[view(getUsersStats)]
+    fn get_users_stats(
+        &self,
+        user_addresses: &[ManagedAddress<Self::Api>],
+    ) -> ManagedVec<Self::Api, (ManagedAddress<Self::Api>, UserStats<Self::Api>)> {
+        let mut results = ManagedVec::new();
+
+        for user_address in user_addresses {
+            let stats = if self.user_stats(user_address).is_empty() {
+                // Return default stats for new user
+                UserStats {
+                    games_played: 0,
+                    wins: 0,
+                    losses: 0,
+                    win_rate: 0,
+                    tokens_won: BigUint::zero(),
+                    tokens_spent: BigUint::zero(),
+                    tournaments_created: 0,
+                    tournaments_won: 0,
+                    current_streak: 0,
+                    best_streak: 0,
+                    last_activity: 0,
+                    member_since: 0,
+                }
+            } else {
+                self.user_stats(user_address).get()
+            };
+
+            results.push((user_address.clone(), stats));
+        }
+
+        results
     }
 }

@@ -31,14 +31,30 @@ import {
     Progress,
 } from '@chakra-ui/react';
 import { Users, Award, Calendar, Plus, Search, Filter, ChevronDown, ChevronUp, Trophy, Clock, Copy, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
-import { getActiveTournamentIds, getTournamentDetailsFromContract, getGameConfig, getPrizePoolFromContract, getTournamentsFromBlockchain, findTournamentsByTesting, getSubmitResultsTransactionHash, debugContractResponse, clearApiCaches, getRecentNotifierEvents, getAnyJoinTs } from '../helpers';
+import { getActiveTournamentIds, getTournamentDetailsFromContract, getGameConfig, getPrizePoolFromContract, getTournamentsFromBlockchain, findTournamentsByTesting, getSubmitResultsTransactionHash, debugContractResponse, clearApiCaches, getRecentNotifierEvents, getAnyJoinTs, isTournamentCompletedByEvents, parseTournamentHex } from '../helpers';
+import { getContractAddress, getNetwork } from '../config/contract';
 
 // Using helper to clear caches instead of accessing internals
+
+// Helper function to get the correct API URL based on network
+function getApiUrl(): string {
+    const network = getNetwork();
+    switch (network) {
+        case 'devnet':
+            return 'https://devnet-gateway.multiversx.com';
+        case 'testnet':
+            return 'https://testnet-api.multiversx.com';
+        case 'mainnet':
+            return 'https://api.multiversx.com';
+        default:
+            return 'https://devnet-gateway.multiversx.com';
+    }
+}
 
 const statusColors: { [key: number]: string } = {
     0: 'yellow', // Joining
     1: 'blue',   // Ready to Start
-    2: 'green',  // Playing
+    2: 'green',  // Active/Playing
     3: 'orange', // Processing Results
     4: 'purple', // Completed
 };
@@ -54,7 +70,8 @@ const statusMap: { [key: number]: string } = {
 // Enhanced cache with TTL
 const tournamentCache = new Map<string, { data: any; timestamp: number; ttl: number }>();
 const ITEMS_PER_PAGE = 6;
-const MAX_FETCH = 200; // cap initial tournaments loaded for performance
+const MAX_FETCH = 50; // Reduced from 200 to reduce API load and rate limiting
+const MAX_CONCURRENT_QUERIES = 3; // Limit concurrent contract queries to prevent rate limiting
 const CACHE_TTL = 300 * 1000; // 5 minutes cache
 
 // Request deduplication
@@ -107,6 +124,20 @@ function setPersistentCache(data: any) {
     } catch (e) {
         // Silent fail for cache errors
     }
+}
+
+// Helper function to deduplicate tournaments by ID
+function deduplicateTournaments(tournaments: any[]): any[] {
+    const seen = new Set<string>();
+    return tournaments.filter(tournament => {
+        const id = tournament.id.toString();
+        if (seen.has(id)) {
+            console.warn(`Removing duplicate tournament with ID: ${id}`);
+            return false;
+        }
+        seen.add(id);
+        return true;
+    });
 }
 
 // Enhanced deduplication with cache
@@ -176,25 +207,49 @@ function getGameName(gameId: number): string {
 }
 
 // Optimized tournament card component
-const TournamentCard = React.memo(({ tournament, onLoadDetails }: { tournament: any; onLoadDetails: (id: bigint) => void }) => {
+const TournamentCard = React.memo(({ tournament, onLoadDetails, onRetryTournament }: { tournament: any; onLoadDetails: (id: bigint) => void; onRetryTournament?: (id: bigint) => void }) => {
     const toast = useToast();
     const bgColor = useColorModeValue('gray.800', 'gray.900');
     const borderColor = useColorModeValue('gray.700', 'gray.600');
 
     return (
         <Box
-            bg={bgColor}
-            border="1px solid"
-            borderColor={borderColor}
-            boxShadow="lg"
+            bgGradient="linear(135deg, gray.800, gray.900)"
+            border="2px solid"
+            borderColor="gray.600"
+            boxShadow="0 20px 40px rgba(0,0,0,0.3)"
             borderRadius="2xl"
             p={6}
-            transition="all 0.2s"
-            _hover={{ boxShadow: '2xl', transform: 'translateY(-2px)' }}
+            transition="all 0.3s ease"
+            _hover={{
+                borderColor: "blue.400",
+                boxShadow: "0 25px 50px rgba(59, 130, 246, 0.2)",
+                transform: 'translateY(-5px)'
+            }}
             display="flex"
             flexDirection="column"
             justifyContent="space-between"
+            position="relative"
+            overflow="hidden"
         >
+            {/* Animated Background */}
+            <Box
+                position="absolute"
+                top={0}
+                left={0}
+                right={0}
+                h="4px"
+                bgGradient="linear(90deg, blue.500, purple.500, pink.500, blue.500)"
+                backgroundSize="200% 100%"
+                animation="gradient 3s ease infinite"
+                sx={{
+                    '@keyframes gradient': {
+                        '0%': { backgroundPosition: '0% 50%' },
+                        '50%': { backgroundPosition: '100% 50%' },
+                        '100%': { backgroundPosition: '0% 50%' }
+                    }
+                }}
+            />
             <HStack justify="space-between" mb={4}>
                 <Heading size="md">{tournament.name}</Heading>
                 <Badge colorScheme={statusColors[tournament.status] || 'gray'} fontSize="sm" px={3} py={1} borderRadius="md">
@@ -342,30 +397,103 @@ const TournamentCard = React.memo(({ tournament, onLoadDetails }: { tournament: 
                 )}
 
                 {!tournament.gameConfigLoaded && (
-                    <Button
-                        size="sm"
-                        colorScheme="blue"
-                        variant="outline"
-                        onClick={() => onLoadDetails(tournament.id)}
-                        isLoading={tournament.loadingDetails}
-                    >
-                        Load Details
-                    </Button>
+                    <HStack spacing={2} w="full">
+                        <Button
+                            size="md"
+                            variant="outline"
+                            colorScheme="blue"
+                            borderRadius="xl"
+                            border="2px solid"
+                            borderColor="blue.500"
+                            color="blue.300"
+                            fontWeight="semibold"
+                            onClick={() => onLoadDetails(tournament.id)}
+                            isLoading={tournament.loadingDetails}
+                            _hover={{
+                                bg: "blue.600",
+                                color: "white",
+                                transform: "translateY(-2px)",
+                                boxShadow: "0 8px 20px rgba(59, 130, 246, 0.3)"
+                            }}
+                            transition="all 0.2s ease"
+                            flex="1"
+                        >
+                            Load Details
+                        </Button>
+                        {tournament.isFallback && tournament.status === 4 && onRetryTournament && (
+                            <Button
+                                size="md"
+                                variant="outline"
+                                colorScheme="orange"
+                                borderRadius="xl"
+                                border="2px solid"
+                                borderColor="orange.500"
+                                color="orange.300"
+                                fontWeight="semibold"
+                                onClick={() => onRetryTournament(tournament.id)}
+                                _hover={{
+                                    bg: "orange.600",
+                                    color: "white",
+                                    transform: "translateY(-2px)",
+                                    boxShadow: "0 8px 20px rgba(255, 165, 0, 0.3)"
+                                }}
+                                transition="all 0.2s ease"
+                            >
+                                Retry
+                            </Button>
+                        )}
+                    </HStack>
                 )}
             </VStack>
 
             <Button
                 as="a"
                 href={`/tournaments/${tournament.id}`}
-                colorScheme="blue"
+                size="md"
                 w="full"
                 mt={2}
                 borderRadius="xl"
                 fontWeight="bold"
                 fontSize="md"
-                _hover={{ boxShadow: 'md' }}
+                bgGradient="linear(135deg, blue.500, purple.600, blue.700)"
+                color="white"
+                boxShadow="0 10px 30px rgba(59, 130, 246, 0.4)"
+                _hover={{
+                    bgGradient: "linear(135deg, blue.600, purple.700, blue.800)",
+                    transform: 'translateY(-3px)',
+                    boxShadow: '0 15px 40px rgba(59, 130, 246, 0.6)'
+                }}
+                _active={{
+                    transform: 'translateY(-1px)',
+                    boxShadow: '0 8px 25px rgba(59, 130, 246, 0.5)'
+                }}
+                transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                position="relative"
+                overflow="hidden"
             >
-                View Details
+                {/* Animated background effect */}
+                <Box
+                    position="absolute"
+                    top={0}
+                    left="-100%"
+                    w="100%"
+                    h="100%"
+                    bgGradient="linear(90deg, transparent, rgba(255,255,255,0.2), transparent)"
+                    transition="left 0.5s ease"
+                    _groupHover={{
+                        left: "100%"
+                    }}
+                />
+                <HStack spacing={2} justify="center">
+                    <Box
+                        p={1}
+                        bg="rgba(255,255,255,0.2)"
+                        borderRadius="md"
+                    >
+                        <Trophy size={16} />
+                    </Box>
+                    <Text>View Details</Text>
+                </HStack>
             </Button>
         </Box>
     );
@@ -418,6 +546,13 @@ export const Tournaments = () => {
                 try {
                     console.log(`loadBasicTournamentData: Fetching details for tournament ${id} (attempt ${attempt}/${maxRetries})...`);
 
+                    // Add extra delay for completed tournaments to avoid rate limiting
+                    if (attempt > 1) {
+                        const delay = attempt * 2000; // 2s, 4s, 6s
+                        console.log(`loadBasicTournamentData: Waiting ${delay}ms before retry for tournament ${id}...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+
                     // Use getTournament endpoint (getTournamentBasicInfo doesn't exist in deployed contract)
                     console.log(`loadBasicTournamentData: Fetching tournament ${id} using getTournament...`);
                     const details = await getTournamentDetailsFromContract(id);
@@ -440,7 +575,7 @@ export const Tournaments = () => {
                             gameConfig: null,
                             gameConfigLoaded: false,
                             resultTxHash: null,
-                            resultTxLoaded: details.status !== 2,
+                            resultTxLoaded: details.status !== 4,
                             loadingDetails: false
                         };
 
@@ -455,11 +590,43 @@ export const Tournaments = () => {
                     } else {
                         console.log(`loadBasicTournamentData: No details returned for tournament ${id}, creating fallback data`);
 
+                        // Try to get just the status from the contract before creating fallback data
+                        let actualStatus = 0; // Default to Joining status
+                        try {
+                            const statusResponse = await fetch(`${getApiUrl()}/vm-values/query`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    scAddress: getContractAddress(),
+                                    funcName: 'getTournament',
+                                    args: [Number(id).toString(16).padStart(16, '0')],
+                                    caller: getContractAddress(),
+                                    gasLimit: 50000000
+                                })
+                            });
+
+                            if (statusResponse.ok) {
+                                const statusData = await statusResponse.json();
+                                if (statusData && statusData.data && statusData.data.data && statusData.data.data.returnData && statusData.data.data.returnData.length > 0) {
+                                    const tournamentHex = statusData.data.data.returnData[0];
+                                    const tournament = await parseTournamentHex(tournamentHex, id);
+                                    if (tournament) {
+                                        actualStatus = tournament.status;
+                                        console.log(`loadBasicTournamentData: Got actual status ${actualStatus} for tournament ${id}`);
+                                    }
+                                }
+                            }
+                        } catch (statusError) {
+                            console.log(`loadBasicTournamentData: Could not get status for tournament ${id}, using default:`, statusError);
+                        }
+
                         // Create fallback data for tournaments that fail to load details
                         const fallbackData = {
                             id,
                             name: `Tournament ${id}`,
-                            status: 0, // Default to Joining status
+                            status: actualStatus, // Use actual status if we could get it
                             participants: [],
                             description: `Tournament #${id}`,
                             creator: 'Unknown',
@@ -500,10 +667,42 @@ export const Tournaments = () => {
             // If all retries failed, create fallback data instead of returning null
             console.error(`loadBasicTournamentData: Failed to fetch tournament ${id} after ${maxRetries} attempts, creating fallback data:`, lastError);
 
+            // Try to get just the status from the contract before creating fallback data
+            let actualStatus = 0; // Default to Joining status
+            try {
+                const statusResponse = await fetch(`${getApiUrl()}/vm-values/query`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        scAddress: getContractAddress(),
+                        funcName: 'getTournament',
+                        args: [Number(id).toString(16).padStart(16, '0')],
+                        caller: getContractAddress(),
+                        gasLimit: 50000000
+                    })
+                });
+
+                if (statusResponse.ok) {
+                    const statusData = await statusResponse.json();
+                    if (statusData && statusData.data && statusData.data.data && statusData.data.data.returnData && statusData.data.data.returnData.length > 0) {
+                        const tournamentHex = statusData.data.data.returnData[0];
+                        const tournament = await parseTournamentHex(tournamentHex, id);
+                        if (tournament) {
+                            actualStatus = tournament.status;
+                            console.log(`loadBasicTournamentData: Got actual status ${actualStatus} for tournament ${id} after retry failure`);
+                        }
+                    }
+                }
+            } catch (statusError) {
+                console.log(`loadBasicTournamentData: Could not get status for tournament ${id} after retry failure, using default:`, statusError);
+            }
+
             const fallbackData = {
                 id,
                 name: `Tournament ${id}`,
-                status: 0, // Default to Joining status
+                status: actualStatus, // Use actual status if we could get it
                 participants: [],
                 description: `Tournament #${id}`,
                 creator: 'Unknown',
@@ -522,6 +721,61 @@ export const Tournaments = () => {
             console.log(`loadBasicTournamentData: Created fallback data for tournament ${id} after retry failure:`, fallbackData);
             return fallbackData;
         });
+    }, []);
+
+    // Retry function for completed tournaments with fallback data
+    const retryTournament = useCallback(async (id: bigint) => {
+        console.log(`Manual retry for tournament ${id}`);
+        try {
+            // Clear cache for this tournament to force fresh data
+            const cacheKey = `basic_${id}`;
+            tournamentCache.delete(cacheKey);
+
+            const realData = await loadBasicTournamentData(id);
+            if (realData && !realData.isFallback) {
+                console.log(`Successfully loaded real data for tournament ${id}:`, realData);
+                setTournaments(prev => {
+                    return prev.map(t => t.id === id ? realData : t);
+                });
+                toast({
+                    title: 'Success!',
+                    description: `Tournament ${id} details loaded successfully`,
+                    status: 'success',
+                    duration: 3000,
+                    isClosable: true,
+                });
+            } else {
+                console.log(`Still getting fallback data for tournament ${id}`);
+                toast({
+                    title: 'Still Loading',
+                    description: `Tournament ${id} details are still being loaded. Please try again later.`,
+                    status: 'warning',
+                    duration: 3000,
+                    isClosable: true,
+                });
+            }
+        } catch (error) {
+            console.error(`Manual retry failed for tournament ${id}:`, error);
+            toast({
+                title: 'Retry Failed',
+                description: `Failed to load tournament ${id} details. Please try again later.`,
+                status: 'error',
+                duration: 3000,
+                isClosable: true,
+            });
+        }
+    }, [loadBasicTournamentData, toast]);
+
+    // Function to clear all caches and force refresh
+    const clearAllCachesAndRefresh = useCallback(async () => {
+        console.log('Clearing all caches and forcing refresh...');
+
+        // Clear all caches
+        tournamentCache.clear();
+        clearApiCaches();
+
+        // Force refresh by reloading the page
+        window.location.reload();
     }, []);
 
     // Optimized details loading
@@ -561,7 +815,7 @@ export const Tournaments = () => {
                 );
             }
 
-            if (!tournament.resultTxLoaded && tournament.status === 2) {
+            if (!tournament.resultTxLoaded && tournament.status === 4) {
                 promises.push(
                     getSubmitResultsTransactionHash(id).then(resultTxHash => {
                         tournament.resultTxHash = resultTxHash;
@@ -692,31 +946,35 @@ export const Tournaments = () => {
 
                 console.log(`Successfully loaded ${validTournaments.length} tournaments (including ${validTournaments.filter(t => t.isFallback).length} fallback tournaments)`);
 
+                // Debug: Log all tournament IDs to check for duplicates
+                const tournamentIdStrings = validTournaments.map(t => t.id.toString());
+                const uniqueIds = [...new Set(tournamentIdStrings)];
+                if (tournamentIdStrings.length !== uniqueIds.length) {
+                    console.warn(`Duplicate tournament IDs detected in initial load:`, tournamentIdStrings);
+                }
 
-                setTournaments(validTournaments);
+                // Deduplicate tournaments before setting state (include ALL tournaments, not just real ones)
+                const deduplicatedTournaments = deduplicateTournaments(validTournaments);
+                if (deduplicatedTournaments.length !== validTournaments.length) {
+                    console.log(`Removed ${validTournaments.length - deduplicatedTournaments.length} duplicate tournaments`);
+                }
+
+                console.log(`Setting tournaments state with ${deduplicatedTournaments.length} tournaments (including ${deduplicatedTournaments.filter(t => t.isFallback).length} fallback tournaments)`);
+                setTournaments(deduplicatedTournaments);
 
                 // Try to load real data for fallback tournaments in the background
                 const fallbackTournaments = validTournaments.filter(t => t.isFallback);
                 if (fallbackTournaments.length > 0) {
                     console.log(`Attempting to load real data for ${fallbackTournaments.length} fallback tournaments...`);
 
-                    // Load real data for fallback tournaments with delays to avoid rate limiting
-                    fallbackTournaments.forEach(async (tournament, index) => {
-                        // Add delay between retries to avoid rate limiting
-                        setTimeout(async () => {
-                            try {
-                                console.log(`Retrying tournament ${tournament.id} in background...`);
-                                const realData = await loadBasicTournamentData(tournament.id);
-                                if (realData && !realData.isFallback) {
-                                    console.log(`Successfully loaded real data for tournament ${tournament.id}`);
-                                    // Update the tournament in the state
-                                    setTournaments(prev => prev.map(t => t.id === tournament.id ? realData : t));
-                                }
-                            } catch (error) {
-                                console.log(`Background retry failed for tournament ${tournament.id}:`, error);
-                            }
-                        }, index * 1000); // 1 second delay between each retry
-                    });
+                    // Prioritize completed tournaments (status 4) for loading
+                    const completedFallbacks = fallbackTournaments.filter(t => t.status === 4);
+                    const otherFallbacks = fallbackTournaments.filter(t => t.status !== 4);
+
+                    console.log(`Found ${completedFallbacks.length} completed fallback tournaments and ${otherFallbacks.length} other fallback tournaments`);
+
+                    // Removed background retry logic to prevent rate limiting
+                    console.log(`Skipping background retry for ${completedFallbacks.length} completed and ${otherFallbacks.length} other fallback tournaments to prevent rate limiting`);
                 }
             } catch (err) {
                 console.error('Error fetching tournaments:', err);
@@ -751,12 +1009,55 @@ export const Tournaments = () => {
         }
     }, [tournaments, loadTournamentDetails, loadingDetails]);
 
+    // Special retry mechanism for completed tournaments with fallback data
+    useEffect(() => {
+        const retryCompletedTournaments = async () => {
+            const completedFallbacks = tournaments.filter(t => t.status === 4 && t.isFallback);
+            if (completedFallbacks.length === 0) return;
+
+            console.log(`Retrying ${completedFallbacks.length} completed tournaments with fallback data...`);
+
+            for (const tournament of completedFallbacks) {
+                try {
+                    // Add a small delay to avoid rate limiting
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+
+                    console.log(`Retrying completed tournament ${tournament.id} with enhanced retry...`);
+
+                    // Clear cache for this tournament to force fresh data
+                    const cacheKey = `basic_${tournament.id}`;
+                    tournamentCache.delete(cacheKey);
+
+                    const realData = await loadBasicTournamentData(tournament.id);
+
+                    if (realData && !realData.isFallback) {
+                        console.log(`Successfully loaded real data for completed tournament ${tournament.id}:`, realData);
+                        setTournaments(prev => {
+                            return prev.map(t => t.id === tournament.id ? realData : t);
+                        });
+                    } else {
+                        console.log(`Still getting fallback data for completed tournament ${tournament.id}, will retry later`);
+                    }
+                } catch (error) {
+                    console.log(`Enhanced retry failed for completed tournament ${tournament.id}:`, error);
+                }
+            }
+        };
+
+        // Retry completed tournaments after a delay
+        const timeoutId = setTimeout(retryCompletedTournaments, 5000);
+        return () => clearTimeout(timeoutId);
+    }, [tournaments, loadBasicTournamentData]);
+
     // Poll Notifier events and auto-add tournaments upon tournamentCreated
     useEffect(() => {
         let mounted = true;
         let lastSeenTs = 0;
         let lastJoinTs = 0;
-        const interval = setInterval(async () => {
+        let consecutiveErrors = 0;
+        let pollInterval = 3000; // Start with 3 seconds
+
+        const pollNotifier = async () => {
             try {
                 // quick refresh on any join (players list often updated)
                 const anyJoinTs = await getAnyJoinTs();
@@ -766,30 +1067,89 @@ export const Tournaments = () => {
                     setTournaments(prev => [...prev]);
                 }
                 const events = await getRecentNotifierEvents();
-                if (!mounted || events.length === 0) return;
+                if (!mounted || events.length === 0) {
+                    // Reset error count on successful API call
+                    consecutiveErrors = 0;
+                    pollInterval = 3000;
+                    return;
+                }
                 // Process only new events
                 const newEvents = events.filter(e => e.ts > lastSeenTs);
-                if (newEvents.length === 0) return;
+                if (newEvents.length === 0) {
+                    // Reset error count on successful API call
+                    consecutiveErrors = 0;
+                    pollInterval = 3000;
+                    return;
+                }
                 lastSeenTs = Math.max(lastSeenTs, ...newEvents.map(e => e.ts));
                 // For tournamentCreated, fetch details and add to list if not present
                 const created = newEvents.filter(e => e.identifier === 'tournamentCreated');
-                if (created.length === 0) return;
+                if (created.length === 0) {
+                    // Reset error count on successful API call
+                    consecutiveErrors = 0;
+                    pollInterval = 3000;
+                    return;
+                }
                 const uniqueIds = Array.from(new Set(created.map(e => BigInt(e.tournament_id))));
                 for (const id of uniqueIds) {
-                    // Skip if already present
-                    if (tournaments.some(t => BigInt(t.id) === id)) continue;
+                    // Skip if already present - use more robust comparison
+                    if (tournaments.some(t => BigInt(t.id) === id)) {
+                        console.log(`Tournament ${id} already exists, skipping...`);
+                        continue;
+                    }
+                    console.log(`Adding new tournament ${id} from polling...`);
                     const basic = await loadBasicTournamentData(id);
-                    if (basic) {
-                        setTournaments(prev => [basic, ...prev].sort((a, b) => Number(b.id) - Number(a.id)));
+                    if (basic && !basic.isFallback) {
+                        setTournaments(prev => {
+                            // Double-check for duplicates before adding
+                            if (prev.some(t => BigInt(t.id) === id)) {
+                                console.log(`Tournament ${id} was added by another process, skipping...`);
+                                return prev;
+                            }
+                            console.log(`Successfully adding tournament ${id} to list`);
+                            const newTournaments = [basic, ...prev].sort((a, b) => Number(b.id) - Number(a.id));
+                            // Deduplicate the entire list to be safe
+                            return deduplicateTournaments(newTournaments);
+                        });
+                    } else if (basic && basic.isFallback) {
+                        console.log(`Skipping fallback tournament ${id} from polling`);
                     }
                 }
-            } catch {
-                // ignore polling errors
+                // Reset error count on successful API call
+                consecutiveErrors = 0;
+                pollInterval = 3000;
+            } catch (error) {
+                consecutiveErrors++;
+                console.warn(`Polling error ${consecutiveErrors}:`, error);
+
+                // Increase polling interval on consecutive errors to reduce server load
+                if (consecutiveErrors >= 3) {
+                    pollInterval = Math.min(pollInterval * 1.5, 30000); // Max 30 seconds
+                    console.log(`Increased polling interval to ${pollInterval}ms due to errors`);
+                }
             }
-        }, 3000);
+        };
+
+        let interval: NodeJS.Timeout;
+
+        const scheduleNextPoll = () => {
+            if (mounted) {
+                interval = setTimeout(() => {
+                    pollNotifier().then(() => {
+                        scheduleNextPoll();
+                    });
+                }, pollInterval);
+            }
+        };
+
+        // Start the first poll
+        scheduleNextPoll();
+
         return () => {
             mounted = false;
-            clearInterval(interval);
+            if (interval) {
+                clearTimeout(interval);
+            }
         };
     }, [tournaments, loadBasicTournamentData]);
 
@@ -799,6 +1159,12 @@ export const Tournaments = () => {
     const deferredSearch = useDeferredValue(searchTerm);
     const filteredTournaments = useMemo(() => {
         const filtered = tournaments.filter(tournament => {
+            // Filter out fallback tournaments (mock data) from display
+            if (tournament.isFallback) {
+                console.log(`Filtering out fallback tournament ${tournament.id} from display`);
+                return false;
+            }
+
             const query = deferredSearch.toLowerCase();
             const matchesSearch = tournament.name.toLowerCase().includes(query) ||
                 tournament.description.toLowerCase().includes(query) ||
@@ -839,12 +1205,21 @@ export const Tournaments = () => {
         return active;
     }, [filteredTournaments]);
     const completedTournaments = useMemo(() => {
-        const completed = filteredTournaments
+        const completed = tournaments
+            .filter(t => t.status === 4) // Completed (status 4) - include fallback tournaments too
+            .sort((a, b) => Number(b.id) - Number(a.id));
+        console.log(`Completed tournaments: ${completed.length} (total tournaments: ${tournaments.length})`);
+        return completed;
+    }, [tournaments]);
+
+    // Use completed tournaments directly from the tournaments list - no need for additional contract queries
+    const enhancedCompletedTournaments = useMemo(() => {
+        const completed = tournaments
             .filter(t => t.status === 4) // Completed (status 4)
             .sort((a, b) => Number(b.id) - Number(a.id));
-        console.log(`Completed tournaments: ${completed.length}`);
+        console.log(`Enhanced completed tournaments: ${completed.length} (total tournaments: ${tournaments.length})`);
         return completed;
-    }, [filteredTournaments]);
+    }, [tournaments]);
 
     // Pagination
     const totalPages = Math.ceil(activeTournaments.length / ITEMS_PER_PAGE);
@@ -895,60 +1270,190 @@ export const Tournaments = () => {
 
     return (
         <Box maxW="7xl" mx="auto" py={10} px={4}>
-            {/* Header */}
-            <HStack justify="space-between" align="center" mb={8}>
-                <Heading size="xl">Tournaments</Heading>
-                <Button
-                    leftIcon={<Trophy size={16} />}
-                    colorScheme="blue"
-                    variant="solid"
-                    size="md"
-                    borderRadius="xl"
-                    onClick={onOpen}
-                    _hover={{ transform: 'translateY(-2px)', boxShadow: 'lg' }}
-                >
-                    Completed ({completedTournaments.length})
-                </Button>
-            </HStack>
-
-            {/* Enhanced Search and Filters */}
+            {/* Cool Header with Gradient */}
             <Box
-                p={6}
-                bg="gray.800"
+                bgGradient="radial(circle at 20% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%), radial(circle at 80% 20%, rgba(147, 51, 234, 0.1) 0%, transparent 50%), radial(circle at 40% 80%, rgba(236, 72, 153, 0.1) 0%, transparent 50%)"
                 borderRadius="2xl"
+                p={8}
                 border="1px solid"
                 borderColor="gray.700"
                 mb={8}
+                _hover={{
+                    borderColor: "blue.400",
+                    boxShadow: "0 20px 40px rgba(59, 130, 246, 0.1)"
+                }}
+                transition="all 0.3s ease"
             >
+                <HStack justify="space-between" align="center">
+                    <VStack spacing={2} align="start">
+                        <Heading
+                            size="xl"
+                            bgGradient="linear(135deg, blue.400, purple.500, pink.400)"
+                            bgClip="text"
+                            fontWeight="extrabold"
+                        >
+                            Tournaments
+                        </Heading>
+                        <Text color="gray.400" fontSize="md">
+                            Discover and join competitive gaming tournaments
+                        </Text>
+                    </VStack>
+                    <Button
+                        leftIcon={<Trophy size={18} />}
+                        size="lg"
+                        px={6}
+                        py={4}
+                        fontSize="md"
+                        fontWeight="bold"
+                        bgGradient="linear(135deg, blue.500, purple.600, blue.700)"
+                        color="white"
+                        borderRadius="xl"
+                        boxShadow="0 10px 30px rgba(59, 130, 246, 0.4)"
+                        onClick={onOpen}
+                        _hover={{
+                            bgGradient: "linear(135deg, blue.600, purple.700, blue.800)",
+                            transform: 'translateY(-3px)',
+                            boxShadow: '0 15px 40px rgba(59, 130, 246, 0.6)'
+                        }}
+                        _active={{
+                            transform: 'translateY(-1px)',
+                            boxShadow: '0 8px 25px rgba(59, 130, 246, 0.5)'
+                        }}
+                        transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                        position="relative"
+                        overflow="hidden"
+                    >
+                        {/* Animated background effect */}
+                        <Box
+                            position="absolute"
+                            top={0}
+                            left="-100%"
+                            w="100%"
+                            h="100%"
+                            bgGradient="linear(90deg, transparent, rgba(255,255,255,0.2), transparent)"
+                            transition="left 0.5s ease"
+                            _groupHover={{
+                                left: "100%"
+                            }}
+                        />
+                        <HStack spacing={2}>
+                            <Box
+                                p={1}
+                                bg="rgba(255,255,255,0.2)"
+                                borderRadius="md"
+                            >
+                                <Trophy size={18} />
+                            </Box>
+                            <Text>Completed ({enhancedCompletedTournaments.length})</Text>
+                        </HStack>
+                    </Button>
+                </HStack>
+                <Button
+                    leftIcon={<RefreshCw size={18} />}
+                    colorScheme="orange"
+                    variant="outline"
+                    size="lg"
+                    onClick={clearAllCachesAndRefresh}
+                    _hover={{ bg: 'orange.600', color: 'white' }}
+                    _focus={{ bg: 'orange.600', color: 'white' }}
+                >
+                    Clear Cache & Refresh
+                </Button>
+            </Box>
+
+            {/* Cool Search and Filters */}
+            <Box
+                p={8}
+                bgGradient="linear(135deg, gray.800, gray.900)"
+                borderRadius="2xl"
+                border="2px solid"
+                borderColor="gray.600"
+                boxShadow="0 20px 40px rgba(0,0,0,0.3)"
+                mb={8}
+                _hover={{
+                    borderColor: "purple.400",
+                    boxShadow: "0 25px 50px rgba(147, 51, 234, 0.2)"
+                }}
+                transition="all 0.3s ease"
+                position="relative"
+                overflow="hidden"
+            >
+                {/* Animated Background */}
+                <Box
+                    position="absolute"
+                    top={0}
+                    left={0}
+                    right={0}
+                    h="4px"
+                    bgGradient="linear(90deg, purple.500, pink.500, purple.500)"
+                    backgroundSize="200% 100%"
+                    animation="gradient 3s ease infinite"
+                    sx={{
+                        '@keyframes gradient': {
+                            '0%': { backgroundPosition: '0% 50%' },
+                            '50%': { backgroundPosition: '100% 50%' },
+                            '100%': { backgroundPosition: '0% 50%' }
+                        }
+                    }}
+                />
+
                 <VStack spacing={6} align="stretch">
                     <HStack justify="space-between" align="center">
-                        <Heading size="md" color="gray.200">Search & Filter</Heading>
+                        <HStack spacing={3}>
+                            <Box
+                                p={2}
+                                bgGradient="linear(135deg, purple.500, pink.600)"
+                                borderRadius="xl"
+                                boxShadow="0 8px 20px rgba(147, 51, 234, 0.3)"
+                            >
+                                <Search size={20} color="white" />
+                            </Box>
+                            <Heading size="lg" color="white" fontWeight="bold">Search & Filter</Heading>
+                        </HStack>
                         <IconButton
                             aria-label="Toggle filters"
                             icon={showFilters ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                             onClick={() => setShowFilters(!showFilters)}
                             variant="ghost"
-                            size="sm"
-                            colorScheme="blue"
-                            _hover={{ bg: 'blue.600', color: 'white' }}
-                            _focus={{ bg: 'blue.600', color: 'white' }}
+                            size="md"
+                            color="purple.300"
+                            _hover={{
+                                bg: 'purple.600',
+                                color: 'white',
+                                transform: 'scale(1.1)'
+                            }}
+                            _focus={{ bg: 'purple.600', color: 'white' }}
+                            transition="all 0.2s ease"
                         />
                     </HStack>
 
-                    <InputGroup maxW="500px">
+                    <InputGroup maxW="600px">
                         <InputLeftElement pointerEvents="none">
-                            <Search size={18} color="gray.400" />
+                            <Search size={20} color="purple.400" />
                         </InputLeftElement>
                         <Input
                             placeholder="Search tournaments by name, creator, or game type..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             bg="gray.700"
+                            border="2px solid"
                             borderColor="gray.600"
-                            _hover={{ borderColor: "gray.500" }}
-                            _focus={{ borderColor: "blue.500", boxShadow: "0 0 0 1px #3182ce" }}
+                            borderRadius="xl"
+                            _hover={{
+                                borderColor: "purple.400",
+                                transform: "translateY(-1px)",
+                                boxShadow: "0 4px 12px rgba(147, 51, 234, 0.2)"
+                            }}
+                            _focus={{
+                                borderColor: "purple.500",
+                                boxShadow: "0 0 0 3px rgba(147, 51, 234, 0.1)",
+                                transform: "translateY(-1px)"
+                            }}
                             size="lg"
                             fontSize="md"
+                            color="white"
+                            _placeholder={{ color: "gray.400" }}
+                            transition="all 0.2s ease"
                         />
                     </InputGroup>
 
@@ -958,30 +1463,51 @@ export const Tournaments = () => {
                                 value={statusFilter}
                                 onChange={(e) => setStatusFilter(e.target.value)}
                                 bg="gray.700"
+                                border="2px solid"
                                 borderColor="gray.600"
+                                borderRadius="xl"
                                 maxW="200px"
-                                _hover={{ borderColor: "gray.500" }}
-                                _focus={{ borderColor: "blue.500" }}
+                                _hover={{
+                                    borderColor: "purple.400",
+                                    transform: "translateY(-1px)",
+                                    boxShadow: "0 4px 12px rgba(147, 51, 234, 0.2)"
+                                }}
+                                _focus={{
+                                    borderColor: "purple.500",
+                                    boxShadow: "0 0 0 3px rgba(147, 51, 234, 0.1)"
+                                }}
+                                color="white"
+                                transition="all 0.2s ease"
                             >
                                 <option value="all">All Status</option>
                                 <option value="active">Playing Only</option>
                                 <option value="completed">Completed Only</option>
                                 <option value="0">Joining</option>
-                                <option value="1">Ready to Start</option>
-                                <option value="2">Playing</option>
-                                <option value="3">Processing Results</option>
-                                <option value="4">Completed</option>
+                                <option value="1">Playing</option>
+                                <option value="2">Processing Results</option>
+                                <option value="3">Completed</option>
                             </Select>
 
                             <Button
-                                size="sm"
+                                size="md"
                                 variant="outline"
-                                colorScheme="blue"
+                                colorScheme="purple"
+                                borderRadius="xl"
+                                border="2px solid"
+                                borderColor="purple.500"
+                                color="purple.300"
+                                fontWeight="semibold"
                                 onClick={() => {
                                     setSearchTerm('');
                                     setStatusFilter('all');
                                 }}
-                                _hover={{ bg: "blue.600", color: "white" }}
+                                _hover={{
+                                    bg: "purple.600",
+                                    color: "white",
+                                    transform: "translateY(-2px)",
+                                    boxShadow: "0 8px 20px rgba(147, 51, 234, 0.3)"
+                                }}
+                                transition="all 0.2s ease"
                             >
                                 Clear Filters
                             </Button>
@@ -993,89 +1519,287 @@ export const Tournaments = () => {
             {/* Active Tournaments Section */}
             <VStack spacing={6} align="stretch">
 
-                {/* Show message when no tournaments at all */}
+                {/* Cool No Tournaments Message */}
                 {tournaments.length === 0 && !loading && (
                     <Box
-                        p={8}
+                        p={12}
                         textAlign="center"
-                        bg="gray.800"
-                        borderRadius="lg"
-                        border="1px solid"
-                        borderColor="gray.700"
+                        bgGradient="linear(135deg, gray.800, gray.900)"
+                        borderRadius="2xl"
+                        border="2px solid"
+                        borderColor="gray.600"
+                        boxShadow="0 20px 40px rgba(0,0,0,0.3)"
+                        _hover={{
+                            borderColor: "blue.400",
+                            boxShadow: "0 25px 50px rgba(59, 130, 246, 0.2)"
+                        }}
+                        transition="all 0.3s ease"
+                        position="relative"
+                        overflow="hidden"
                     >
-                        <VStack spacing={4}>
-                            <Trophy size={48} color="#9CA3AF" />
-                            <VStack spacing={2}>
-                                <Text fontSize="xl" fontWeight="bold" color="gray.300">
+                        {/* Animated Background */}
+                        <Box
+                            position="absolute"
+                            top={0}
+                            left={0}
+                            right={0}
+                            h="4px"
+                            bgGradient="linear(90deg, blue.500, purple.500, pink.500, blue.500)"
+                            backgroundSize="200% 100%"
+                            animation="gradient 3s ease infinite"
+                            sx={{
+                                '@keyframes gradient': {
+                                    '0%': { backgroundPosition: '0% 50%' },
+                                    '50%': { backgroundPosition: '100% 50%' },
+                                    '100%': { backgroundPosition: '0% 50%' }
+                                }
+                            }}
+                        />
+
+                        <VStack spacing={6}>
+                            <Box
+                                p={4}
+                                bgGradient="linear(135deg, blue.500, purple.600)"
+                                borderRadius="2xl"
+                                boxShadow="0 10px 30px rgba(59, 130, 246, 0.4)"
+                                _hover={{
+                                    transform: "scale(1.1)",
+                                    boxShadow: "0 15px 40px rgba(59, 130, 246, 0.6)"
+                                }}
+                                transition="all 0.3s ease"
+                            >
+                                <Trophy size={56} color="white" />
+                            </Box>
+                            <VStack spacing={3}>
+                                <Heading fontSize="2xl" fontWeight="bold" color="white">
                                     No Tournaments Yet
-                                </Text>
-                                <Text color="gray.400">
+                                </Heading>
+                                <Text color="gray.300" fontSize="lg" maxW="md">
                                     Be the first to create a tournament and start the competition!
                                 </Text>
                             </VStack>
                             <Button
-                                colorScheme="blue"
                                 size="lg"
+                                px={8}
+                                py={6}
+                                fontSize="lg"
+                                fontWeight="bold"
+                                bgGradient="linear(135deg, blue.500, purple.600, blue.700)"
+                                color="white"
+                                borderRadius="xl"
+                                boxShadow="0 10px 30px rgba(59, 130, 246, 0.4)"
                                 onClick={() => {
                                     window.location.href = '/create';
                                 }}
+                                _hover={{
+                                    bgGradient: "linear(135deg, blue.600, purple.700, blue.800)",
+                                    transform: 'translateY(-3px)',
+                                    boxShadow: '0 15px 40px rgba(59, 130, 246, 0.6)'
+                                }}
+                                _active={{
+                                    transform: 'translateY(-1px)',
+                                    boxShadow: '0 8px 25px rgba(59, 130, 246, 0.5)'
+                                }}
+                                transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                                position="relative"
+                                overflow="hidden"
                             >
-                                Create Your First Tournament
+                                {/* Animated background effect */}
+                                <Box
+                                    position="absolute"
+                                    top={0}
+                                    left="-100%"
+                                    w="100%"
+                                    h="100%"
+                                    bgGradient="linear(90deg, transparent, rgba(255,255,255,0.2), transparent)"
+                                    transition="left 0.5s ease"
+                                    _groupHover={{
+                                        left: "100%"
+                                    }}
+                                />
+                                <HStack spacing={3}>
+                                    <Box
+                                        p={1}
+                                        bg="rgba(255,255,255,0.2)"
+                                        borderRadius="md"
+                                    >
+                                        <Plus size={20} />
+                                    </Box>
+                                    <Text>Create Your First Tournament</Text>
+                                </HStack>
                             </Button>
                         </VStack>
                     </Box>
                 )}
 
-                <HStack justify="space-between" align="center">
-                    <HStack>
-                        <Clock size={24} color="#3182CE" />
-                        <Heading size="lg">Active Tournaments</Heading>
-                        <Badge colorScheme="blue" fontSize="sm" px={2} py={1} borderRadius="md">
-                            {activeTournaments.length}
-                        </Badge>
-                        {activeTournaments.length > 0 && activeTournaments.some(t => t.isWorkaround) && (
-                            <Text fontSize="sm" color="blue.400" ml={2}>
-                                ℹ️ Using workaround data (contract getTournament function has a bug)
-                            </Text>
-                        )}
-                        {activeTournaments.length > 0 && activeTournaments.every(t => t.isFallback) && (
-                            <Text fontSize="sm" color="yellow.400" ml={2}>
-                                ⚠️ Tournament data failed to load - showing placeholder data
-                            </Text>
-                        )}
+                <Box
+                    bgGradient="linear(135deg, gray.800, gray.900)"
+                    borderRadius="2xl"
+                    p={6}
+                    border="2px solid"
+                    borderColor="gray.600"
+                    boxShadow="0 20px 40px rgba(0,0,0,0.3)"
+                    _hover={{
+                        borderColor: "green.400",
+                        boxShadow: "0 25px 50px rgba(34, 197, 94, 0.2)"
+                    }}
+                    transition="all 0.3s ease"
+                    position="relative"
+                    overflow="hidden"
+                >
+                    {/* Animated Background */}
+                    <Box
+                        position="absolute"
+                        top={0}
+                        left={0}
+                        right={0}
+                        h="4px"
+                        bgGradient="linear(90deg, green.500, emerald.500, green.500)"
+                        backgroundSize="200% 100%"
+                        animation="gradient 3s ease infinite"
+                        sx={{
+                            '@keyframes gradient': {
+                                '0%': { backgroundPosition: '0% 50%' },
+                                '50%': { backgroundPosition: '100% 50%' },
+                                '100%': { backgroundPosition: '0% 50%' }
+                            }
+                        }}
+                    />
+
+                    <HStack justify="space-between" align="center">
+                        <HStack spacing={4}>
+                            <Box
+                                p={2}
+                                bgGradient="linear(135deg, green.500, emerald.600)"
+                                borderRadius="xl"
+                                boxShadow="0 8px 20px rgba(34, 197, 94, 0.3)"
+                            >
+                                <Clock size={24} color="white" />
+                            </Box>
+                            <VStack spacing={1} align="start">
+                                <HStack spacing={3}>
+                                    <Heading size="lg" color="white" fontWeight="bold">Active Tournaments</Heading>
+                                    <Badge
+                                        bgGradient="linear(135deg, green.500, emerald.600)"
+                                        color="white"
+                                        fontSize="sm"
+                                        px={3}
+                                        py={1}
+                                        borderRadius="xl"
+                                        boxShadow="0 4px 12px rgba(34, 197, 94, 0.3)"
+                                    >
+                                        {activeTournaments.length}
+                                    </Badge>
+                                </HStack>
+                                {activeTournaments.length > 0 && activeTournaments.some(t => t.isWorkaround) && (
+                                    <Text fontSize="sm" color="blue.300" fontWeight="medium">
+                                        ℹ️ Using workaround data (contract getTournament function has a bug)
+                                    </Text>
+                                )}
+                                {activeTournaments.length > 0 && activeTournaments.every(t => t.isFallback) && (
+                                    <Text fontSize="sm" color="yellow.300" fontWeight="medium">
+                                        ⚠️ Tournament data failed to load - showing placeholder data
+                                    </Text>
+                                )}
+                            </VStack>
+                        </HStack>
+                        <HStack spacing={3}>
+                            <Button
+                                onClick={() => window.location.href = '/tournaments/create'}
+                                size="md"
+                                bgGradient="linear(135deg, green.500, emerald.600, green.700)"
+                                color="white"
+                                borderRadius="xl"
+                                boxShadow="0 10px 30px rgba(34, 197, 94, 0.4)"
+                                leftIcon={<Plus size={18} />}
+                                fontWeight="bold"
+                                _hover={{
+                                    bgGradient: "linear(135deg, green.600, emerald.700, green.800)",
+                                    transform: 'translateY(-3px)',
+                                    boxShadow: '0 15px 40px rgba(34, 197, 94, 0.6)'
+                                }}
+                                _active={{
+                                    transform: 'translateY(-1px)',
+                                    boxShadow: '0 8px 25px rgba(34, 197, 94, 0.5)'
+                                }}
+                                transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                                position="relative"
+                                overflow="hidden"
+                            >
+                                {/* Animated background effect */}
+                                <Box
+                                    position="absolute"
+                                    top={0}
+                                    left="-100%"
+                                    w="100%"
+                                    h="100%"
+                                    bgGradient="linear(90deg, transparent, rgba(255,255,255,0.2), transparent)"
+                                    transition="left 0.5s ease"
+                                    _groupHover={{
+                                        left: "100%"
+                                    }}
+                                />
+                                <Text>Create Tournament</Text>
+                            </Button>
+                        </HStack>
                     </HStack>
-                    <HStack spacing={2}>
-                        <Button
-                            onClick={refreshTournaments}
-                            size="sm"
-                            variant="outline"
-                            colorScheme="blue"
-                            leftIcon={<RefreshCw size={16} />}
-                            isLoading={refreshing}
-                            loadingText="Refreshing"
-                        >
-                            Refresh
-                        </Button>
-                        <Button
-                            onClick={() => window.location.href = '/tournaments/create'}
-                            size="sm"
-                            colorScheme="green"
-                            variant="solid"
-                            leftIcon={<Plus size={16} />}
-                            fontWeight="semibold"
-                        >
-                            Create Tournament
-                        </Button>
-                    </HStack>
-                </HStack>
+                </Box>
 
                 {activeTournaments.length === 0 ? (
-                    <VStack justify="center" align="center" h="48" spacing={4}>
-                        <Clock size={24} color="#3182CE" />
-                        <Text color="gray.400" textAlign="center">
-                            No active tournaments found. Create one to get started!
-                        </Text>
-                    </VStack>
+                    <Box
+                        p={8}
+                        textAlign="center"
+                        bgGradient="linear(135deg, gray.800, gray.900)"
+                        borderRadius="2xl"
+                        border="2px solid"
+                        borderColor="gray.600"
+                        boxShadow="0 20px 40px rgba(0,0,0,0.3)"
+                        _hover={{
+                            borderColor: "green.400",
+                            boxShadow: "0 25px 50px rgba(34, 197, 94, 0.2)"
+                        }}
+                        transition="all 0.3s ease"
+                        position="relative"
+                        overflow="hidden"
+                    >
+                        {/* Animated Background */}
+                        <Box
+                            position="absolute"
+                            top={0}
+                            left={0}
+                            right={0}
+                            h="4px"
+                            bgGradient="linear(90deg, green.500, emerald.500, green.500)"
+                            backgroundSize="200% 100%"
+                            animation="gradient 3s ease infinite"
+                            sx={{
+                                '@keyframes gradient': {
+                                    '0%': { backgroundPosition: '0% 50%' },
+                                    '50%': { backgroundPosition: '100% 50%' },
+                                    '100%': { backgroundPosition: '0% 50%' }
+                                }
+                            }}
+                        />
+
+                        <VStack spacing={4}>
+                            <Box
+                                p={3}
+                                bgGradient="linear(135deg, green.500, emerald.600)"
+                                borderRadius="xl"
+                                boxShadow="0 8px 20px rgba(34, 197, 94, 0.3)"
+                                _hover={{
+                                    transform: "scale(1.1)",
+                                    boxShadow: "0 12px 25px rgba(34, 197, 94, 0.4)"
+                                }}
+                                transition="all 0.3s ease"
+                            >
+                                <Clock size={32} color="white" />
+                            </Box>
+                            <Text color="gray.300" fontSize="lg" fontWeight="medium">
+                                No active tournaments found. Create one to get started!
+                            </Text>
+                        </VStack>
+                    </Box>
                 ) : (
                     <>
                         <SimpleGrid columns={columns} spacing={8}>
@@ -1084,6 +1808,7 @@ export const Tournaments = () => {
                                     key={tournament.id}
                                     tournament={tournament}
                                     onLoadDetails={loadTournamentDetails}
+                                    onRetryTournament={retryTournament}
                                 />
                             ))}
                         </SimpleGrid>
@@ -1180,35 +1905,148 @@ export const Tournaments = () => {
                 )}
             </VStack>
 
-            {/* Completed Tournaments Modal */}
+            {/* Cool Completed Tournaments Modal */}
             <Modal isOpen={isOpen} onClose={onClose} size="6xl">
-                <ModalOverlay />
-                <ModalContent bg={bgColor} borderColor={borderColor}>
-                    <ModalHeader>
-                        <HStack>
-                            <Trophy size={24} color="#718096" />
-                            <Text>Completed Tournaments</Text>
-                            <Badge colorScheme="gray" fontSize="sm" px={2} py={1} borderRadius="md">
-                                {completedTournaments.length}
+                <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(10px)" />
+                <ModalContent
+                    bgGradient="linear(135deg, gray.800, gray.900)"
+                    borderRadius="2xl"
+                    border="2px solid"
+                    borderColor="gray.600"
+                    boxShadow="0 25px 50px rgba(0,0,0,0.5)"
+                    position="relative"
+                    overflow="hidden"
+                >
+                    {/* Animated Background */}
+                    <Box
+                        position="absolute"
+                        top={0}
+                        left={0}
+                        right={0}
+                        h="4px"
+                        bgGradient="linear(90deg, purple.500, pink.500, purple.500)"
+                        backgroundSize="200% 100%"
+                        animation="gradient 3s ease infinite"
+                        sx={{
+                            '@keyframes gradient': {
+                                '0%': { backgroundPosition: '0% 50%' },
+                                '50%': { backgroundPosition: '100% 50%' },
+                                '100%': { backgroundPosition: '0% 50%' }
+                            }
+                        }}
+                    />
+
+                    <ModalHeader pb={4}>
+                        <HStack spacing={4}>
+                            <Box
+                                p={2}
+                                bgGradient="linear(135deg, purple.500, pink.600)"
+                                borderRadius="xl"
+                                boxShadow="0 8px 20px rgba(147, 51, 234, 0.3)"
+                            >
+                                <Trophy size={24} color="white" />
+                            </Box>
+                            <VStack spacing={1} align="start">
+                                <Heading size="lg" color="white" fontWeight="bold">
+                                    Completed Tournaments
+                                </Heading>
+                                <Text color="purple.300" fontSize="sm" fontWeight="medium">
+                                    View all finished tournaments and their results
+                                </Text>
+                            </VStack>
+                            <Badge
+                                bgGradient="linear(135deg, purple.500, pink.600)"
+                                color="white"
+                                fontSize="md"
+                                px={3}
+                                py={1}
+                                borderRadius="xl"
+                                boxShadow="0 4px 12px rgba(147, 51, 234, 0.3)"
+                                fontWeight="bold"
+                            >
+                                {enhancedCompletedTournaments.length}
                             </Badge>
                         </HStack>
                     </ModalHeader>
-                    <ModalCloseButton />
-                    <ModalBody pb={6}>
-                        {completedTournaments.length === 0 ? (
-                            <VStack justify="center" align="center" h="48" spacing={4}>
-                                <Trophy size={24} color="#718096" />
-                                <Text color="gray.400" textAlign="center">
-                                    No completed tournaments yet.
-                                </Text>
-                            </VStack>
+                    <ModalCloseButton
+                        color="purple.300"
+                        _hover={{
+                            bg: 'purple.600',
+                            color: 'white',
+                            transform: 'scale(1.1)'
+                        }}
+                        _focus={{ bg: 'purple.600', color: 'white' }}
+                        transition="all 0.2s ease"
+                    />
+                    <ModalBody pb={8}>
+                        {enhancedCompletedTournaments.length === 0 ? (
+                            <Box
+                                p={12}
+                                textAlign="center"
+                                bgGradient="linear(135deg, gray.700, gray.800)"
+                                borderRadius="2xl"
+                                border="2px solid"
+                                borderColor="gray.600"
+                                boxShadow="0 20px 40px rgba(0,0,0,0.3)"
+                                _hover={{
+                                    borderColor: "purple.400",
+                                    boxShadow: "0 25px 50px rgba(147, 51, 234, 0.2)"
+                                }}
+                                transition="all 0.3s ease"
+                                position="relative"
+                                overflow="hidden"
+                            >
+                                {/* Animated Background */}
+                                <Box
+                                    position="absolute"
+                                    top={0}
+                                    left={0}
+                                    right={0}
+                                    h="4px"
+                                    bgGradient="linear(90deg, purple.500, pink.500, purple.500)"
+                                    backgroundSize="200% 100%"
+                                    animation="gradient 3s ease infinite"
+                                    sx={{
+                                        '@keyframes gradient': {
+                                            '0%': { backgroundPosition: '0% 50%' },
+                                            '50%': { backgroundPosition: '100% 50%' },
+                                            '100%': { backgroundPosition: '0% 50%' }
+                                        }
+                                    }}
+                                />
+
+                                <VStack spacing={6}>
+                                    <Box
+                                        p={4}
+                                        bgGradient="linear(135deg, purple.500, pink.600)"
+                                        borderRadius="2xl"
+                                        boxShadow="0 10px 30px rgba(147, 51, 234, 0.4)"
+                                        _hover={{
+                                            transform: "scale(1.1)",
+                                            boxShadow: "0 15px 40px rgba(147, 51, 234, 0.6)"
+                                        }}
+                                        transition="all 0.3s ease"
+                                    >
+                                        <Trophy size={48} color="white" />
+                                    </Box>
+                                    <VStack spacing={3}>
+                                        <Heading fontSize="2xl" fontWeight="bold" color="white">
+                                            No Completed Tournaments Yet
+                                        </Heading>
+                                        <Text color="gray.300" fontSize="lg" maxW="md">
+                                            Completed tournaments will appear here once they finish.
+                                        </Text>
+                                    </VStack>
+                                </VStack>
+                            </Box>
                         ) : (
                             <SimpleGrid columns={columns} spacing={8}>
-                                {completedTournaments.map((tournament) => (
+                                {enhancedCompletedTournaments.map((tournament) => (
                                     <TournamentCard
                                         key={tournament.id}
                                         tournament={tournament}
                                         onLoadDetails={loadTournamentDetails}
+                                        onRetryTournament={retryTournament}
                                     />
                                 ))}
                             </SimpleGrid>

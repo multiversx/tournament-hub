@@ -101,6 +101,16 @@ export const GameSession: React.FC = () => {
         );
     }
 
+    // If we have a tournamentId but no actualSessionId yet, show loading
+    if (tournamentId && !actualSessionId) {
+        return (
+            <Box textAlign="center" py={8}>
+                <Spinner size="xl" color="blue.400" />
+                <Text mt={4}>Creating game session...</Text>
+            </Box>
+        );
+    }
+
     if (!playerAddress) {
         return (
             <Box textAlign="center" py={8}>
