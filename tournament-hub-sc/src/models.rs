@@ -14,12 +14,13 @@ pub struct GameConfig<M: ManagedTypeApi> {
 
 #[type_abi]
 #[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
+#[repr(u32)]
 pub enum TournamentStatus {
-    Joining,           // Players can join, waiting for minimum players
-    ReadyToStart,      // Minimum players reached, ready to start
-    Active,            // Game is active and running
-    ProcessingResults, // Game finished, processing results
-    Completed,         // Results processed, prizes distributed
+    Joining = 0,           // Players can join, waiting for minimum players
+    ReadyToStart = 1,      // Minimum players reached, ready to start
+    Active = 2,            // Game is active and running
+    ProcessingResults = 3, // Game finished, processing results
+    Completed = 4,         // Results processed, prizes distributed
 }
 
 #[type_abi]
@@ -33,7 +34,6 @@ pub struct Tournament<M: ManagedTypeApi> {
     pub max_players: u32,
     pub min_players: u32, // Minimum players required to start the game
     pub entry_fee: BigUint<M>,
-    pub duration: u64, // duration in seconds
     pub name: ManagedBuffer<M>,
     pub created_at: u64,
 }
@@ -56,7 +56,9 @@ pub struct SpectatorClaim<M: ManagedTypeApi> {
 }
 
 #[type_abi]
-#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
+#[derive(
+    TopEncode, TopDecode, ManagedVecItem, NestedEncode, NestedDecode, Clone, Debug, PartialEq,
+)]
 pub struct UserStats<M: ManagedTypeApi> {
     pub games_played: u32,
     pub wins: u32,
@@ -70,4 +72,39 @@ pub struct UserStats<M: ManagedTypeApi> {
     pub best_streak: u32,
     pub last_activity: u64, // timestamp
     pub member_since: u64,  // timestamp
+}
+
+#[type_abi]
+#[derive(
+    TopEncode, TopDecode, ManagedVecItem, NestedEncode, NestedDecode, Clone, Debug, PartialEq,
+)]
+pub struct TournamentBasicInfo<M: ManagedTypeApi> {
+    pub tournament_id: u64,
+    pub game_id: u64,
+    pub status: u32,
+    pub participants: ManagedVec<M, ManagedAddress<M>>,
+    pub creator: ManagedAddress<M>,
+    pub max_players: u32,
+    pub min_players: u32,
+    pub entry_fee: BigUint<M>,
+    pub name: ManagedBuffer<M>,
+    pub created_at: u64,
+}
+
+#[type_abi]
+#[derive(
+    TopEncode, TopDecode, ManagedVecItem, NestedEncode, NestedDecode, Clone, Debug, PartialEq,
+)]
+pub struct TournamentStatusInfo {
+    pub tournament_id: u64,
+    pub status: u32,
+}
+
+#[type_abi]
+#[derive(
+    TopEncode, TopDecode, ManagedVecItem, NestedEncode, NestedDecode, Clone, Debug, PartialEq,
+)]
+pub struct UserStatsInfo<M: ManagedTypeApi> {
+    pub address: ManagedAddress<M>,
+    pub stats: UserStats<M>,
 }

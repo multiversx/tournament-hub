@@ -12,20 +12,19 @@ pub trait TournamentManagementModule:
     #[payable("EGLD")]
     fn create_tournament(
         &self,
-        game_index: u64, // sequential index for the game (starting from 1)
+        game_index: u32, // sequential index for the game (starting from 1)
         max_players: u32,
         min_players: u32, // minimum players required to start
         entry_fee: BigUint,
-        duration: u64, // duration in seconds
         name: ManagedBuffer,
     ) {
         let payment = self.call_value().egld().clone_value();
         let caller = self.blockchain().get_caller();
 
         // Check that the game exists
-        let games_len = self.registered_games().len() as u64;
+        let games_len = self.registered_games().len();
         require!(
-            game_index > 0 && game_index <= games_len,
+            game_index > 0 && game_index <= games_len as u32,
             "Game not registered"
         );
 
@@ -39,12 +38,6 @@ pub trait TournamentManagementModule:
         require!(
             min_players >= 2 && min_players <= max_players,
             "Min players must be between 2 and max_players"
-        );
-
-        // Validate duration (minimum 1 hour, maximum 30 days)
-        require!(
-            duration >= 3600 && duration <= 2592000,
-            "Duration must be between 1 hour and 30 days"
         );
 
         // Validate name
@@ -61,7 +54,7 @@ pub trait TournamentManagementModule:
 
         // Prepare tournament with new fields
         let mut tournament = Tournament {
-            game_id: game_index, // store the index as the game_id
+            game_id: game_index as u64, // store the index as the game_id
             status: TournamentStatus::Joining,
             participants: ManagedVec::new(),
             final_podium: ManagedVec::new(),
@@ -69,7 +62,6 @@ pub trait TournamentManagementModule:
             max_players,
             min_players,
             entry_fee,
-            duration,
             name,
             created_at: self.blockchain().get_block_timestamp(),
         };
@@ -79,45 +71,35 @@ pub trait TournamentManagementModule:
 
         // Add tournament to VecMapper; index will be the tournament ID (starting from 1)
         self.active_tournaments().push(&tournament);
-        let tournament_index = self.active_tournaments().len() as u64; // index of the newly added tournament
+        let tournament_index = self.active_tournaments().len(); // tournament ID (1-based)
 
         // Update user statistics
-        self.update_user_tournament_created(&caller, tournament_index);
+        self.update_user_tournament_created(&caller, tournament_index as u64);
 
         // Update global statistics
         self.total_tournaments_created().update(|count| *count += 1);
 
-        self.tournament_created_event(&tournament_index, &game_index, &caller);
+        self.tournament_created_event(&(tournament_index as u64), &(game_index as u64), &caller);
     }
 
     #[endpoint(joinTournament)]
     #[payable("EGLD")]
-    fn join_tournament(&self, tournament_index: u64) {
+    fn join_tournament(&self, tournament_index: usize) {
         let payment = self.call_value().egld().clone_value();
         let caller = self.blockchain().get_caller();
 
-        let tournaments_len = self.active_tournaments().len() as u64;
+        let tournaments_len = self.active_tournaments().len();
         require!(
             tournament_index > 0 && tournament_index <= tournaments_len,
             "Tournament does not exist"
         );
 
-        let mut tournament = self
-            .active_tournaments()
-            .get(tournament_index as usize)
-            .clone();
+        let mut tournament = self.active_tournaments().get(tournament_index).clone();
 
         // Check if player can join based on status
         match tournament.status {
             TournamentStatus::Joining | TournamentStatus::ReadyToStart => {
-                // Check if tournament is still open (duration check)
-                let current_time = self.blockchain().get_block_timestamp();
-                let tournament_end_time = tournament.created_at + tournament.duration;
-
-                require!(
-                    current_time < tournament_end_time,
-                    "Tournament registration period has ended"
-                );
+                // Tournament is open for joining
             }
             _ => {
                 sc_panic!("Cannot join tournament in current status");
@@ -147,11 +129,10 @@ pub trait TournamentManagementModule:
         // Add player
         tournament.participants.push(caller.clone());
 
-        self.active_tournaments()
-            .set(tournament_index as usize, &tournament);
+        self.active_tournaments().set(tournament_index, &tournament);
 
         // Update user statistics
-        self.update_user_tournament_joined(&caller, tournament_index);
+        self.update_user_tournament_joined(&caller, tournament_index as u64);
 
         self.player_joined_event(&(tournament_index as u64), &caller);
 
@@ -160,24 +141,21 @@ pub trait TournamentManagementModule:
             tournament.status = TournamentStatus::ReadyToStart;
             self.active_tournaments()
                 .set(tournament_index as usize, &tournament);
-            self.tournament_ready_to_start_event(&tournament_index);
+            self.tournament_ready_to_start_event(&(tournament_index as u64));
         }
     }
 
     #[endpoint(startGame)]
-    fn start_game(&self, tournament_index: u64) {
+    fn start_game(&self, tournament_index: usize) {
         let caller = self.blockchain().get_caller();
 
-        let tournaments_len = self.active_tournaments().len() as u64;
+        let tournaments_len = self.active_tournaments().len();
         require!(
             tournament_index > 0 && tournament_index <= tournaments_len,
             "Tournament does not exist"
         );
 
-        let mut tournament = self
-            .active_tournaments()
-            .get(tournament_index as usize)
-            .clone();
+        let mut tournament = self.active_tournaments().get(tournament_index).clone();
 
         // Only allow starting if status is ReadyToStart
         require!(
@@ -193,8 +171,7 @@ pub trait TournamentManagementModule:
 
         // Transition to Active status
         tournament.status = TournamentStatus::Active;
-        self.active_tournaments()
-            .set(tournament_index as usize, &tournament);
+        self.active_tournaments().set(tournament_index, &tournament);
 
         // Update games_played for all participants when tournament starts
         for participant in tournament.participants.iter() {
@@ -204,7 +181,7 @@ pub trait TournamentManagementModule:
             });
         }
 
-        self.game_started_event(&tournament_index, &caller);
+        self.game_started_event(&(tournament_index as u64), &caller);
     }
 
     // Keep the old setTournamentFee for backward compatibility (now sets default fee)
@@ -214,16 +191,13 @@ pub trait TournamentManagementModule:
     }
 
     #[view(getPrizePool)]
-    fn get_prize_pool(&self, tournament_index: u64) -> BigUint {
-        let tournaments_len = self.active_tournaments().len() as u64;
+    fn get_prize_pool(&self, tournament_index: usize) -> BigUint {
+        let tournaments_len = self.active_tournaments().len();
         require!(
             tournament_index > 0 && tournament_index <= tournaments_len,
             "Tournament does not exist"
         );
-        let tournament = self
-            .active_tournaments()
-            .get(tournament_index as usize)
-            .clone();
+        let tournament = self.active_tournaments().get(tournament_index).clone();
         let fee = tournament.entry_fee;
         let num_participants = BigUint::from(tournament.participants.len());
         &fee * &num_participants
