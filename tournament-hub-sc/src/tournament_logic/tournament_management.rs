@@ -196,6 +196,14 @@ pub trait TournamentManagementModule:
         self.active_tournaments()
             .set(tournament_index as usize, &tournament);
 
+        // Update games_played for all participants when tournament starts
+        for participant in tournament.participants.iter() {
+            self.update_user_stats(&participant, |stats| {
+                stats.games_played += 1;
+                stats.last_activity = self.blockchain().get_block_timestamp();
+            });
+        }
+
         self.game_started_event(&tournament_index, &caller);
     }
 
@@ -247,9 +255,8 @@ pub trait TournamentManagementModule:
         // Add tournament to user's joined tournaments
         self.user_tournaments_joined(user).insert(tournament_id);
 
-        // Update user stats
+        // Update user stats - only update last_activity when joining
         self.update_user_stats(user, |stats| {
-            stats.games_played += 1;
             stats.last_activity = self.blockchain().get_block_timestamp();
         });
     }

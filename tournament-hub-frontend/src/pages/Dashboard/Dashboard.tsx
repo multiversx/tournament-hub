@@ -33,7 +33,8 @@ import {
   Gamepad2,
   Clock,
   Star,
-  Target
+  Target,
+  RefreshCw
 } from 'lucide-react';
 import { useGetAccountInfo, useGetIsLoggedIn } from 'lib';
 import { useSimpleTournamentStats, useSimpleUserStats, testApiConnectivity } from '../../hooks/useSimpleDashboard';
@@ -50,12 +51,13 @@ export const Dashboard = () => {
     readyToStartTournaments,
     activeTournaments,
     completedTournaments,
-    loading: statsLoading
+    loading: statsLoading,
+    refreshStats
   } = useSimpleTournamentStats();
 
   const {
     gamesPlayed,
-    wins,
+    wins: tournamentWins,
     losses,
     winRate,
     tokensWon,
@@ -118,14 +120,27 @@ export const Dashboard = () => {
     <Container maxW="7xl" py={10}>
       <VStack spacing={8} align="stretch">
         {/* Header */}
-        <VStack spacing={4} align="start">
-          <Heading size="2xl" bgGradient="linear(to-r, blue.400, purple.400)" bgClip="text">
-            Dashboard
-          </Heading>
-          <Text color="gray.400" fontSize="lg">
-            Welcome back! Here's your tournament overview and statistics.
-          </Text>
-        </VStack>
+        <HStack justify="space-between" align="start">
+          <VStack spacing={4} align="start">
+            <Heading size="2xl" bgGradient="linear(to-r, blue.400, purple.400)" bgClip="text">
+              Dashboard
+            </Heading>
+            <Text color="gray.400" fontSize="lg">
+              Welcome back! Here's your tournament overview and statistics.
+            </Text>
+          </VStack>
+          <Button
+            onClick={refreshStats}
+            isLoading={statsLoading}
+            loadingText="Refreshing..."
+            colorScheme="blue"
+            variant="outline"
+            leftIcon={<RefreshCw size={16} />}
+            size="sm"
+          >
+            Refresh Stats
+          </Button>
+        </HStack>
 
         {/* Quick Stats */}
         <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={6}>
@@ -225,8 +240,8 @@ export const Dashboard = () => {
                 </VStack>
                 <VStack spacing={2}>
                   <Text color="gray.400" fontSize="sm" fontWeight="medium">Wins</Text>
-                  <Text color="green.400" fontSize="2xl" fontWeight="bold">{wins}</Text>
-                  <Text color="gray.500" fontSize="xs">Victories</Text>
+                  <Text color="green.400" fontSize="2xl" fontWeight="bold">{tournamentWins}</Text>
+                  <Text color="gray.500" fontSize="xs">Tournament Victories</Text>
                 </VStack>
                 <VStack spacing={2}>
                   <Text color="gray.400" fontSize="sm" fontWeight="medium">Losses</Text>
@@ -452,7 +467,7 @@ export const Dashboard = () => {
               <VStack spacing={3} align="stretch">
                 <HStack justify="space-between">
                   <Text color="gray.400" fontSize="sm">Total Wins:</Text>
-                  <Text color="green.400" fontWeight="bold">{wins}</Text>
+                  <Text color="green.400" fontWeight="bold">{tournamentWins}</Text>
                 </HStack>
                 <HStack justify="space-between">
                   <Text color="gray.400" fontSize="sm">Total Losses:</Text>

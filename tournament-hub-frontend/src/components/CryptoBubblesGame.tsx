@@ -125,6 +125,13 @@ export const CryptoBubblesGame: React.FC<CryptoBubblesGameProps> = ({ sessionId,
 
     // Fetch game state
     const fetchGameState = useCallback(async () => {
+        // Don't fetch if sessionId is null or invalid
+        if (!sessionId || sessionId === 'null' || sessionId.trim() === '') {
+            console.log('CryptoBubblesGame: Skipping fetch - sessionId is null or invalid');
+            setIsLoading(false);
+            return;
+        }
+
         try {
             const response = await fetch(`${BACKEND_BASE_URL}/cryptobubbles_game_state?sessionId=${sessionId}`);
             if (response.ok) {
