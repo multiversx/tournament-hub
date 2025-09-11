@@ -187,10 +187,13 @@ export const CreateTournament: React.FC = () => {
     };
 
     const handleInputChange = (field: keyof FormData, value: string) => {
+        // Normalize decimal separator for entry fee - convert comma to dot
+        const normalizedValue = field === 'entryFee' ? value.replace(',', '.') : value;
+
         // Force PvP (Chess) to 2 players only
-        const gameId = field === 'gameType' ? parseInt(value) : parseInt(formData.gameType);
+        const gameId = field === 'gameType' ? parseInt(normalizedValue) : parseInt(formData.gameType);
         const isPvpTwoPlayer = gameId === 2 || gameId === 1; // 2 = Chess, 1 = TicTacToe
-        let next = { ...formData, [field]: value } as FormData;
+        let next = { ...formData, [field]: normalizedValue } as FormData;
         if (isPvpTwoPlayer) {
             next.maxPlayers = '2';
             next.minPlayers = '2';
@@ -986,11 +989,15 @@ export const CreateTournament: React.FC = () => {
                                                         onBlur={() => {
                                                             // Update slider when user finishes typing
                                                             if (isManualInput) {
-                                                                if (formData.entryFee && formData.entryFee.trim() !== '') {
-                                                                    const numValue = parseFloat(formData.entryFee);
+                                                                // Normalize the input value (convert comma to dot)
+                                                                const normalizedValue = formData.entryFee.replace(',', '.');
+                                                                if (normalizedValue && normalizedValue.trim() !== '') {
+                                                                    const numValue = parseFloat(normalizedValue);
                                                                     if (numValue >= 0.01 && numValue <= 100) {
                                                                         const sliderPos = getSliderValueFromAmount(numValue);
                                                                         setPrizePoolSliderValue(sliderPos);
+                                                                        // Update form data with normalized value
+                                                                        setFormData(prev => ({ ...prev, entryFee: normalizedValue }));
                                                                     }
                                                                 } else {
                                                                     // If input is empty, reset to default
@@ -1005,6 +1012,7 @@ export const CreateTournament: React.FC = () => {
                                                         border="2px solid"
                                                         borderColor="gray.600"
                                                         borderRadius="xl"
+                                                        textAlign="center"
                                                         _hover={{
                                                             borderColor: "yellow.400",
                                                             transform: "translateY(-1px)",
@@ -1046,27 +1054,25 @@ export const CreateTournament: React.FC = () => {
                                     }}
                                     transition="all 0.3s ease"
                                 >
-                                    <HStack justify="space-between" align="center" wrap="wrap">
-                                        <HStack spacing={6}>
-                                            <HStack spacing={2}>
-                                                <Box
-                                                    p={1}
-                                                    bgGradient="linear(135deg, green.500, emerald.600)"
-                                                    borderRadius="md"
-                                                >
-                                                    <FontAwesomeIcon icon={faCoins} color="white" size="sm" />
-                                                </Box>
-                                                <Text color="gray.300" fontSize="sm" fontWeight="semibold">
-                                                    Max Prize Pool:
-                                                </Text>
-                                                <Text
-                                                    color="green.400"
-                                                    fontSize="lg"
-                                                    fontWeight="bold"
-                                                >
-                                                    {(parseFloat(formData.entryFee) * parseInt(formData.maxPlayers)).toFixed(4)} EGLD
-                                                </Text>
-                                            </HStack>
+                                    <HStack justify="center" align="center" wrap="wrap">
+                                        <HStack spacing={2}>
+                                            <Box
+                                                p={1}
+                                                bgGradient="linear(135deg, green.500, emerald.600)"
+                                                borderRadius="md"
+                                            >
+                                                <FontAwesomeIcon icon={faCoins} color="white" size="sm" />
+                                            </Box>
+                                            <Text color="gray.300" fontSize="sm" fontWeight="semibold">
+                                                Max Prize Pool:
+                                            </Text>
+                                            <Text
+                                                color="green.400"
+                                                fontSize="lg"
+                                                fontWeight="bold"
+                                            >
+                                                {(parseFloat(formData.entryFee) * parseInt(formData.maxPlayers)).toFixed(4)} EGLD
+                                            </Text>
                                         </HStack>
                                     </HStack>
                                 </Box>
