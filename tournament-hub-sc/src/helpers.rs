@@ -74,6 +74,10 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
 
         // Distribute prizes to winners and update user statistics
         for (position, winner) in tournament.final_podium.iter().enumerate() {
+            require!(
+                position < game_config.prize_distribution_percentages.len(),
+                "Position out of bounds for prize distribution"
+            );
             let percentage = game_config.prize_distribution_percentages.get(position);
             let prize_amount = &remaining_pool * percentage / 10_000u32;
 
