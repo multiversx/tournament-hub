@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useGetIsLoggedIn, useGetAccountInfo } from 'lib';
+import { useGetIsLoggedIn, useGetAccountInfo, useGetAccount } from 'lib';
 
 interface WalletContextType {
     isConnected: boolean;
@@ -26,11 +26,12 @@ interface WalletProviderProps {
 export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     const isLoggedIn = useGetIsLoggedIn();
     const { address, account } = useGetAccountInfo();
+    const { address: accountAddress } = useGetAccount();
     const [isLoading, setIsLoading] = useState(false);
 
     // Use the existing MultiversX SDK wallet state
     const isConnected = isLoggedIn;
-    const walletAddress = address;
+    const walletAddress = address || accountAddress;
 
     const connect = async () => {
         // This will be handled by the existing MultiversX SDK
@@ -43,13 +44,13 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         // The user should use the Logout button in the header
     };
 
-      const value: WalletContextType = {
-    isConnected,
-    address: walletAddress,
-    connect,
-    disconnect,
-    isLoading
-  };
+    const value: WalletContextType = {
+        isConnected,
+        address: walletAddress,
+        connect,
+        disconnect,
+        isLoading
+    };
 
     return (
         <WalletContext.Provider value={value}>
