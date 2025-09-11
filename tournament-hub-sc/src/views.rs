@@ -14,6 +14,7 @@ pub trait ViewsModule: crate::storage::StorageModule {
             game_index > 0 && game_index <= games_len,
             "Invalid game index"
         );
+
         self.registered_games().get(game_index).clone()
     }
 
@@ -24,7 +25,7 @@ pub trait ViewsModule: crate::storage::StorageModule {
             tournament_index > 0 && tournament_index <= tournaments_len,
             "Tournament does not exist"
         );
-        // Convert 1-based index to 0-based for VecMapper access
+
         self.active_tournaments().get(tournament_index).clone()
     }
 
@@ -43,14 +44,9 @@ pub trait ViewsModule: crate::storage::StorageModule {
         let mut ids = ManagedVec::new();
         let no_of_tournaments = self.active_tournaments().len();
 
-        // Only return IDs for tournaments that actually exist
+        // Return IDs for all tournaments (1-based IDs)
         for id in 1..=no_of_tournaments {
-            // Check if the tournament exists by checking if the index is within bounds
-            // Convert 1-based ID to 0-based index for VecMapper access
-            let index = id;
-            if index < no_of_tournaments {
-                ids.push(id as u64);
-            }
+            ids.push(id as u64);
         }
         ids
     }

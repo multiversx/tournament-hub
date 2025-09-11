@@ -31,7 +31,7 @@ import {
     Progress,
 } from '@chakra-ui/react';
 import { Users, Award, Calendar, Plus, Search, Filter, ChevronDown, ChevronUp, Trophy, Clock, Copy, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
-import { getActiveTournamentIds, getTournamentDetailsFromContract, getTournamentDetailsFromContractFresh, getGameConfig, getPrizePoolFromContract, getTournamentsFromBlockchain, findTournamentsByTesting, getSubmitResultsTransactionHash, clearApiCaches, getRecentNotifierEvents, getAnyJoinTs, isTournamentCompletedByEvents, parseTournamentHex, forceRefreshTournaments, forceRefreshAllTournaments } from '../helpers';
+import { getActiveTournamentIds, getTournamentDetailsFromContract, getTournamentDetailsFromContractFresh, getGameConfig, getPrizePoolFromContract, getTournamentsFromBlockchain, findTournamentsByTesting, getSubmitResultsTransactionHash, clearApiCaches, getRecentNotifierEvents, getAnyJoinTs, isTournamentCompletedByEvents, parseTournamentHex, forceRefreshTournaments, forceRefreshAllTournaments, TournamentDetails } from '../helpers';
 import { getContractAddress, getNetwork } from '../config/contract';
 
 // Using helper to clear caches instead of accessing internals
@@ -533,7 +533,7 @@ export const Tournaments = () => {
 
                     // Use getTournament endpoint (getTournamentBasicInfo doesn't exist in deployed contract)
                     console.log(`loadBasicTournamentData: Fetching tournament ${id} using getTournament...`);
-                    const details = await getTournamentDetailsFromContractFresh(id);
+                    const details: TournamentDetails | null = await getTournamentDetailsFromContractFresh(id);
                     console.log(`loadBasicTournamentData: Details for tournament ${id}:`, details);
 
                     if (details) {
@@ -552,8 +552,8 @@ export const Tournaments = () => {
                             prizePoolLoaded: true,
                             gameConfig: null,
                             gameConfigLoaded: false,
-                            resultTxHash: null,
-                            resultTxLoaded: details.status !== 4,
+                            resultTxHash: details.result_tx_hash || null,
+                            resultTxLoaded: true,
                             loadingDetails: false
                         };
 
@@ -782,17 +782,7 @@ export const Tournaments = () => {
                 );
             }
 
-            if (!tournament.resultTxLoaded && tournament.status === 4) {
-                promises.push(
-                    getSubmitResultsTransactionHash(id).then(resultTxHash => {
-                        tournament.resultTxHash = resultTxHash;
-                        tournament.resultTxLoaded = true;
-                    }).catch(() => {
-                        tournament.resultTxHash = null;
-                        tournament.resultTxLoaded = true;
-                    })
-                );
-            }
+            // Result transaction hash is now loaded directly from tournament data
 
             await Promise.all(promises);
             tournamentCache.set(cacheKey, {
@@ -982,20 +972,7 @@ export const Tournaments = () => {
         fetchTournaments();
     }, [toast, loadBasicTournamentData]);
 
-    // Auto-load details for completed tournaments
-    useEffect(() => {
-        const autoLoadMissingResultTX = async () => {
-            for (const tournament of tournaments) {
-                if (tournament.status === 4 && !tournament.resultTxLoaded && !loadingDetails.has(tournament.id.toString())) {
-                    await loadTournamentDetails(tournament.id);
-                }
-            }
-        };
-
-        if (tournaments.length > 0) {
-            autoLoadMissingResultTX();
-        }
-    }, [tournaments, loadTournamentDetails, loadingDetails]);
+    // Result transaction hash is now loaded directly from tournament data
 
     // Special retry mechanism for completed tournaments with fallback data
     useEffect(() => {

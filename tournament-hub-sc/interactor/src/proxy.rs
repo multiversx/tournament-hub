@@ -135,6 +135,22 @@ where
             .original_result()
     }
 
+    pub fn update_result_tx_hash<
+        Arg0: ProxyArg<usize>,
+        Arg1: ProxyArg<ManagedBuffer<Env::Api>>,
+    >(
+        self,
+        tournament_index: Arg0,
+        result_tx_hash: Arg1,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("updateResultTxHash")
+            .argument(&tournament_index)
+            .argument(&result_tx_hash)
+            .original_result()
+    }
+
     pub fn place_spectator_bet<
         Arg0: ProxyArg<usize>,
         Arg1: ProxyArg<ManagedAddress<Env::Api>>,
@@ -164,7 +180,7 @@ where
     }
 
     pub fn create_tournament<
-        Arg0: ProxyArg<usize>,
+        Arg0: ProxyArg<u32>,
         Arg1: ProxyArg<u32>,
         Arg2: ProxyArg<u32>,
         Arg3: ProxyArg<BigUint<Env::Api>>,
@@ -566,6 +582,7 @@ where
     pub entry_fee: BigUint<Api>,
     pub name: ManagedBuffer<Api>,
     pub created_at: u64,
+    pub result_tx_hash: Option<ManagedBuffer<Api>>,
 }
 
 #[type_abi]

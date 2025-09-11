@@ -36,6 +36,7 @@ pub struct Tournament<M: ManagedTypeApi> {
     pub entry_fee: BigUint<M>,
     pub name: ManagedBuffer<M>,
     pub created_at: u64,
+    pub result_tx_hash: Option<ManagedBuffer<M>>, // Transaction hash when results are submitted
 }
 
 #[type_abi]

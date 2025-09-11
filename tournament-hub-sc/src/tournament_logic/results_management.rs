@@ -77,4 +77,24 @@ pub trait ResultsManagementModule:
         self.total_tournaments_completed()
             .update(|count| *count += 1);
     }
+
+    #[endpoint(updateResultTxHash)]
+    fn update_result_tx_hash(&self, tournament_index: usize, result_tx_hash: ManagedBuffer) {
+        let tournaments_len = self.active_tournaments().len();
+        require!(
+            tournament_index > 0 && tournament_index <= tournaments_len,
+            "Tournament does not exist"
+        );
+
+        let mut tournament = self.active_tournaments().get(tournament_index).clone();
+        require!(
+            tournament.status == TournamentStatus::Completed,
+            "Tournament not completed"
+        );
+
+        tournament.result_tx_hash = Some(result_tx_hash);
+        self.active_tournaments()
+            // VecMapper uses 1-based indexing for set as well
+            .set(tournament_index, &tournament);
+    }
 }

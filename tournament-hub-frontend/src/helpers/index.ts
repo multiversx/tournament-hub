@@ -594,8 +594,8 @@ export async function forceRefreshTournaments(): Promise<any[]> {
                     prizePoolLoaded: true,
                     gameConfig: null,
                     gameConfigLoaded: false,
-                    resultTxHash: null,
-                    resultTxLoaded: details.status !== 4,
+                    resultTxHash: details.result_tx_hash || null,
+                    resultTxLoaded: true,
                     loadingDetails: false
                 };
                 tournaments.push(basicData);
@@ -640,8 +640,8 @@ export async function forceRefreshAllTournaments(): Promise<any[]> {
                     prizePoolLoaded: true,
                     gameConfig: null,
                     gameConfigLoaded: false,
-                    resultTxHash: null,
-                    resultTxLoaded: details.status !== 4,
+                    resultTxHash: details.result_tx_hash || null,
+                    resultTxLoaded: true,
                     loadingDetails: false
                 };
                 tournaments.push(basicData);
@@ -1601,7 +1601,22 @@ function hexToBech32(hex: string): string {
     }
 }
 
-export async function parseTournamentHex(hex: string, tournamentId?: number | bigint) {
+export interface TournamentDetails {
+    id?: number | bigint;
+    game_id: bigint;
+    status: number;
+    participants: string[];
+    final_podium: string[];
+    creator: string;
+    max_players: number;
+    min_players: number;
+    entry_fee: bigint;
+    name: string;
+    created_at: bigint;
+    result_tx_hash?: string | null;
+}
+
+export async function parseTournamentHex(hex: string, tournamentId?: number | bigint): Promise<TournamentDetails | null> {
     // Decode base64 to raw hex if needed. First check if input is already hex.
     let rawHex = hex;
     try {
@@ -1746,6 +1761,21 @@ export async function parseTournamentHex(hex: string, tournamentId?: number | bi
             const name = readManagedBuffer('name');
             const created_at = readU64('created_at');
 
+            // Read the optional result_tx_hash field
+            let result_tx_hash = null;
+            if (remaining() > 0) {
+                try {
+                    result_tx_hash = readManagedBuffer('result_tx_hash');
+                    // If the buffer is empty, set to null
+                    if (result_tx_hash === '') {
+                        result_tx_hash = null;
+                    }
+                } catch (error) {
+                    // If parsing fails, result_tx_hash remains null
+                    result_tx_hash = null;
+                }
+            }
+
             const result = {
                 id: tournamentId || BigInt(0), // Add the tournament ID to the result
                 game_id,
@@ -1757,7 +1787,8 @@ export async function parseTournamentHex(hex: string, tournamentId?: number | bi
                 min_players,
                 entry_fee,
                 name,
-                created_at
+                created_at,
+                result_tx_hash
             };
 
 
