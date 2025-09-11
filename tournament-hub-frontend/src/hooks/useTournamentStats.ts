@@ -271,7 +271,7 @@ export const useTournamentStats = (): TournamentStats => {
                 });
 
                 const tournaments = await Promise.all(tournamentPromises);
-                const validTournaments = tournaments.filter(t => t !== null);
+                const validTournaments = tournaments.filter((t): t is NonNullable<typeof t> => t !== null);
 
                 // Filter out fallback tournaments for active tournaments (same as tournaments page)
                 // But include fallback tournaments for completed tournaments (same as tournaments page)
@@ -479,7 +479,7 @@ export const useTournamentStats = (): TournamentStats => {
                     });
 
                     const tournaments = await Promise.all(tournamentPromises);
-                    const validTournaments = tournaments.filter(t => t !== null);
+                    const validTournaments = tournaments.filter((t): t is NonNullable<typeof t> => t !== null);
 
                     // Filter out fallback tournaments for active tournaments
                     // But include fallback tournaments for completed tournaments
