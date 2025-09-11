@@ -6,3 +6,4 @@ pynacl
 multiversx-sdk 
 websockets
 pika
+pydantic
