@@ -4,6 +4,7 @@ import { ChakraProvider, extendTheme } from '@chakra-ui/react';
 import { initApp } from 'lib';
 import { App } from './App';
 import { config } from './initConfig';
+import { setupErrorHandler, setupGlobalErrorHandler, setupFetchErrorHandler } from './utils/errorHandler';
 
 // Create an enhanced dark theme
 const theme = extendTheme({
@@ -187,6 +188,11 @@ const theme = extendTheme({
     },
   },
 });
+
+// Setup error handlers to suppress known MultiversX SDK socket errors
+setupErrorHandler();
+setupGlobalErrorHandler();
+setupFetchErrorHandler();
 
 initApp(config).then(() => {
   ReactDOM.createRoot(document.getElementById('root')!).render(
