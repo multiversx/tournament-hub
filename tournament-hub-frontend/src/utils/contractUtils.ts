@@ -12,8 +12,11 @@ export function toHex(value: string | number, padding: number = 16): string {
  * Convert EGLD amount to wei (1 EGLD = 10^18 wei)
  */
 export function egldToWei(egldAmount: string): string {
+    // Normalize decimal separator - convert comma to dot for consistent processing
+    const normalizedAmount = egldAmount.replace(',', '.');
+
     // Split the EGLD amount into whole and decimal parts
-    const parts = egldAmount.split('.');
+    const parts = normalizedAmount.split('.');
     const wholePart = parts[0] || '0';
     const decimalPart = parts[1] || '0';
 
@@ -40,6 +43,7 @@ export function weiToEgld(weiAmount: string): string {
     } else {
         // Convert remainder to decimal part
         const decimalPart = remainder.toString().padStart(18, '0').replace(/0+$/, '');
+        // Always use dot as decimal separator for consistency
         return `${egldBigInt}.${decimalPart}`;
     }
 }
