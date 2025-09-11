@@ -394,10 +394,10 @@ export function useSimpleTournamentStats() {
 
                 // Check each tournament's status
                 for (const tournament of validTournaments) {
-                    if (tournament.status === 0) joiningCount++;
-                    else if (tournament.status === 1) readyToStartCount++;
-                    else if (tournament.status === 2) activeCount++;
-                    else if (tournament.status === 4) completedCount++;
+                    if (tournament && tournament.status === 0) joiningCount++;
+                    else if (tournament && tournament.status === 1) readyToStartCount++;
+                    else if (tournament && tournament.status === 2) activeCount++;
+                    else if (tournament && tournament.status === 4) completedCount++;
                 }
 
                 // Check for completed tournaments among fallback tournaments
