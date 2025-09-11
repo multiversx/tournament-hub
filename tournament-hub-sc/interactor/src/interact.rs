@@ -395,7 +395,7 @@ impl ContractInteract {
     }
 
     pub async fn get_tournament(&mut self) {
-        let tournament_id = 13usize;
+        let tournament_id = 1usize;
 
         let result_value = self
             .interactor

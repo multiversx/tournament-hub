@@ -64,6 +64,7 @@ pub trait TournamentManagementModule:
             entry_fee,
             name,
             created_at: self.blockchain().get_block_timestamp(),
+            result_tx_hash: None,
         };
 
         // Automatically add the creator as the first participant
@@ -129,6 +130,7 @@ pub trait TournamentManagementModule:
         // Add player
         tournament.participants.push(caller.clone());
 
+        // VecMapper uses 1-based indexing for set as well
         self.active_tournaments().set(tournament_index, &tournament);
 
         // Update user statistics
@@ -171,6 +173,7 @@ pub trait TournamentManagementModule:
 
         // Transition to Active status
         tournament.status = TournamentStatus::Active;
+        // VecMapper uses 1-based indexing for set as well
         self.active_tournaments().set(tournament_index, &tournament);
 
         // Update games_played for all participants when tournament starts
