@@ -24,7 +24,7 @@ import { useWallet } from '../../contexts/WalletContext';
 
 export const Home = () => {
   const isMobile = useBreakpointValue({ base: true, md: false });
-  const { totalTournaments, joiningTournaments, readyToStartTournaments, activeTournaments, completedTournaments, highestAmountWon, totalAmountPlayed, maxPrizeWon, totalPrizeDistributed, loading, error } = useTournamentStats();
+  const { totalTournaments, joiningTournaments, readyToStartTournaments, activeTournaments, totalActiveTournaments, completedTournaments, highestAmountWon, totalAmountPlayed, maxPrizeWon, totalPrizeDistributed, loading, error } = useTournamentStats();
   const { isConnected } = useWallet();
 
   return (
@@ -158,6 +158,11 @@ export const Home = () => {
                     <VStack spacing={3}>
                       <Box
                         p={3}
+                        w="88px"
+                        h="88px"
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
                         bgGradient="linear(135deg, yellow.500, orange.600)"
                         borderRadius="xl"
                         boxShadow="0 8px 20px rgba(250, 204, 21, 0.3)"
@@ -183,6 +188,11 @@ export const Home = () => {
                     <VStack spacing={3}>
                       <Box
                         p={3}
+                        w="88px"
+                        h="88px"
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
                         bgGradient="linear(135deg, blue.500, blue.600)"
                         borderRadius="xl"
                         boxShadow="0 8px 20px rgba(59, 130, 246, 0.3)"
@@ -208,6 +218,11 @@ export const Home = () => {
                     <VStack spacing={3}>
                       <Box
                         p={3}
+                        w="88px"
+                        h="88px"
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
                         bgGradient="linear(135deg, green.500, green.600)"
                         borderRadius="xl"
                         boxShadow="0 8px 20px rgba(34, 197, 94, 0.3)"
@@ -233,6 +248,11 @@ export const Home = () => {
                     <VStack spacing={3}>
                       <Box
                         p={3}
+                        w="88px"
+                        h="88px"
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
                         bgGradient="linear(135deg, purple.500, pink.600)"
                         borderRadius="xl"
                         boxShadow="0 8px 20px rgba(147, 51, 234, 0.3)"
@@ -262,6 +282,11 @@ export const Home = () => {
                     <VStack spacing={3}>
                       <Box
                         p={3}
+                        w="88px"
+                        h="88px"
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
                         bgGradient="linear(135deg, #00D4AA, #00B894)"
                         borderRadius="xl"
                         boxShadow="0 8px 20px rgba(0, 212, 170, 0.3)"
@@ -298,6 +323,11 @@ export const Home = () => {
                     <VStack spacing={3}>
                       <Box
                         p={3}
+                        w="88px"
+                        h="88px"
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
                         bgGradient="linear(135deg, #00D4AA, #00A085)"
                         borderRadius="xl"
                         boxShadow="0 8px 20px rgba(0, 212, 170, 0.3)"

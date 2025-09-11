@@ -1,6 +1,5 @@
 import { RouteNamesEnum } from 'localConstants';
 import { Dashboard, Disclaimer, Home, Unlock, Tournaments, TournamentDetails, CreateTournament, GameSession, ColorRushDemoPage } from 'pages';
-import Admin from 'pages/Admin';
 import { RouteType } from 'types';
 
 interface RouteWithTitleType extends RouteType {
@@ -71,11 +70,6 @@ export const routes: RouteWithTitleType[] = [
     path: '/demo/colorrush',
     title: 'Color Rush Demo',
     component: ColorRushDemoPage
-  },
-  {
-    path: '/admin',
-    title: 'Admin Panel',
-    component: Admin
   },
   {
     path: RouteNamesEnum.disclaimer,
