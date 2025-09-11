@@ -56,8 +56,8 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
         game_config: &GameConfig<Self::Api>,
     ) {
         let num_participants = BigUint::from(tournament.participants.len());
-        let tournament_fee = self.tournament_fee().get();
-        let total_pool = &tournament_fee * &num_participants;
+        let entry_fee = &tournament.entry_fee;
+        let total_pool = entry_fee * &num_participants;
         let house_fee = &total_pool * game_config.house_fee_percentage / 10_000u32;
         let remaining_pool = &total_pool - &house_fee;
 
@@ -68,16 +68,44 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
             self.accumulated_house_fees().set(&accumulated_fees);
         }
 
+        // Track total prize distributed and max prize won
+        let mut total_prize_distributed = BigUint::zero();
+        let mut max_prize_won = BigUint::zero();
+
         // Distribute prizes to winners and update user statistics
         for (position, winner) in tournament.final_podium.iter().enumerate() {
+            require!(
+                position < game_config.prize_distribution_percentages.len(),
+                "Position out of bounds for prize distribution"
+            );
             let percentage = game_config.prize_distribution_percentages.get(position);
             let prize_amount = &remaining_pool * percentage / 10_000u32;
 
             if prize_amount > 0 {
                 self.send().direct_egld(&winner, &prize_amount);
 
+                // Track prize statistics
+                total_prize_distributed += &prize_amount;
+                if prize_amount > max_prize_won {
+                    max_prize_won = prize_amount.clone();
+                }
+
                 // Update winner's statistics
                 self.update_user_tournament_won(&winner, tournament.game_id, &prize_amount);
+            }
+        }
+
+        // Update global prize statistics
+        if total_prize_distributed > 0 {
+            // Update total prize distributed
+            let mut current_total = self.total_prize_distributed().get();
+            current_total += &total_prize_distributed;
+            self.total_prize_distributed().set(&current_total);
+
+            // Update max prize won if this tournament had a higher prize
+            let current_max = self.max_prize_won().get();
+            if max_prize_won > current_max {
+                self.max_prize_won().set(&max_prize_won);
             }
         }
 
@@ -120,7 +148,8 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
         // Update user stats
         self.update_user_stats(user, |stats| {
             stats.tournaments_won += 1;
-            stats.wins += 1;
+            // Note: wins is for individual game wins, not tournament wins
+            // stats.wins += 1; // Removed - tournaments_won is the correct field for tournament wins
             stats.tokens_won += prize_amount;
             stats.current_streak += 1;
             if stats.current_streak > stats.best_streak {
