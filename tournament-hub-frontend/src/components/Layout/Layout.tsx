@@ -6,9 +6,9 @@ import { Header } from './Header';
 
 export const Layout = ({ children }: PropsWithChildren) => {
   return (
-    <Box display="flex" h="100vh" flexDirection="column" bg="gray.900" overflow="hidden">
+    <Box display="flex" minH="100vh" flexDirection="column" bg="gray.900">
       <Header />
-      <Box as="main" flex="1" display="flex" alignItems="stretch" justifyContent="center" p={2} overflow="hidden">
+      <Box as="main" flex="1" display="flex" alignItems="stretch" justifyContent="center" p={4}>
         <AuthRedirectWrapper>{children}</AuthRedirectWrapper>
       </Box>
       <Footer />

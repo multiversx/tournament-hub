@@ -1,6 +1,9 @@
-use crate::models::{GameConfig, SpectatorBet, Tournament, TournamentStatus, UserStats};
+use crate::models::{
+    GameConfig, SpectatorBet, Tournament, TournamentBasicInfo, TournamentStatus, UserStats,
+};
 
 multiversx_sc::imports!();
+multiversx_sc::derive_imports!();
 
 #[multiversx_sc::module]
 pub trait ViewsModule: crate::storage::StorageModule {
@@ -11,6 +14,7 @@ pub trait ViewsModule: crate::storage::StorageModule {
             game_index > 0 && game_index <= games_len,
             "Invalid game index"
         );
+
         self.registered_games().get(game_index).clone()
     }
 
@@ -21,6 +25,7 @@ pub trait ViewsModule: crate::storage::StorageModule {
             tournament_index > 0 && tournament_index <= tournaments_len,
             "Tournament does not exist"
         );
+
         self.active_tournaments().get(tournament_index).clone()
     }
 
@@ -35,16 +40,12 @@ pub trait ViewsModule: crate::storage::StorageModule {
     }
 
     #[view(getActiveTournamentIds)]
-    fn get_active_tournament_ids(&self) -> ManagedVec<u64> {
+    fn get_active_tournament_ids(&self) -> ManagedVec<Self::Api, u64> {
         let mut ids = ManagedVec::new();
         let no_of_tournaments = self.active_tournaments().len();
 
-        // Only return IDs for tournaments that actually exist
+        // Return IDs for all tournaments (1-based IDs)
         for id in 1..=no_of_tournaments {
-            // Check if the tournament exists by trying to get it
-            // If it doesn't exist, the get() call will panic, but that's okay
-            // because we're only iterating up to the actual length
-            let _tournament = self.active_tournaments().get(id);
             ids.push(id as u64);
         }
         ids
@@ -54,7 +55,7 @@ pub trait ViewsModule: crate::storage::StorageModule {
     #[view(getTournamentBasicInfo)]
     fn get_tournament_basic_info(
         &self,
-        tournament_id: u64,
+        tournament_id: usize,
     ) -> (
         u64,
         u64,
@@ -64,11 +65,10 @@ pub trait ViewsModule: crate::storage::StorageModule {
         u32,
         u32,
         BigUint<Self::Api>,
-        u64,
         ManagedBuffer<Self::Api>,
         u64,
     ) {
-        let tournament = self.active_tournaments().get(tournament_id as usize);
+        let tournament = self.active_tournaments().get(tournament_id);
         let status_num = match tournament.status {
             TournamentStatus::Joining => 0u32,
             TournamentStatus::ReadyToStart => 1u32,
@@ -78,7 +78,7 @@ pub trait ViewsModule: crate::storage::StorageModule {
         };
 
         (
-            tournament_id,
+            tournament_id as u64,
             tournament.game_id,
             status_num,
             tournament.participants,
@@ -86,7 +86,6 @@ pub trait ViewsModule: crate::storage::StorageModule {
             tournament.max_players,
             tournament.min_players,
             tournament.entry_fee,
-            tournament.duration,
             tournament.name,
             tournament.created_at,
         )
@@ -97,7 +96,7 @@ pub trait ViewsModule: crate::storage::StorageModule {
     fn get_user_tournaments(
         &self,
         user_address: &ManagedAddress<Self::Api>,
-    ) -> (ManagedVec<u64>, ManagedVec<u64>) {
+    ) -> (ManagedVec<Self::Api, u64>, ManagedVec<Self::Api, u64>) {
         let mut created_tournaments = ManagedVec::new();
         let mut participated_tournaments = ManagedVec::new();
 
@@ -127,18 +126,18 @@ pub trait ViewsModule: crate::storage::StorageModule {
         &self,
         tournament_index: usize,
         player: &ManagedAddress,
-    ) -> ManagedVec<SpectatorBet<Self::Api>> {
+    ) -> ManagedVec<Self::Api, SpectatorBet<Self::Api>> {
         self.spectator_bets(&(tournament_index as u64), player)
             .get()
     }
 
     #[view(getSpectatorPoolTotal)]
-    fn get_spectator_pool_total(&self, tournament_index: usize) -> BigUint {
+    fn get_spectator_pool_total(&self, tournament_index: usize) -> BigUint<Self::Api> {
         self.spectator_pool_total(&(tournament_index as u64)).get()
     }
 
     #[view(getAccumulatedHouseFees)]
-    fn get_accumulated_house_fees(&self) -> BigUint {
+    fn get_accumulated_house_fees(&self) -> BigUint<Self::Api> {
         self.accumulated_house_fees().get()
     }
 
@@ -177,7 +176,10 @@ pub trait ViewsModule: crate::storage::StorageModule {
     }
 
     #[view(getUserTournamentsCreated)]
-    fn get_user_tournaments_created(&self, user: &ManagedAddress) -> ManagedVec<u64> {
+    fn get_user_tournaments_created(
+        &self,
+        user: &ManagedAddress<Self::Api>,
+    ) -> ManagedVec<Self::Api, u64> {
         let mut tournaments = ManagedVec::new();
         for tournament_id in self.user_tournaments_created(user).iter() {
             tournaments.push(tournament_id);
@@ -186,7 +188,10 @@ pub trait ViewsModule: crate::storage::StorageModule {
     }
 
     #[view(getUserTournamentsJoined)]
-    fn get_user_tournaments_joined(&self, user: &ManagedAddress) -> ManagedVec<u64> {
+    fn get_user_tournaments_joined(
+        &self,
+        user: &ManagedAddress<Self::Api>,
+    ) -> ManagedVec<Self::Api, u64> {
         let mut tournaments = ManagedVec::new();
         for tournament_id in self.user_tournaments_joined(user).iter() {
             tournaments.push(tournament_id);
@@ -195,7 +200,10 @@ pub trait ViewsModule: crate::storage::StorageModule {
     }
 
     #[view(getUserTournamentsWon)]
-    fn get_user_tournaments_won(&self, user: &ManagedAddress) -> ManagedVec<u64> {
+    fn get_user_tournaments_won(
+        &self,
+        user: &ManagedAddress<Self::Api>,
+    ) -> ManagedVec<Self::Api, u64> {
         let mut tournaments = ManagedVec::new();
         for tournament_id in self.user_tournaments_won(user).iter() {
             tournaments.push(tournament_id);
@@ -225,7 +233,7 @@ pub trait ViewsModule: crate::storage::StorageModule {
         let mut active = 0u64;
         let mut completed = 0u64;
 
-        for i in 1..=total_active as usize {
+        for i in 0..total_active as usize {
             let tournament = self.active_tournaments().get(i);
             match tournament.status {
                 crate::models::TournamentStatus::Joining => joining += 1,
@@ -237,5 +245,225 @@ pub trait ViewsModule: crate::storage::StorageModule {
         }
 
         (joining, ready_to_start, active, completed, total_created)
+    }
+
+    #[view(getMaxPrizeWon)]
+    fn get_max_prize_won(&self) -> BigUint<Self::Api> {
+        self.max_prize_won().get()
+    }
+
+    #[view(getTotalPrizeDistributed)]
+    fn get_total_prize_distributed(&self) -> BigUint<Self::Api> {
+        self.total_prize_distributed().get()
+    }
+
+    #[view(getPrizeStats)]
+    fn get_prize_stats(&self) -> (BigUint<Self::Api>, BigUint<Self::Api>) {
+        (
+            self.max_prize_won().get(),
+            self.total_prize_distributed().get(),
+        )
+    }
+
+    // Bulk endpoint: Get multiple tournaments basic info at once
+    // #[view(getTournamentsBasicInfo)]
+    // fn get_tournaments_basic_info(
+    //     &self,
+    //     tournament_ids: &[u64],
+    // ) -> ManagedVec<Self::Api, TournamentBasicInfo<Self::Api>> {
+    //     let mut results = ManagedVec::new();
+    //     let tournaments_len = self.active_tournaments().len();
+
+    //     for &tournament_id in tournament_ids {
+    //         if tournament_id > 0 && tournament_id <= tournaments_len as u64 {
+    //             let tournament = self.active_tournaments().get(tournament_id as usize);
+    //             let status_num = match tournament.status {
+    //                 TournamentStatus::Joining => 0u32,
+    //                 TournamentStatus::ReadyToStart => 1u32,
+    //                 TournamentStatus::Active => 2u32,
+    //                 TournamentStatus::ProcessingResults => 3u32,
+    //                 TournamentStatus::Completed => 4u32,
+    //             };
+
+    //             let info = TournamentBasicInfo {
+    //                 tournament_id,
+    //                 game_id: tournament.game_id,
+    //                 status: status_num,
+    //                 participants: tournament.participants,
+    //                 creator: tournament.creator,
+    //                 max_players: tournament.max_players,
+    //                 min_players: tournament.min_players,
+    //                 entry_fee: tournament.entry_fee,
+    //                 name: tournament.name,
+    //                 created_at: tournament.created_at,
+    //             };
+
+    //             results.push(info);
+    //         }
+    //     }
+
+    //     results
+    // }
+
+    // Bulk endpoint: Get all active tournaments basic info
+    #[view(getAllActiveTournamentsBasicInfo)]
+    fn get_all_active_tournaments_basic_info(
+        &self,
+    ) -> ManagedVec<Self::Api, TournamentBasicInfo<Self::Api>> {
+        let mut results = ManagedVec::new();
+        let tournaments_len = self.active_tournaments().len();
+
+        for id in 1..=tournaments_len {
+            let tournament = self.active_tournaments().get(id);
+            let status_num = match tournament.status {
+                TournamentStatus::Joining => 0u32,
+                TournamentStatus::ReadyToStart => 1u32,
+                TournamentStatus::Active => 2u32,
+                TournamentStatus::ProcessingResults => 3u32,
+                TournamentStatus::Completed => 4u32,
+            };
+
+            let info = TournamentBasicInfo {
+                tournament_id: id as u64,
+                game_id: tournament.game_id,
+                status: status_num,
+                participants: tournament.participants,
+                creator: tournament.creator,
+                max_players: tournament.max_players,
+                min_players: tournament.min_players,
+                entry_fee: tournament.entry_fee,
+                name: tournament.name,
+                created_at: tournament.created_at,
+            };
+
+            results.push(info);
+        }
+
+        results
+    }
+
+    // Bulk endpoint: Get tournament statuses for multiple tournaments
+    // #[view(getTournamentsStatus)]
+    // fn get_tournaments_status(
+    //     &self,
+    //     tournament_ids: &[u64],
+    // ) -> ManagedVec<Self::Api, TournamentStatusInfo> {
+    //     let mut results = ManagedVec::new();
+    //     let tournaments_len = self.active_tournaments().len();
+
+    //     for &tournament_id in tournament_ids {
+    //         if tournament_id > 0 && tournament_id <= tournaments_len as u64 {
+    //             let tournament = self.active_tournaments().get(tournament_id as usize);
+    //             let status_num = match tournament.status {
+    //                 TournamentStatus::Joining => 0u32,
+    //                 TournamentStatus::ReadyToStart => 1u32,
+    //                 TournamentStatus::Active => 2u32,
+    //                 TournamentStatus::ProcessingResults => 3u32,
+    //                 TournamentStatus::Completed => 4u32,
+    //             };
+
+    //             let status_info = TournamentStatusInfo {
+    //                 tournament_id,
+    //                 status: status_num,
+    //             };
+
+    //             results.push(status_info);
+    //         }
+    //     }
+
+    //     results
+    // }
+
+    // Alternative implementation: Get tournament status for a single tournament
+    #[view(getTournamentStatusSingle)]
+    fn get_tournament_status_single(&self, tournament_id: usize) -> u32 {
+        let tournaments_len = self.active_tournaments().len();
+
+        if tournament_id > 0 && tournament_id <= tournaments_len {
+            let tournament = self.active_tournaments().get(tournament_id);
+            match tournament.status {
+                TournamentStatus::Joining => 0u32,
+                TournamentStatus::ReadyToStart => 1u32,
+                TournamentStatus::Active => 2u32,
+                TournamentStatus::ProcessingResults => 3u32,
+                TournamentStatus::Completed => 4u32,
+            }
+        } else {
+            0u32 // Invalid tournament ID
+        }
+    }
+
+    // Alternative implementation: Get tournament basic info for a single tournament
+    #[view(getTournamentBasicInfoSingle)]
+    fn get_tournament_basic_info_single(
+        &self,
+        tournament_id: usize,
+    ) -> TournamentBasicInfo<Self::Api> {
+        let tournaments_len = self.active_tournaments().len();
+
+        if tournament_id > 0 && tournament_id <= tournaments_len {
+            let tournament = self.active_tournaments().get(tournament_id);
+            let status_num = match tournament.status {
+                TournamentStatus::Joining => 0u32,
+                TournamentStatus::ReadyToStart => 1u32,
+                TournamentStatus::Active => 2u32,
+                TournamentStatus::ProcessingResults => 3u32,
+                TournamentStatus::Completed => 4u32,
+            };
+
+            TournamentBasicInfo {
+                tournament_id: tournament_id as u64,
+                game_id: tournament.game_id,
+                status: status_num,
+                participants: tournament.participants,
+                creator: tournament.creator,
+                max_players: tournament.max_players,
+                min_players: tournament.min_players,
+                entry_fee: tournament.entry_fee,
+                name: tournament.name,
+                created_at: tournament.created_at,
+            }
+        } else {
+            // Return empty/default info for invalid tournament ID
+            TournamentBasicInfo {
+                tournament_id: 0,
+                game_id: 0,
+                status: 0,
+                participants: ManagedVec::new(),
+                creator: ManagedAddress::zero(),
+                max_players: 0,
+                min_players: 0,
+                entry_fee: BigUint::zero(),
+                name: ManagedBuffer::new(),
+                created_at: 0,
+            }
+        }
+    }
+
+    // Alternative implementation: Get user stats for a single user
+    #[view(getUserStatsSingle)]
+    fn get_user_stats_single(
+        &self,
+        user_address: &ManagedAddress<Self::Api>,
+    ) -> UserStats<Self::Api> {
+        if self.user_stats(user_address).is_empty() {
+            // Return default stats for new user
+            UserStats {
+                games_played: 0,
+                wins: 0,
+                losses: 0,
+                win_rate: 0,
+                tokens_won: BigUint::zero(),
+                tokens_spent: BigUint::zero(),
+                tournaments_created: 0,
+                tournaments_won: 0,
+                current_streak: 0,
+                best_streak: 0,
+                last_activity: 0,
+                member_since: 0,
+            }
+        } else {
+            self.user_stats(user_address).get()
+        }
     }
 }

@@ -309,6 +309,13 @@ def submit_results_to_contract(tournament_id: int, podium: list[str], private_ke
         print(f"Transaction hash: {tx_hash_result}")
         print(f"View on explorer: https://devnet-explorer.multiversx.com/transactions/{tx_hash_result}")
         
+        # Update the tournament with the result transaction hash
+        try:
+            update_result_tx_hash(tournament_id, tx_hash_result)
+            print(f"Updated tournament {tournament_id} with result transaction hash: {tx_hash_result}")
+        except Exception as e:
+            print(f"Warning: Failed to update result transaction hash for tournament {tournament_id}: {e}")
+        
         return tx_hash_result
         
     except Exception as e:
@@ -316,6 +323,55 @@ def submit_results_to_contract(tournament_id: int, podium: list[str], private_ke
         print(f"Transaction data: {data}")
         print(f"Message to sign: {message.hex()}")
         print(f"Signature: {signature_hex}")
+        raise
+
+def update_result_tx_hash(tournament_id: int, tx_hash: str):
+    """Update the tournament with the result transaction hash"""
+    try:
+        from multiversx_sdk import UserSecretKey, Account, Transaction, DevnetEntrypoint, Address
+        
+        # Load private key
+        key_path = os.path.join(os.path.dirname(__file__), "..", "signing", "ed25519_private.pem")
+        if not os.path.exists(key_path):
+            raise FileNotFoundError(f"Private key file not found: {key_path}")
+        
+        with open(key_path, 'rb') as f:
+            private_key = UserSecretKey.from_pem(f.read())
+        
+        account = Account(private_key)
+        
+        # Create provider
+        provider = DevnetEntrypoint()
+        
+        # Prepare the transaction data for updateResultTxHash
+        # The function signature is: updateResultTxHash(tournament_index: usize, result_tx_hash: ManagedBuffer)
+        data = f"updateResultTxHash@{tournament_id:016x}@{tx_hash}"
+        
+        # Create transaction
+        tx = Transaction(
+            sender=account.address,
+            receiver=Address.new_from_bech32(CONTRACT_ADDRESS),
+            gas_price=1000000000,
+            gas_limit=60000000,
+            data=data.encode('utf-8'),
+            chain_id=CHAIN_ID,
+            version=1,
+        )
+        
+        # Sign and send transaction
+        tx.signature = account.sign_transaction(tx)
+        tx_hash_result = provider.send_transaction(tx)
+        
+        if isinstance(tx_hash_result, bytes):
+            tx_hash_result = tx_hash_result.hex()
+        
+        print(f"Updated tournament {tournament_id} with result transaction hash: {tx_hash}")
+        print(f"Update transaction hash: {tx_hash_result}")
+        
+        return tx_hash_result
+        
+    except Exception as e:
+        print(f"Error updating result transaction hash: {e}")
         raise
 
 # Example usage:

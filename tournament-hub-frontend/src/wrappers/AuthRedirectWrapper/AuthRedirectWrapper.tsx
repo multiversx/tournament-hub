@@ -1,22 +1,27 @@
 import { PropsWithChildren, useEffect } from 'react';
-import { matchPath, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useGetIsLoggedIn } from 'lib';
 import { RouteNamesEnum } from 'localConstants';
-import { routes } from 'routes';
 
 export const AuthRedirectWrapper = ({ children }: PropsWithChildren) => {
   const isLoggedIn = useGetIsLoggedIn();
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
-  const currentRoute = routes.find((route) => matchPath(route.path, pathname));
-  const requireAuth = Boolean(currentRoute?.authenticatedRoute);
+  // Define protected routes directly to avoid circular dependency
+  const protectedRoutes = [
+    '/dashboard',
+    '/tournaments/create',
+    '/game-session'
+  ];
+
+  const requireAuth = protectedRoutes.some(route => pathname.startsWith(route));
 
   useEffect(() => {
     if (!isLoggedIn && requireAuth) {
       navigate(RouteNamesEnum.home);
     }
-  }, [isLoggedIn, currentRoute]);
+  }, [isLoggedIn, requireAuth, navigate]);
 
   return <>{children}</>;
 };

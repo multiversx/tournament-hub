@@ -51,4 +51,11 @@ pub trait StorageModule {
 
     #[storage_mapper("total_tournaments_completed")]
     fn total_tournaments_completed(&self) -> SingleValueMapper<u64>;
+
+    // Prize statistics
+    #[storage_mapper("max_prize_won")]
+    fn max_prize_won(&self) -> SingleValueMapper<BigUint>;
+
+    #[storage_mapper("total_prize_distributed")]
+    fn total_prize_distributed(&self) -> SingleValueMapper<BigUint>;
 }
