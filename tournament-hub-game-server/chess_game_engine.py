@@ -264,6 +264,24 @@ class ChessGameEngine:
         
         return False
     
+    def add_player(self, player: str) -> bool:
+        """Add a player to the game if there's an available slot"""
+        if self.state.game_over:
+            return False
+        
+        # If no white player, assign to white
+        if not self.state.white_player:
+            self.state.white_player = player
+            return True
+        
+        # If no black player, assign to black
+        if not self.state.black_player:
+            self.state.black_player = player
+            return True
+        
+        # Both slots are taken
+        return False
+
     def make_move(self, from_pos: Tuple[int, int], to_pos: Tuple[int, int], player: str, promotion: Optional[str] = None) -> bool:
         """Make a move on the board"""
         # Update clock for side to move
