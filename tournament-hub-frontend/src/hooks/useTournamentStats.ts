@@ -52,19 +52,15 @@ export const useTournamentStats = (): TournamentStats => {
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                console.log(`loadBasicTournamentData: Fetching details for tournament ${id} (attempt ${attempt}/${maxRetries})...`);
 
                 // Add extra delay for completed tournaments to avoid rate limiting
                 if (attempt > 1) {
                     const delay = attempt * 2000; // 2s, 4s, 6s
-                    console.log(`loadBasicTournamentData: Waiting ${delay}ms before retry for tournament ${id}...`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                 }
 
                 // Use getTournament endpoint
-                console.log(`loadBasicTournamentData: Fetching tournament ${id} using getTournament...`);
                 const details: any | null = await getTournamentDetailsFromContractFresh(id);
-                console.log(`loadBasicTournamentData: Details for tournament ${id}:`, details);
 
                 if (details) {
                     const participantsCount = (details.participants || []).length;
@@ -86,10 +82,8 @@ export const useTournamentStats = (): TournamentStats => {
                         loadingDetails: false
                     };
 
-                    console.log(`loadBasicTournamentData: Created basic data for tournament ${id}:`, basicData);
                     return basicData;
                 } else {
-                    console.log(`loadBasicTournamentData: No details returned for tournament ${id}, creating fallback data`);
 
                     // Try to get just the status from the contract before creating fallback data
                     let actualStatus = 0; // Default to Joining status
@@ -102,7 +96,6 @@ export const useTournamentStats = (): TournamentStats => {
                             actualStatus = 4; // Completed
                         }
                     } catch (statusError) {
-                        console.log(`loadBasicTournamentData: Could not get status for tournament ${id}, using default:`, statusError);
                     }
 
                     // Create fallback data for tournaments that fail to load details
@@ -123,7 +116,6 @@ export const useTournamentStats = (): TournamentStats => {
                         isFallback: true // Mark as fallback data
                     };
 
-                    console.log(`loadBasicTournamentData: Created fallback data for tournament ${id}:`, fallbackData);
                     return fallbackData;
                 }
             } catch (err) {
@@ -133,7 +125,6 @@ export const useTournamentStats = (): TournamentStats => {
                 // If this is not the last attempt, wait before retrying
                 if (attempt < maxRetries) {
                     const delay = attempt * 2000; // Exponential backoff: 2s, 4s, 6s
-                    console.log(`loadBasicTournamentData: Retrying tournament ${id} in ${delay}ms...`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                 }
             }
@@ -153,7 +144,6 @@ export const useTournamentStats = (): TournamentStats => {
                 actualStatus = 4; // Completed
             }
         } catch (statusError) {
-            console.log(`loadBasicTournamentData: Could not get status for tournament ${id} after retry failure, using default:`, statusError);
         }
 
         const fallbackData = {
@@ -173,7 +163,6 @@ export const useTournamentStats = (): TournamentStats => {
             isFallback: true // Mark as fallback data
         };
 
-        console.log(`loadBasicTournamentData: Created fallback data for tournament ${id} after retry failure:`, fallbackData);
         return fallbackData;
     }, []);
 
@@ -187,34 +176,26 @@ export const useTournamentStats = (): TournamentStats => {
 
                 // Use the exact same tournament discovery logic as the Tournaments page
                 let tournamentIds = await getActiveTournamentIds();
-                console.log('=== TOURNAMENT DISCOVERY DEBUG ===');
-                console.log('Active tournament IDs for stats:', tournamentIds);
 
                 // Only try event-based discovery if no active tournaments found (same as tournaments page)
                 let eventTournaments: any[] = [];
                 if (!tournamentIds || tournamentIds.length === 0) {
-                    console.log('No active tournaments found, trying event-based discovery...');
                     eventTournaments = await getTournamentsFromBlockchain();
-                    console.log('Event tournaments found:', eventTournaments);
 
                     tournamentIds = (eventTournaments || [])
                         .filter((t): t is NonNullable<typeof t> => t !== null)
                         .map(t => BigInt(t.id || 0))
                         .filter(id => id > 0n)
                         .slice(0, 200);
-                    console.log('Tournament IDs from events:', tournamentIds);
                 }
 
                 // If still no tournaments, try testing individual IDs
                 if (!tournamentIds || tournamentIds.length === 0) {
-                    console.log('No tournaments from active or events, trying individual ID testing...');
                     tournamentIds = await findTournamentsByTesting();
-                    console.log('Testing found tournament IDs:', tournamentIds);
                 }
 
                 // Also try notifier events discovery (like tournaments page polling)
                 try {
-                    console.log('Trying notifier events discovery...');
                     const notifierEvents = await getRecentNotifierEvents();
                     if (notifierEvents && notifierEvents.length > 0) {
                         const eventIds = notifierEvents
@@ -223,21 +204,16 @@ export const useTournamentStats = (): TournamentStats => {
                             .filter(id => id > 0n);
 
                         if (eventIds.length > 0) {
-                            console.log(`Found ${eventIds.length} tournaments from notifier events:`, eventIds);
                             // Add event IDs to existing tournament IDs (avoid duplicates)
                             const existingIds = new Set(tournamentIds || []);
                             const newIds = eventIds.filter(id => !existingIds.has(id));
                             tournamentIds = [...(tournamentIds || []), ...newIds];
-                            console.log('Combined tournament IDs (including notifier events):', tournamentIds);
                         }
                     } else {
-                        console.log('No notifier events found');
                     }
                 } catch (error) {
-                    console.log('Notifier events discovery failed:', error);
                 }
 
-                console.log('=== END TOURNAMENT DISCOVERY DEBUG ===');
 
                 if (!tournamentIds || tournamentIds.length === 0) {
                     setStats({
@@ -258,14 +234,11 @@ export const useTournamentStats = (): TournamentStats => {
                 }
 
                 // Fetch details for all tournaments to get accurate counts using the same method as tournaments page
-                console.log('Fetching details for tournaments:', tournamentIds.map(id => Number(id)));
                 const tournamentPromises = tournamentIds.map(async (id) => {
                     try {
                         const details = await loadBasicTournamentData(id);
-                        console.log(`Tournament ${id} details:`, details ? 'SUCCESS' : 'NULL');
                         return details;
                     } catch (error) {
-                        console.log(`Tournament ${id} failed to load:`, error);
                         return null;
                     }
                 });
@@ -279,39 +252,205 @@ export const useTournamentStats = (): TournamentStats => {
                 const fallbackTournaments = validTournaments.filter(t => t.isFallback);
                 const completedFallbackTournaments = fallbackTournaments.filter(t => t.status === 4);
 
-                console.log(`Successfully loaded ${validTournaments.length} tournaments (${realTournaments.length} real, ${fallbackTournaments.length} fallback)`);
-                console.log(`Completed fallback tournaments: ${completedFallbackTournaments.length}`);
 
                 // Use real tournaments + completed fallback tournaments for statistics (same as tournaments page logic)
                 const tournamentsForStats = [...realTournaments, ...completedFallbackTournaments];
 
-                console.log('=== TOURNAMENT STATISTICS DEBUG ===');
-                console.log('Total tournament IDs found:', tournamentIds.length);
-                console.log('Valid tournaments loaded:', validTournaments.length);
-                console.log('Real tournaments for stats:', realTournaments.length);
-                console.log('Completed fallback tournaments:', completedFallbackTournaments.length);
-                console.log('Total tournaments for stats:', tournamentsForStats.length);
-                console.log('Tournament details:', tournamentsForStats.map(t => ({
-                    id: t.id,
+                id: t.id,
                     status: t.status,
-                    name: t.name || 'Unknown',
-                    participants: t.participants?.length || 0,
-                    isFallback: t.isFallback
+                        name: t.name || 'Unknown',
+                            participants: t.participants?.length || 0,
+                                isFallback: t.isFallback
+            })));
+
+    // Count tournaments by status for accurate statistics
+    let joiningCount = 0;
+    let readyToStartCount = 0;
+    let activeCount = 0;
+    let completedCount = 0;
+    let totalActiveCount = 0; // Total of joining + ready to start + playing
+    let highestAmountWon = 0;
+    let totalAmountPlayed = 0;
+
+    tournamentsForStats.forEach(tournament => {
+        if (tournament) {
+
+            // Calculate financial stats
+            const entryFee = parseFloat(String(tournament.entry_fee || '0'));
+            const maxPlayers = parseInt(String(tournament.max_players || '0'));
+            const prizePool = entryFee * maxPlayers;
+
+            totalAmountPlayed += prizePool;
+
+            // For completed tournaments, check if this is the highest prize pool
+            if (tournament.status === 4 && prizePool > highestAmountWon) {
+                highestAmountWon = prizePool;
+            }
+
+            // Status mapping: 0=Joining, 1=ReadyToStart, 2=Active, 3=ProcessingResults, 4=Completed
+            switch (tournament.status) {
+                case 0: // Joining
+                    joiningCount++;
+                    totalActiveCount++;
+                    break;
+                case 1: // Ready to Start
+                    readyToStartCount++;
+                    totalActiveCount++;
+                    break;
+                case 2: // Active/Playing
+                    activeCount++;
+                    totalActiveCount++;
+                    break;
+                case 4: // Completed
+                    completedCount++;
+                    break;
+                case 3: // ProcessingResults
+                    // Exclude from all counts
+                    break;
+                default:
+                    break;
+            }
+        }
+    });
+
+    joining: joiningCount,
+        readyToStart: readyToStartCount,
+            active: activeCount,
+                totalActive: totalActiveCount,
+                    completed: completedCount
+});
+
+// Additional debugging for completed tournaments
+const completedTournaments = tournamentsForStats.filter(t => t.status === 4);
+id: t.id,
+    name: t.name,
+        status: t.status,
+            isFallback: t.isFallback
                 })));
 
-                // Count tournaments by status for accurate statistics
+
+// Get prize stats from contract
+let prizeStats = await getPrizeStatsFromContract();
+
+// If prize stats failed due to rate limiting, try again after a delay
+if (!prizeStats) {
+    await sleep(1000); // Wait 1 second
+    prizeStats = await getPrizeStatsFromContract();
+}
+
+const finalStats = {
+    totalTournaments: tournamentsForStats.length,
+    joiningTournaments: joiningCount,
+    readyToStartTournaments: readyToStartCount,
+    activeTournaments: activeCount,
+    totalActiveTournaments: totalActiveCount,
+    completedTournaments: completedCount,
+    highestAmountWon,
+    totalAmountPlayed,
+    maxPrizeWon: prizeStats?.max_prize_won || 0,
+    totalPrizeDistributed: prizeStats?.total_prize_distributed || 0,
+    loading: false,
+    error: null,
+};
+setStats(finalStats);
+
+            } catch (error) {
+    console.error('Error fetching tournament stats:', error);
+    setStats(prev => ({
+        ...prev,
+        loading: false,
+        error: null, // Don't show error to user, just show zeros
+    }));
+}
+        };
+
+// Debounce the fetch to prevent rapid calls
+const timeoutId = setTimeout(fetchStats, 300);
+return () => clearTimeout(timeoutId);
+    }, []);
+
+// Add periodic refresh to pick up any new tournaments (same as tournaments page polling)
+useEffect(() => {
+    const refreshInterval = setInterval(() => {
+        const fetchStats = async () => {
+            try {
+                setStats(prev => ({ ...prev, loading: false, error: null })); // Don't show loading on refresh
+
+                // Use the same tournament discovery logic
+                let tournamentIds = await getActiveTournamentIds();
+
+                // Only try event-based discovery if no active tournaments found (same as tournaments page)
+                let eventTournaments: any[] = [];
+                if (!tournamentIds || tournamentIds.length === 0) {
+                    eventTournaments = await getTournamentsFromBlockchain();
+                    tournamentIds = (eventTournaments || [])
+                        .filter((t): t is NonNullable<typeof t> => t !== null)
+                        .map(t => BigInt(t.id || 0))
+                        .filter(id => id > 0n)
+                        .slice(0, 200);
+                }
+
+                // If still no tournaments, try testing individual IDs
+                if (!tournamentIds || tournamentIds.length === 0) {
+                    tournamentIds = await findTournamentsByTesting();
+                }
+
+                // Also try notifier events discovery (like tournaments page polling)
+                try {
+                    const notifierEvents = await getRecentNotifierEvents();
+                    if (notifierEvents && notifierEvents.length > 0) {
+                        const eventIds = notifierEvents
+                            .filter(e => e.identifier === 'tournamentCreated')
+                            .map(e => BigInt(e.tournament_id))
+                            .filter(id => id > 0n);
+
+                        if (eventIds.length > 0) {
+                            // Add event IDs to existing tournament IDs (avoid duplicates)
+                            const existingIds = new Set(tournamentIds || []);
+                            const newIds = eventIds.filter(id => !existingIds.has(id));
+                            tournamentIds = [...(tournamentIds || []), ...newIds];
+                        }
+                    }
+                } catch (error) {
+                }
+
+                if (!tournamentIds || tournamentIds.length === 0) {
+                    return; // Don't update if no tournaments found during refresh
+                }
+
+                // Fetch details for all tournaments
+                const tournamentPromises = tournamentIds.map(async (id) => {
+                    try {
+                        const details = await loadBasicTournamentData(id);
+                        return details;
+                    } catch (error) {
+                        return null;
+                    }
+                });
+
+                const tournaments = await Promise.all(tournamentPromises);
+                const validTournaments = tournaments.filter((t): t is NonNullable<typeof t> => t !== null);
+
+                // Filter out fallback tournaments for active tournaments
+                // But include fallback tournaments for completed tournaments
+                const realTournaments = validTournaments.filter(t => !t.isFallback);
+                const fallbackTournaments = validTournaments.filter(t => t.isFallback);
+                const completedFallbackTournaments = fallbackTournaments.filter(t => t.status === 4);
+
+                // Use real tournaments + completed fallback tournaments for statistics
+                const tournamentsForStats = [...realTournaments, ...completedFallbackTournaments];
+
+                // Count tournaments by status
                 let joiningCount = 0;
                 let readyToStartCount = 0;
                 let activeCount = 0;
                 let completedCount = 0;
-                let totalActiveCount = 0; // Total of joining + ready to start + playing
+                let totalActiveCount = 0;
                 let highestAmountWon = 0;
                 let totalAmountPlayed = 0;
 
                 tournamentsForStats.forEach(tournament => {
                     if (tournament) {
-                        console.log(`Processing tournament ${tournament.id}: status=${tournament.status}, name=${tournament.name || 'Unknown'}`);
-
                         // Calculate financial stats
                         const entryFee = parseFloat(String(tournament.entry_fee || '0'));
                         const maxPlayers = parseInt(String(tournament.max_players || '0'));
@@ -319,73 +458,34 @@ export const useTournamentStats = (): TournamentStats => {
 
                         totalAmountPlayed += prizePool;
 
-                        // For completed tournaments, check if this is the highest prize pool
                         if (tournament.status === 4 && prizePool > highestAmountWon) {
                             highestAmountWon = prizePool;
                         }
 
-                        // Status mapping: 0=Joining, 1=ReadyToStart, 2=Active, 3=ProcessingResults, 4=Completed
                         switch (tournament.status) {
                             case 0: // Joining
                                 joiningCount++;
                                 totalActiveCount++;
-                                console.log(`  -> Added to joining count (${joiningCount}) and total active (${totalActiveCount})`);
                                 break;
                             case 1: // Ready to Start
                                 readyToStartCount++;
                                 totalActiveCount++;
-                                console.log(`  -> Added to ready to start count (${readyToStartCount}) and total active (${totalActiveCount})`);
                                 break;
                             case 2: // Active/Playing
                                 activeCount++;
                                 totalActiveCount++;
-                                console.log(`  -> Added to active count (${activeCount}) and total active (${totalActiveCount})`);
                                 break;
                             case 4: // Completed
                                 completedCount++;
-                                console.log(`  -> Added to completed count (${completedCount})`);
-                                break;
-                            case 3: // ProcessingResults
-                                console.log(`  -> Skipped processing results tournament`);
-                                // Exclude from all counts
-                                break;
-                            default:
-                                console.log(`  -> Unknown status ${tournament.status}, skipping`);
                                 break;
                         }
                     }
                 });
 
-                console.log('Final counts:', {
-                    joining: joiningCount,
-                    readyToStart: readyToStartCount,
-                    active: activeCount,
-                    totalActive: totalActiveCount,
-                    completed: completedCount
-                });
+                // Get prize stats from contract (only on refresh if needed)
+                const prizeStats = await getPrizeStatsFromContract();
 
-                // Additional debugging for completed tournaments
-                const completedTournaments = tournamentsForStats.filter(t => t.status === 4);
-                console.log('Completed tournaments breakdown:', completedTournaments.map(t => ({
-                    id: t.id,
-                    name: t.name,
-                    status: t.status,
-                    isFallback: t.isFallback
-                })));
-
-                console.log('=== END TOURNAMENT STATISTICS DEBUG ===');
-
-                // Get prize stats from contract
-                let prizeStats = await getPrizeStatsFromContract();
-                console.log('Prize stats:', prizeStats);
-
-                // If prize stats failed due to rate limiting, try again after a delay
-                if (!prizeStats) {
-                    await sleep(1000); // Wait 1 second
-                    prizeStats = await getPrizeStatsFromContract();
-                }
-
-                const finalStats = {
+                const refreshedStats = {
                     totalTournaments: tournamentsForStats.length,
                     joiningTournaments: joiningCount,
                     readyToStartTournaments: readyToStartCount,
@@ -399,171 +499,20 @@ export const useTournamentStats = (): TournamentStats => {
                     loading: false,
                     error: null,
                 };
-                setStats(finalStats);
+
+                setStats(refreshedStats);
 
             } catch (error) {
-                console.error('Error fetching tournament stats:', error);
-                setStats(prev => ({
-                    ...prev,
-                    loading: false,
-                    error: null, // Don't show error to user, just show zeros
-                }));
+                console.error('Error refreshing tournament stats:', error);
+                // Don't update stats on refresh error
             }
         };
 
-        // Debounce the fetch to prevent rapid calls
-        const timeoutId = setTimeout(fetchStats, 300);
-        return () => clearTimeout(timeoutId);
-    }, []);
+        fetchStats();
+    }, 30000); // Refresh every 30 seconds (same as tournaments page polling)
 
-    // Add periodic refresh to pick up any new tournaments (same as tournaments page polling)
-    useEffect(() => {
-        const refreshInterval = setInterval(() => {
-            console.log('Refreshing tournament statistics...');
-            const fetchStats = async () => {
-                try {
-                    setStats(prev => ({ ...prev, loading: false, error: null })); // Don't show loading on refresh
+    return () => clearInterval(refreshInterval);
+}, [loadBasicTournamentData]);
 
-                    // Use the same tournament discovery logic
-                    let tournamentIds = await getActiveTournamentIds();
-
-                    // Only try event-based discovery if no active tournaments found (same as tournaments page)
-                    let eventTournaments: any[] = [];
-                    if (!tournamentIds || tournamentIds.length === 0) {
-                        eventTournaments = await getTournamentsFromBlockchain();
-                        tournamentIds = (eventTournaments || [])
-                            .filter((t): t is NonNullable<typeof t> => t !== null)
-                            .map(t => BigInt(t.id || 0))
-                            .filter(id => id > 0n)
-                            .slice(0, 200);
-                    }
-
-                    // If still no tournaments, try testing individual IDs
-                    if (!tournamentIds || tournamentIds.length === 0) {
-                        tournamentIds = await findTournamentsByTesting();
-                    }
-
-                    // Also try notifier events discovery (like tournaments page polling)
-                    try {
-                        const notifierEvents = await getRecentNotifierEvents();
-                        if (notifierEvents && notifierEvents.length > 0) {
-                            const eventIds = notifierEvents
-                                .filter(e => e.identifier === 'tournamentCreated')
-                                .map(e => BigInt(e.tournament_id))
-                                .filter(id => id > 0n);
-
-                            if (eventIds.length > 0) {
-                                console.log(`Refresh: Found ${eventIds.length} tournaments from notifier events:`, eventIds);
-                                // Add event IDs to existing tournament IDs (avoid duplicates)
-                                const existingIds = new Set(tournamentIds || []);
-                                const newIds = eventIds.filter(id => !existingIds.has(id));
-                                tournamentIds = [...(tournamentIds || []), ...newIds];
-                            }
-                        }
-                    } catch (error) {
-                        console.log('Refresh: Notifier events discovery failed:', error);
-                    }
-
-                    if (!tournamentIds || tournamentIds.length === 0) {
-                        return; // Don't update if no tournaments found during refresh
-                    }
-
-                    // Fetch details for all tournaments
-                    const tournamentPromises = tournamentIds.map(async (id) => {
-                        try {
-                            const details = await loadBasicTournamentData(id);
-                            return details;
-                        } catch (error) {
-                            return null;
-                        }
-                    });
-
-                    const tournaments = await Promise.all(tournamentPromises);
-                    const validTournaments = tournaments.filter((t): t is NonNullable<typeof t> => t !== null);
-
-                    // Filter out fallback tournaments for active tournaments
-                    // But include fallback tournaments for completed tournaments
-                    const realTournaments = validTournaments.filter(t => !t.isFallback);
-                    const fallbackTournaments = validTournaments.filter(t => t.isFallback);
-                    const completedFallbackTournaments = fallbackTournaments.filter(t => t.status === 4);
-
-                    // Use real tournaments + completed fallback tournaments for statistics
-                    const tournamentsForStats = [...realTournaments, ...completedFallbackTournaments];
-
-                    // Count tournaments by status
-                    let joiningCount = 0;
-                    let readyToStartCount = 0;
-                    let activeCount = 0;
-                    let completedCount = 0;
-                    let totalActiveCount = 0;
-                    let highestAmountWon = 0;
-                    let totalAmountPlayed = 0;
-
-                    tournamentsForStats.forEach(tournament => {
-                        if (tournament) {
-                            // Calculate financial stats
-                            const entryFee = parseFloat(String(tournament.entry_fee || '0'));
-                            const maxPlayers = parseInt(String(tournament.max_players || '0'));
-                            const prizePool = entryFee * maxPlayers;
-
-                            totalAmountPlayed += prizePool;
-
-                            if (tournament.status === 4 && prizePool > highestAmountWon) {
-                                highestAmountWon = prizePool;
-                            }
-
-                            switch (tournament.status) {
-                                case 0: // Joining
-                                    joiningCount++;
-                                    totalActiveCount++;
-                                    break;
-                                case 1: // Ready to Start
-                                    readyToStartCount++;
-                                    totalActiveCount++;
-                                    break;
-                                case 2: // Active/Playing
-                                    activeCount++;
-                                    totalActiveCount++;
-                                    break;
-                                case 4: // Completed
-                                    completedCount++;
-                                    break;
-                            }
-                        }
-                    });
-
-                    // Get prize stats from contract (only on refresh if needed)
-                    const prizeStats = await getPrizeStatsFromContract();
-
-                    const refreshedStats = {
-                        totalTournaments: tournamentsForStats.length,
-                        joiningTournaments: joiningCount,
-                        readyToStartTournaments: readyToStartCount,
-                        activeTournaments: activeCount,
-                        totalActiveTournaments: totalActiveCount,
-                        completedTournaments: completedCount,
-                        highestAmountWon,
-                        totalAmountPlayed,
-                        maxPrizeWon: prizeStats?.max_prize_won || 0,
-                        totalPrizeDistributed: prizeStats?.total_prize_distributed || 0,
-                        loading: false,
-                        error: null,
-                    };
-
-                    console.log('Refreshed stats:', refreshedStats);
-                    setStats(refreshedStats);
-
-                } catch (error) {
-                    console.error('Error refreshing tournament stats:', error);
-                    // Don't update stats on refresh error
-                }
-            };
-
-            fetchStats();
-        }, 30000); // Refresh every 30 seconds (same as tournaments page polling)
-
-        return () => clearInterval(refreshInterval);
-    }, [loadBasicTournamentData]);
-
-    return stats;
+return stats;
 };
