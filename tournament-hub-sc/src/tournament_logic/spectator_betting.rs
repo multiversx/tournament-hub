@@ -89,30 +89,55 @@ pub trait SpectatorBettingModule:
         // Find which position the caller bet on (if any)
         let mut caller_winnings = BigUint::zero();
 
-        for (position, winner) in tournament.final_podium.iter().enumerate() {
-            let bets = self
-                .spectator_bets(&(tournament_index as u64), &winner)
-                .get();
+        // Handle draws (no winners) - refund all spectator bets
+        if tournament.final_podium.is_empty() {
+            // Calculate total bets placed by caller across all participants
+            let mut total_caller_bets = BigUint::zero();
+            for participant in tournament.participants.iter() {
+                let bets = self
+                    .spectator_bets(&(tournament_index as u64), &participant)
+                    .get();
 
-            // Calculate total bet on this winner
-            let mut total_bet_on_winner = BigUint::zero();
-            let mut caller_bet_amount = BigUint::zero();
-
-            for bet in bets.iter() {
-                total_bet_on_winner += &bet.amount;
-                if bet.bettor_address == caller {
-                    caller_bet_amount += &bet.amount;
+                for bet in bets.iter() {
+                    if bet.bettor_address == caller {
+                        total_caller_bets += &bet.amount;
+                    }
                 }
             }
 
-            if caller_bet_amount > 0 && total_bet_on_winner > 0 {
-                // Calculate this position's share of the pool
-                let position_percentage = game_config.prize_distribution_percentages.get(position);
-                let position_pool = &remaining_pool * position_percentage / 10_000u32;
+            // Refund caller's bets minus house fee proportion
+            if total_caller_bets > 0 {
+                let refund_amount = &total_caller_bets * &remaining_pool / &total_spectator_pool;
+                caller_winnings = refund_amount;
+            }
+        } else {
+            // Handle normal winners
+            for (position, winner) in tournament.final_podium.iter().enumerate() {
+                let bets = self
+                    .spectator_bets(&(tournament_index as u64), &winner)
+                    .get();
 
-                // Calculate caller's share
-                let caller_share = &position_pool * &caller_bet_amount / &total_bet_on_winner;
-                caller_winnings += caller_share;
+                // Calculate total bet on this winner
+                let mut total_bet_on_winner = BigUint::zero();
+                let mut caller_bet_amount = BigUint::zero();
+
+                for bet in bets.iter() {
+                    total_bet_on_winner += &bet.amount;
+                    if bet.bettor_address == caller {
+                        caller_bet_amount += &bet.amount;
+                    }
+                }
+
+                if caller_bet_amount > 0 && total_bet_on_winner > 0 {
+                    // Calculate this position's share of the pool
+                    let position_percentage =
+                        game_config.prize_distribution_percentages.get(position);
+                    let position_pool = &remaining_pool * position_percentage / 10_000u32;
+
+                    // Calculate caller's share
+                    let caller_share = &position_pool * &caller_bet_amount / &total_bet_on_winner;
+                    caller_winnings += caller_share;
+                }
             }
         }
 
