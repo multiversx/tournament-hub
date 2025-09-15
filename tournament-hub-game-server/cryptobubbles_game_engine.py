@@ -21,7 +21,7 @@ class Cell:
 class Pellet:
     x: float
     y: float
-    size: float = 5.0
+    size: float = 8.0
 
 @dataclass
 class GameState:
@@ -143,8 +143,8 @@ class CryptoBubblesGameEngine:
         """Scale pellet count and bot count based on player count"""
         num_players = len(self.players)
         
-        # Scale pellet count: base 100 per player, minimum 200
-        self.pellet_count = max(200, 100 * num_players)
+        # Scale pellet count: base 150 per player, minimum 300
+        self.pellet_count = max(300, 150 * num_players)
         
         # Use exactly 2 semi-smart bots for more predictable gameplay pacing
         self.bot_count = 2

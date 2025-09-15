@@ -176,7 +176,7 @@ class PlayScene extends Phaser.Scene {
             let drawn = 0;
             for (let i = 0; i < pellets.length && drawn < MAX_NEAR; i++) {
                 const pel = pellets[i];
-                this.upsertPellet(pel.x, pel.y, Math.max(2, pel.size));
+                this.upsertPellet(pel.x, pel.y, Math.max(4, pel.size));
                 drawn++;
             }
 
