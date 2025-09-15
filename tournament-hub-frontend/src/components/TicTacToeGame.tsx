@@ -64,7 +64,9 @@ export const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ sessionId, playerA
             const currentTurn = data.current_turn;
             const isXTurn = currentTurn === 'X';
             const isPlayerX = data.x_player === playerAddress;
-            setIsMyTurn(isXTurn === isPlayerX);
+            const isPlayerO = data.o_player === playerAddress;
+            const isParticipant = isPlayerX || isPlayerO;
+            setIsMyTurn(isParticipant && (isXTurn === isPlayerX));
 
         } catch (error) {
             console.error('Error fetching game state:', error);

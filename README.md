@@ -1,8 +1,111 @@
-# Tournament Hub Smart Contract
+# Tournament Hub
 
-This project implements a modular smart contract for managing tournaments, games, and spectator betting on the MultiversX blockchain. The contract is designed for clarity, maintainability, and extensibility, with logic split into focused modules.
+A comprehensive blockchain-based tournament platform built on MultiversX, featuring multiple game engines, real-time multiplayer gameplay, and decentralized prize distribution. The platform consists of three main components: a React frontend, a Python game server, and a Rust smart contract.
 
-## SC Project Structure
+## Architecture Overview
+
+The Tournament Hub follows a three-tier architecture:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Frontend (React/TypeScript)              │
+│  • Tournament Management UI                                 │
+│  • Real-time Game Interfaces                               │
+│  • Wallet Integration (MultiversX Web Wallet)              │
+│  • Tournament Statistics & Analytics                       │
+└─────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  Game Server (Python/FastAPI)              │
+│  • Multiplayer Game Engines (Chess, TicTacToe, etc.)      │
+│  • Real-time Game State Management                         │
+│  • Result Signing & Verification                           │
+│  • Tournament Session Management                           │
+└─────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│                Smart Contract (Rust/MultiversX)            │
+│  • Tournament Lifecycle Management                         │
+│  • Prize Distribution & House Fees                         │
+│  • Spectator Betting System                                │
+│  • Secure Result Verification                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Project Structure
+
+```
+tournament-hub/
+├── tournament-hub-frontend/     # React frontend application
+├── tournament-hub-game-server/  # Python game server with engines
+└── tournament-hub-sc/          # Rust smart contract
+```
+
+## Frontend (React/TypeScript)
+
+The frontend is built with React, TypeScript, and Chakra UI, providing a modern and responsive user interface.
+
+### Key Features
+- **Tournament Management**: Create, join, and manage tournaments
+- **Real-time Game Interfaces**: Interactive game components for all supported games
+- **Wallet Integration**: Seamless MultiversX Web Wallet connection
+- **Tournament Analytics**: Statistics, leaderboards, and performance tracking
+- **Responsive Design**: Mobile-first approach with modern UI/UX
+
+### Main Pages
+- **Home**: Dashboard with tournament statistics and upcoming tournaments
+- **Tournaments**: Browse and filter active tournaments
+- **Tournament Details**: Detailed view with participants, brackets, and betting
+- **Create Tournament**: Tournament creation form with game selection
+- **Dashboard**: Personal statistics and tournament history
+- **Game Session**: Real-time multiplayer game interface
+
+### Game Components
+- **ChessGamePro**: Advanced chess interface with move validation
+- **TicTacToeGame**: Classic tic-tac-toe multiplayer
+- **ColorRush**: Fast-paced color matching game
+- **CryptoBubblesGame**: Phaser.js-based bubble popping game
+- **DodgeDash**: Arcade-style dodging game
+
+### Technology Stack
+- React 18 with TypeScript
+- Chakra UI for components
+- React Router for navigation
+- MultiversX SDK for blockchain interaction
+- Phaser.js for game engines
+- Axios for API communication
+
+## Game Server (Python/FastAPI)
+
+The game server handles real-time multiplayer gameplay, result determination, and secure result submission to the blockchain.
+
+### Supported Games
+1. **Chess** - Full chess implementation with move validation
+2. **Tic Tac Toe** - Classic 3x3 grid game
+3. **Color Rush** - Fast-paced color matching puzzle
+4. **CryptoBubbles** - Bubble popping arcade game
+5. **DodgeDash** - Arcade-style obstacle dodging
+
+### Key Features
+- **Real-time Game State Management**: WebSocket-based communication
+- **Result Signing**: ECDSA signature generation for secure result submission
+- **Session Management**: Tournament session lifecycle management
+- **Game Engine Integration**: Modular game engine architecture
+- **Database Optimization**: SQLite with performance optimizations
+
+### API Endpoints
+- Game session management (`/start_session`, `/end_session`)
+- Game state queries (`/chess_game_state`, `/tictactoe_game_state`, etc.)
+- Result submission (`/submit_results`)
+- Public key management (`/public_key_pem`)
+
+## Smart Contract (Rust/MultiversX)
+
+The smart contract manages tournament lifecycle, prize distribution, and spectator betting on the MultiversX blockchain.
+
+### Project Structure
 
 ```
 tournament-hub-sc/
@@ -20,7 +123,7 @@ tournament-hub-sc/
 └── README.md
 ```
 
-## Module Overview
+### Module Overview
 
 - **models.rs**: Contains all core data structures and enums, such as `GameConfig`, `Tournament`, `TournamentStatus`, etc.
 - **storage.rs**: Defines storage mappers for persistent contract state (games, tournaments, bets, etc.).
@@ -33,7 +136,38 @@ tournament-hub-sc/
   - **spectator_betting.rs**: Endpoints for placing bets and claiming winnings as a spectator.
 - **tournament_hub.rs**: The main contract file. It only contains the contract trait, which composes all modules, and the `init`/`upgrade` functions.
 
-## Key Features
+### Smart Contract Endpoints
+
+#### Tournament Management
+- `createTournament` - Create a new tournament with entry fee
+- `joinTournament` - Join an existing tournament
+- `startGame` - Start a tournament game session
+- `getTournament` - Get tournament details
+- `getActiveTournamentIds` - Get list of active tournament IDs
+
+#### Game Registration
+- `registerGame` - Register a new game type (owner only)
+- `getGameConfig` - Get game configuration
+- `getNumberOfGames` - Get total number of registered games
+
+#### Results Management
+- `submitResults` - Submit tournament results with signature verification
+- `updateResultTxHash` - Update result transaction hash
+- `getPrizePool` - Get current prize pool for a tournament
+
+#### Spectator Betting
+- `placeSpectatorBet` - Place a bet on a tournament participant
+- `claimSpectatorWinnings` - Claim betting winnings
+- `getSpectatorBets` - Get spectator bets for a tournament
+- `getSpectatorPoolTotal` - Get total spectator betting pool
+
+#### View Functions
+- `getUserTournaments` - Get tournaments for a specific user
+- `getUserStats` - Get user statistics
+- `getNumberOfTournaments` - Get total number of tournaments
+- `getAccumulatedHouseFees` - Get accumulated house fees
+
+### Key Features
 
 - **Modular Design**: Each logical area is in its own file, making the codebase easy to navigate and extend.
 - **Owner-Only Game Registration**: Only the contract owner can register new games.
@@ -41,16 +175,74 @@ tournament-hub-sc/
 - **Result Submission**: Secure result submission and prize distribution, including house fees and podium splits.
 - **Spectator Betting**: Spectators can bet on players, with winnings distributed based on final results.
 - **View Endpoints**: Query all relevant contract state for games, tournaments, and bets.
+- **Signature Verification**: ECDSA signature verification for secure result submission.
+- **Prize Distribution**: Automated prize distribution with configurable percentages.
 
-## Game Server / Signing Server Architecture
+## Game Server Architecture
 
-The Game Server (or Signing Server) is a critical off-chain component that manages multiplayer game sessions and securely submits results to the TournamentHub smart contract.
+The Game Server is a Python-based FastAPI application that manages multiplayer game sessions, handles real-time gameplay, and securely submits results to the smart contract.
 
-### Responsibilities
+### Game Engines
+
+#### 1. Chess Engine (`chess_game_engine.py`)
+- Full chess implementation with move validation
+- Support for multiple concurrent games
+- Real-time move synchronization
+- Game state persistence
+
+#### 2. Tic Tac Toe Engine (`tictactoe_game_engine.py`)
+- Classic 3x3 grid implementation
+- Turn-based gameplay
+- Win condition detection
+- Multiplayer session management
+
+#### 3. Color Rush Engine (`colorrush_game_engine.py`)
+- Fast-paced color matching puzzle
+- Time-based scoring system
+- Real-time score updates
+- Mobile-optimized gameplay
+
+#### 4. CryptoBubbles Engine (`cryptobubbles_game_engine.py`)
+- Phaser.js-based bubble popping game
+- Physics-based gameplay
+- Real-time collision detection
+- Score tracking and leaderboards
+
+#### 5. DodgeDash Engine (`dodgedash_game_engine.py`)
+- Arcade-style obstacle dodging
+- Real-time movement tracking
+- Collision detection
+- Performance-based scoring
+
+### Server Responsibilities
 - **Session Management:** Hosts and manages multiplayer game sessions, tracks participants, and enforces game rules.
 - **Result Determination:** At the end of a session, determines the final podium (ordered list of winners).
 - **Result Signing:** Signs the result data (e.g., tournament ID and podium) with its private key, acting as a trusted attestor.
 - **Result Submission:** Submits the signed result to the TournamentHub smart contract via the `submitResults` endpoint.
+- **Database Management:** SQLite database for game state persistence and optimization.
+
+### API Endpoints
+
+#### Game Session Management
+- `POST /start_session` - Start a new tournament session
+- `POST /end_session` - End a tournament session
+- `GET /session_status` - Get session status
+
+#### Game-Specific Endpoints
+- `POST /start_chess_game` - Start chess game
+- `GET /chess_game_state` - Get chess game state
+- `POST /make_chess_move` - Make chess move
+- `POST /start_tictactoe_game` - Start tic-tac-toe game
+- `GET /tictactoe_game_state` - Get tic-tac-toe game state
+- `POST /make_tictactoe_move` - Make tic-tac-toe move
+- `POST /start_colorrush_game` - Start Color Rush game
+- `GET /colorrush_game_state` - Get Color Rush game state
+- `POST /submit_colorrush_score` - Submit Color Rush score
+
+#### Result Management
+- `POST /submit_results` - Submit tournament results
+- `GET /public_key_pem` - Get server's public key
+- `POST /verify_signature` - Verify result signature
 
 ### Communication Flow
 1. **Game Session:** Players join and play a game session managed by the Game Server.
@@ -63,6 +255,7 @@ The Game Server (or Signing Server) is a critical off-chain component that manag
 - The server's private key must be kept secure; compromise could allow fraudulent result submissions.
 - The public key/address is stored on-chain in the game config, so only results from the trusted server are accepted.
 - For advanced setups, the signing server could be a multi-sig or decentralized oracle.
+- ECDSA signature verification ensures result integrity.
 
 ### High-Level Flow Diagram
 
@@ -142,6 +335,77 @@ flowchart TD
     style Shared fill:#fff,stroke:#333,stroke-width:1px
     style Helpers fill:#fff,stroke:#333,stroke-width:1px
 ```
+
+## Installation & Setup
+
+### Prerequisites
+
+1. **Node.js** (v18 or higher)
+2. **Python** (v3.11 or higher)
+3. **Rust** (latest stable)
+4. **MultiversX SDK**: Install the MultiversX SDK and tools
+5. **MultiversX Wallet**: Have a MultiversX wallet with some test tokens
+
+### Frontend Setup
+
+```bash
+cd tournament-hub-frontend
+npm install
+npm run dev
+```
+
+The frontend will be available at `http://localhost:3000`
+
+### Game Server Setup
+
+```bash
+cd tournament-hub-game-server
+pip install -r requirements.txt
+python main.py
+```
+
+The game server will be available at `http://localhost:8000`
+
+### Smart Contract Setup
+
+```bash
+cd tournament-hub-sc
+cargo build
+```
+
+For deployment and interaction, use the MultiversX CLI tools.
+
+### Environment Configuration
+
+1. **Frontend**: Update `src/config/` files for your network
+2. **Game Server**: Configure `env.local` with your settings
+3. **Smart Contract**: Update `interactor/config.toml` for deployment
+
+## Technology Stack
+
+### Frontend
+- **React 18** - UI framework
+- **TypeScript** - Type safety
+- **Chakra UI** - Component library
+- **React Router** - Navigation
+- **MultiversX SDK** - Blockchain interaction
+- **Phaser.js** - Game engines
+- **Axios** - HTTP client
+- **Vite** - Build tool
+
+### Game Server
+- **Python 3.11** - Runtime
+- **FastAPI** - Web framework
+- **SQLite** - Database
+- **WebSockets** - Real-time communication
+- **Cryptography** - ECDSA signing
+- **Pydantic** - Data validation
+
+### Smart Contract
+- **Rust** - Programming language
+- **MultiversX SC Framework** - Smart contract framework
+- **WASM** - Compilation target
+- **ECDSA** - Signature verification
 
 ## End-to-End Testing Guide
 
@@ -353,6 +617,60 @@ For load testing, you can:
 3. **Replay Attacks**: Try reusing old signatures
 4. **Timing Attacks**: Test tournament state transitions
 5. **Overflow/Underflow**: Test with extreme values
+
+## Development
+
+### Running in Development Mode
+
+1. **Start the Game Server**:
+   ```bash
+   cd tournament-hub-game-server
+   python main.py
+   ```
+
+2. **Start the Frontend**:
+   ```bash
+   cd tournament-hub-frontend
+   npm run dev
+   ```
+
+3. **Deploy Smart Contract** (if needed):
+   ```bash
+   cd tournament-hub-sc
+   mxpy contract deploy --proxy=https://devnet-gateway.multiversx.com --chain=D
+   ```
+
+### Building for Production
+
+1. **Frontend Build**:
+   ```bash
+   cd tournament-hub-frontend
+   npm run build
+   ```
+
+2. **Game Server Docker**:
+   ```bash
+   cd tournament-hub-game-server
+   docker build -t tournament-hub-server .
+   ```
+
+3. **Smart Contract Build**:
+   ```bash
+   cd tournament-hub-sc
+   cargo build --release
+   ```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ---
 

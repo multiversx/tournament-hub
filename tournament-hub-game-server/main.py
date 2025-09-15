@@ -911,6 +911,46 @@ async def join_session(session_id: str, request: JoinSessionRequest):
         logger.error(f"Error joining session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/get_tournament_session")
+@app.get("/tournament-hub/get_tournament_session")
+async def get_tournament_session(tournamentId: str):
+    """Get existing session for a tournament"""
+    try:
+        # Look for existing session with this tournament ID
+        for session_id, session in sessions.items():
+            if session.get("tournament_id") == tournamentId:
+                # Check if game is still active (not over)
+                game_type = session.get("game_type", "cryptobubbles")
+                game_over = False
+                
+                # Check game state to see if it's over
+                try:
+                    if game_type == "chess":
+                        game_state = await get_chess_game_state(sessionId=session_id)
+                        game_over = game_state.get("game_over", False)
+                    elif game_type == "tictactoe":
+                        game_state = await get_tictactoe_game_state(sessionId=session_id)
+                        game_over = game_state.get("game_over", False)
+                    elif game_type == "dodgedash":
+                        game_state = await get_dodgedash_game_state(sessionId=session_id)
+                        game_over = game_state.get("game_over", False)
+                    elif game_type == "colorrush":
+                        game_state = await get_colorrush_game_state(sessionId=session_id)
+                        game_over = game_state.get("game_over", False)
+                    else:  # cryptobubbles
+                        game_state = await get_cryptobubbles_game_state(sessionId=session_id)
+                        game_over = game_state.get("game_over", False)
+                except:
+                    game_over = True  # If we can't get game state, assume it's over
+                
+                # Only return session if game is not over
+                if not game_over:
+                    return {"session_id": session_id, "game_type": game_type}
+        return {"session_id": None}
+    except Exception as e:
+        logger.error(f"Error getting tournament session: {e}")
+        return {"session_id": None}
+
 @app.get("/game_state")
 async def get_game_state(session_id: str):
     """Get current game state - handles both chess and CryptoBubbles"""
@@ -928,6 +968,8 @@ async def get_game_state(session_id: str):
             return await get_tictactoe_game_state(sessionId=session_id)
         elif game_type == "dodgedash":
             return await get_dodgedash_game_state(sessionId=session_id)
+        elif game_type == "colorrush":
+            return await get_colorrush_game_state(sessionId=session_id)
         else:  # cryptobubbles
             return await get_cryptobubbles_game_state(sessionId=session_id)
         
@@ -1192,6 +1234,25 @@ async def submit_chess_move(request: ChessMoveRequest):
         logger.error(f"Error making chess move: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/join_chess_session")
+@app.post("/tournament-hub/join_chess_session")
+async def join_chess_session(sessionId: str, player: str):
+    """Join a chess game session"""
+    try:
+        game = get_chess_game(sessionId)
+        if not game:
+            raise HTTPException(status_code=404, detail="Chess game not found")
+        
+        # Try to add player to the game
+        success = game.add_player(player)
+        if success:
+            return {"status": "joined", "game_state": game.get_game_state()}
+        else:
+            return {"status": "spectator", "game_state": game.get_game_state()}
+    except Exception as e:
+        logger.error(f"Error joining chess session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/start_chess_game")
 @app.post("/tournament-hub/start_chess_game")
 async def start_chess_game(sessionId: str):
@@ -1452,12 +1513,19 @@ def check_and_submit_game_results():
             for session_id, game in tictactoe_games.items():
                 if not getattr(game, 'results_submitted', False):
                     game_state = game.get_game_state()
-                    if game_state.get('game_over', False) and game_state.get('winner'):
-                        logger.info(f"TicTacToe game {session_id} finished! Winner: {game_state['winner']}")
+                    if game_state.get('game_over', False):
+                        winner = game_state.get('winner')
+                        if winner:
+                            logger.info(f"TicTacToe game {session_id} finished! Winner: {winner}")
+                        else:
+                            logger.info(f"TicTacToe game {session_id} finished! Draw!")
+                        
                         game.results_submitted = True
                         try:
                             tournament_id = int(session_id.split('_')[-1]) if session_id.startswith('session_') else int(session_id)
-                            podium = [game_state['winner']]
+                            # For draws, create an empty podium or use a special marker
+                            # The contract should handle empty podium as a draw
+                            podium = [winner] if winner else []
                             signature = sign_results_for_tournament(tournament_id, podium)
                             if signature:
                                 tx_hash = submit_results_to_contract_with_signature(tournament_id, podium, signature)

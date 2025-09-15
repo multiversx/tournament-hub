@@ -104,9 +104,6 @@ export const Header = () => {
             <MxLink to="/dashboard" className="text-gray-300 hover:text-purple-400 transition-colors font-medium">
               Dashboard
             </MxLink>
-            <MxLink to="/admin" className="text-gray-300 hover:text-orange-400 transition-colors font-medium">
-              Admin
-            </MxLink>
           </HStack>
 
           <HStack spacing={1} alignItems="center">

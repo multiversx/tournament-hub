@@ -595,7 +595,7 @@ export const TournamentDetails = () => {
                             <HStack justify="space-between">
                                 <Text color="gray.300" fontWeight="bold">Max Prize Pool:</Text>
                                 <Text color="gray.100">
-                                    {(parseFloat(tournament.entry_fee_egld) * tournament.max_players).toFixed(4)} EGLD
+                                    {(parseFloat(tournament.entry_fee_egld.replace(',', '.')) * tournament.max_players).toFixed(4)} EGLD
                                 </Text>
                             </HStack>
                             <HStack justify="space-between">

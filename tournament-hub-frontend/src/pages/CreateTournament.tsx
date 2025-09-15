@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
     Box,
     Button,
@@ -66,6 +66,7 @@ export const CreateTournament: React.FC = () => {
 
     const [errors, setErrors] = useState<FormErrors>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const formRef = useRef<HTMLFormElement>(null);
 
     // Prize Pool Slider Configuration
     const prizePoolSteps = ['0.01', '0.05', '0.1', '0.25', '0.5', '1', '2', '5', '10', '25', '50', '100'];
@@ -142,6 +143,20 @@ export const CreateTournament: React.FC = () => {
 
 
         setErrors(newErrors);
+
+        // Scroll to first error if validation fails
+        if (Object.keys(newErrors).length > 0) {
+            setTimeout(() => {
+                const firstErrorField = Object.keys(newErrors)[0];
+                const errorElement = document.querySelector(`[data-field="${firstErrorField}"]`);
+                if (errorElement) {
+                    errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else if (formRef.current) {
+                    formRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }, 100);
+        }
+
         return Object.keys(newErrors).length === 0;
     };
 
@@ -170,6 +185,8 @@ export const CreateTournament: React.FC = () => {
                 name: formData.name.trim(),
             });
 
+            // Redirect to tournaments page after successful creation
+            window.location.href = '/tournaments';
 
             // Reset form
             setFormData({
@@ -187,10 +204,13 @@ export const CreateTournament: React.FC = () => {
     };
 
     const handleInputChange = (field: keyof FormData, value: string) => {
+        // Normalize decimal separator for entry fee - convert comma to dot
+        const normalizedValue = field === 'entryFee' ? value.replace(',', '.') : value;
+
         // Force PvP (Chess) to 2 players only
-        const gameId = field === 'gameType' ? parseInt(value) : parseInt(formData.gameType);
+        const gameId = field === 'gameType' ? parseInt(normalizedValue) : parseInt(formData.gameType);
         const isPvpTwoPlayer = gameId === 2 || gameId === 1; // 2 = Chess, 1 = TicTacToe
-        let next = { ...formData, [field]: value } as FormData;
+        let next = { ...formData, [field]: normalizedValue } as FormData;
         if (isPvpTwoPlayer) {
             next.maxPlayers = '2';
             next.minPlayers = '2';
@@ -263,7 +283,11 @@ export const CreateTournament: React.FC = () => {
 
         // Add mouse move and mouse up listeners
         const handleMouseMove = (moveEvent: MouseEvent) => {
-            const moveRect = e.currentTarget.getBoundingClientRect();
+            // Get the current rect of the slider track
+            const sliderTrack = document.querySelector('[data-slider-track]') as HTMLElement;
+            if (!sliderTrack) return;
+
+            const moveRect = sliderTrack.getBoundingClientRect();
             const moveSliderWidth = moveRect.width;
             const moveClickX = moveEvent.clientX - moveRect.left;
             const movePercentage = moveClickX / moveSliderWidth;
@@ -291,6 +315,62 @@ export const CreateTournament: React.FC = () => {
     const getSelectedGameConfig = () => {
         const gameId = parseInt(formData.gameType);
         return GAME_CONFIGS[gameId as keyof typeof GAME_CONFIGS];
+    };
+
+    const getGameInstructions = (gameId: number) => {
+        const instructions = {
+            1: {
+                title: "Tic Tac Toe",
+                description: "Classic 3x3 grid game",
+                rules: [
+                    "Players take turns placing X and O marks",
+                    "First to get 3 in a row (horizontal, vertical, or diagonal) wins",
+                    "If all 9 squares are filled with no winner, it's a draw",
+                    "Perfect for quick strategic thinking"
+                ]
+            },
+            2: {
+                title: "Chess",
+                description: "Strategic board game",
+                rules: [
+                    "Each player controls 16 pieces with unique movement patterns",
+                    "Objective: Checkmate the opponent's king",
+                    "Pieces: Pawns, Rooks, Knights, Bishops, Queen, King",
+                    "Time limit applies - manage your moves wisely"
+                ]
+            },
+            4: {
+                title: "Color Rush",
+                description: "Fast-paced color matching",
+                rules: [
+                    "Match tiles of the same color to clear them",
+                    "Clear as many tiles as possible within the time limit",
+                    "Higher scores come from longer chains and combos",
+                    "Speed and pattern recognition are key"
+                ]
+            },
+            5: {
+                title: "Crypto Bubbles",
+                description: "Real-time battle royale",
+                rules: [
+                    "Control your cell and eat smaller cells to grow",
+                    "Avoid larger cells that can eat you",
+                    "Eat white dots and smaller players to increase size",
+                    "Last player standing wins the tournament"
+                ]
+            },
+            6: {
+                title: "Dodge Dash",
+                description: "Survival obstacle course",
+                rules: [
+                    "Navigate through waves of obstacles",
+                    "Avoid red obstacles - they reduce your lives",
+                    "Collect power-ups to gain advantages",
+                    "Survive as many waves as possible"
+                ]
+            }
+        };
+        return instructions[gameId as keyof typeof instructions] || null;
     };
 
     const selectedGame = getSelectedGameConfig();
@@ -385,11 +465,11 @@ export const CreateTournament: React.FC = () => {
                         </HStack>
                     </CardHeader>
                     <CardBody p={6}>
-                        <form onSubmit={handleSubmit}>
+                        <form ref={formRef} onSubmit={handleSubmit}>
                             <VStack spacing={3} pb={4}>
                                 {/* Top Row: Tournament Name and Game Type */}
                                 <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6} w="full">
-                                    <FormControl isInvalid={!!errors.name}>
+                                    <FormControl isInvalid={!!errors.name} data-field="name">
                                         <FormLabel
                                             color="white"
                                             fontSize="sm"
@@ -567,6 +647,67 @@ export const CreateTournament: React.FC = () => {
                                     </Box>
                                 )}
 
+                                {/* Game Instructions */}
+                                {getGameInstructions(parseInt(formData.gameType)) && (
+                                    <Box
+                                        bgGradient="linear(135deg, blue.600, purple.700)"
+                                        border="2px solid"
+                                        borderColor="blue.400"
+                                        borderRadius="xl"
+                                        p={6}
+                                        boxShadow="0 8px 20px rgba(59, 130, 246, 0.3)"
+                                    >
+                                        <VStack spacing={4} align="stretch">
+                                            <HStack spacing={3} align="center">
+                                                <Box
+                                                    p={2}
+                                                    bg="rgba(255,255,255,0.2)"
+                                                    borderRadius="md"
+                                                >
+                                                    <FontAwesomeIcon icon={faInfoCircle} color="white" size="lg" />
+                                                </Box>
+                                                <VStack spacing={1} align="start">
+                                                    <Text color="white" fontSize="lg" fontWeight="bold">
+                                                        {getGameInstructions(parseInt(formData.gameType))?.title} Instructions
+                                                    </Text>
+                                                    <Text color="blue.100" fontSize="sm">
+                                                        {getGameInstructions(parseInt(formData.gameType))?.description}
+                                                    </Text>
+                                                </VStack>
+                                            </HStack>
+
+                                            <Box
+                                                bg="rgba(255,255,255,0.1)"
+                                                borderRadius="lg"
+                                                p={4}
+                                                border="1px solid"
+                                                borderColor="rgba(255,255,255,0.2)"
+                                            >
+                                                <Text color="white" fontSize="sm" fontWeight="semibold" mb={3}>
+                                                    How to Play:
+                                                </Text>
+                                                <VStack spacing={2} align="stretch">
+                                                    {getGameInstructions(parseInt(formData.gameType))?.rules.map((rule, index) => (
+                                                        <HStack key={index} spacing={3} align="start">
+                                                            <Box
+                                                                w="6px"
+                                                                h="6px"
+                                                                bg="blue.300"
+                                                                borderRadius="full"
+                                                                mt={2}
+                                                                flexShrink={0}
+                                                            />
+                                                            <Text color="blue.100" fontSize="sm">
+                                                                {rule}
+                                                            </Text>
+                                                        </HStack>
+                                                    ))}
+                                                </VStack>
+                                            </Box>
+                                        </VStack>
+                                    </Box>
+                                )}
+
                                 {/* Cool Player Range Slider */}
                                 <FormControl isInvalid={!!errors.minPlayers || !!errors.maxPlayers}>
                                     <FormLabel
@@ -588,70 +729,65 @@ export const CreateTournament: React.FC = () => {
                                             <VStack spacing={0} align="center">
                                                 <Text>Player Range</Text>
                                                 <Text color="gray.400" fontSize="sm">
-                                                    Drag the handles to set min and max players
+                                                    {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1 || parseInt(formData.gameType) === 4)
+                                                        ? "Fixed to 2 players for PvP games"
+                                                        : "Drag the handles to set min and max players"}
                                                 </Text>
                                             </VStack>
                                         </HStack>
                                     </FormLabel>
 
-                                    <Box
-                                        bg="gray.700"
-                                        borderRadius="2xl"
-                                        p={6}
-                                        border="2px solid"
-                                        borderColor="gray.600"
-                                        _hover={{
-                                            borderColor: "purple.400",
-                                            boxShadow: "0 8px 25px rgba(147, 51, 234, 0.2)"
-                                        }}
-                                        transition="all 0.3s ease"
-                                    >
-                                        <VStack spacing={6}>
-                                            {/* Current Values Display */}
-                                            <HStack spacing={8} justify="center">
-                                                <VStack spacing={1}>
-                                                    <Text color="purple.300" fontSize="sm" fontWeight="semibold">
-                                                        Min Players
-                                                    </Text>
-                                                    <Box
-                                                        bgGradient="linear(135deg, purple.500, pink.600)"
-                                                        color="white"
-                                                        px={4}
-                                                        py={2}
-                                                        borderRadius="xl"
-                                                        fontWeight="bold"
-                                                        fontSize="lg"
-                                                        boxShadow="0 4px 12px rgba(147, 51, 234, 0.3)"
-                                                    >
-                                                        {sliderValues[0]}
-                                                    </Box>
-                                                </VStack>
-                                                <VStack spacing={1}>
-                                                    <Text color="pink.300" fontSize="sm" fontWeight="semibold">
-                                                        Max Players
-                                                    </Text>
-                                                    <Box
-                                                        bgGradient="linear(135deg, pink.500, purple.600)"
-                                                        color="white"
-                                                        px={4}
-                                                        py={2}
-                                                        borderRadius="xl"
-                                                        fontWeight="bold"
-                                                        fontSize="lg"
-                                                        boxShadow="0 4px 12px rgba(236, 72, 153, 0.3)"
-                                                    >
-                                                        {sliderValues[1]}
-                                                    </Box>
-                                                </VStack>
-                                            </HStack>
-
-                                            {/* Dual Handle Range Slider */}
-                                            <Box w="full" px={4}>
-                                                <VStack spacing={6}>
-                                                    {/* Range Display */}
-                                                    <HStack spacing={4} justify="center">
+                                    {/* Show simple display for 2-player games, slider for others */}
+                                    {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1 || parseInt(formData.gameType) === 4) ? (
+                                        <Box
+                                            bg="gray.700"
+                                            borderRadius="2xl"
+                                            p={6}
+                                            border="2px solid"
+                                            borderColor="purple.400"
+                                            boxShadow="0 8px 25px rgba(147, 51, 234, 0.2)"
+                                        >
+                                            <VStack spacing={4}>
+                                                <Box
+                                                    bgGradient="linear(135deg, purple.500, pink.600)"
+                                                    color="white"
+                                                    px={6}
+                                                    py={3}
+                                                    borderRadius="xl"
+                                                    fontWeight="bold"
+                                                    fontSize="xl"
+                                                    boxShadow="0 4px 12px rgba(147, 51, 234, 0.3)"
+                                                    textAlign="center"
+                                                >
+                                                    2 Players
+                                                </Box>
+                                                <Text color="purple.200" fontSize="sm" textAlign="center">
+                                                    Fixed for PvP games
+                                                </Text>
+                                            </VStack>
+                                        </Box>
+                                    ) : (
+                                        <Box
+                                            bg="gray.700"
+                                            borderRadius="2xl"
+                                            p={6}
+                                            border="2px solid"
+                                            borderColor="gray.600"
+                                            _hover={{
+                                                borderColor: "purple.400",
+                                                boxShadow: "0 8px 25px rgba(147, 51, 234, 0.2)"
+                                            }}
+                                            transition="all 0.3s ease"
+                                        >
+                                            <VStack spacing={6}>
+                                                {/* Current Values Display */}
+                                                <HStack spacing={8} justify="center">
+                                                    <VStack spacing={1}>
+                                                        <Text color="purple.300" fontSize="sm" fontWeight="semibold">
+                                                            Min Players
+                                                        </Text>
                                                         <Box
-                                                            bgGradient="linear(135deg, purple.500, purple.600)"
+                                                            bgGradient="linear(135deg, purple.500, pink.600)"
                                                             color="white"
                                                             px={4}
                                                             py={2}
@@ -660,145 +796,184 @@ export const CreateTournament: React.FC = () => {
                                                             fontSize="lg"
                                                             boxShadow="0 4px 12px rgba(147, 51, 234, 0.3)"
                                                         >
-                                                            {sliderValues[0]} - {sliderValues[1]} Players
+                                                            {sliderValues[0]}
                                                         </Box>
-                                                    </HStack>
-
-                                                    {/* Custom Range Slider */}
-                                                    <Box position="relative" w="full" h="8">
-                                                        {/* Track Background */}
+                                                    </VStack>
+                                                    <VStack spacing={1}>
+                                                        <Text color="pink.300" fontSize="sm" fontWeight="semibold">
+                                                            Max Players
+                                                        </Text>
                                                         <Box
-                                                            position="absolute"
-                                                            top="50%"
-                                                            left="0"
-                                                            right="0"
-                                                            h="8px"
-                                                            bg="gray.600"
-                                                            borderRadius="full"
-                                                            transform="translateY(-50%)"
-                                                            boxShadow="inset 0 2px 4px rgba(0,0,0,0.2)"
-                                                        />
-
-                                                        {/* Active Range */}
-                                                        <Box
-                                                            position="absolute"
-                                                            top="50%"
-                                                            left={`${((sliderValues[0] - 2) / 6) * 100}%`}
-                                                            right={`${((8 - sliderValues[1]) / 6) * 100}%`}
-                                                            h="8px"
-                                                            bgGradient="linear(90deg, purple.500, pink.500)"
-                                                            borderRadius="full"
-                                                            transform="translateY(-50%)"
-                                                            boxShadow="0 2px 8px rgba(147, 51, 234, 0.4)"
-                                                        />
-
-                                                        {/* Min Handle */}
-                                                        <Box
-                                                            position="absolute"
-                                                            top="50%"
-                                                            left={`${((sliderValues[0] - 2) / 6) * 100}%`}
-                                                            transform="translate(-50%, -50%)"
-                                                            w="8"
-                                                            h="8"
-                                                            bgGradient="linear(135deg, purple.500, purple.600)"
-                                                            borderRadius="full"
-                                                            border="3px solid"
-                                                            borderColor="white"
-                                                            boxShadow="0 4px 12px rgba(147, 51, 234, 0.4), 0 0 0 1px rgba(147, 51, 234, 0.2)"
-                                                            cursor="pointer"
-                                                            _hover={{
-                                                                transform: "translate(-50%, -50%) scale(1.2)",
-                                                                boxShadow: "0 6px 16px rgba(147, 51, 234, 0.6), 0 0 0 1px rgba(147, 51, 234, 0.3)"
-                                                            }}
-                                                            _active={{
-                                                                transform: "translate(-50%, -50%) scale(1.1)"
-                                                            }}
-                                                            transition="all 0.2s ease"
-                                                            onMouseDown={(e) => handleRangeSliderMouseDown(e, 'min')}
+                                                            bgGradient="linear(135deg, pink.500, purple.600)"
+                                                            color="white"
+                                                            px={4}
+                                                            py={2}
+                                                            borderRadius="xl"
+                                                            fontWeight="bold"
+                                                            fontSize="lg"
+                                                            boxShadow="0 4px 12px rgba(236, 72, 153, 0.3)"
                                                         >
+                                                            {sliderValues[1]}
+                                                        </Box>
+                                                    </VStack>
+                                                </HStack>
+
+                                                {/* Dual Handle Range Slider */}
+                                                <Box w="full" px={4}>
+                                                    <VStack spacing={6}>
+                                                        {/* Range Display */}
+                                                        <HStack spacing={4} justify="center">
                                                             <Box
+                                                                bgGradient="linear(135deg, purple.500, purple.600)"
                                                                 color="white"
-                                                                fontSize="xs"
+                                                                px={4}
+                                                                py={2}
+                                                                borderRadius="xl"
                                                                 fontWeight="bold"
-                                                                position="absolute"
-                                                                top="-20px"
-                                                                left="50%"
-                                                                transform="translateX(-50%)"
-                                                                whiteSpace="nowrap"
+                                                                fontSize="lg"
+                                                                boxShadow="0 4px 12px rgba(147, 51, 234, 0.3)"
                                                             >
-                                                                {sliderValues[0]}
+                                                                {sliderValues[0]} - {sliderValues[1]} Players
                                                             </Box>
+                                                        </HStack>
+
+                                                        {/* Custom Range Slider */}
+                                                        <Box position="relative" w="full" h="8">
+                                                            {/* Track Background */}
+                                                            <Box
+                                                                position="absolute"
+                                                                top="50%"
+                                                                left="0"
+                                                                right="0"
+                                                                h="8px"
+                                                                bg="gray.600"
+                                                                borderRadius="full"
+                                                                transform="translateY(-50%)"
+                                                                boxShadow="inset 0 2px 4px rgba(0,0,0,0.2)"
+                                                            />
+
+                                                            {/* Active Range */}
+                                                            <Box
+                                                                position="absolute"
+                                                                top="50%"
+                                                                left={`${((sliderValues[0] - 2) / 6) * 100}%`}
+                                                                right={`${((8 - sliderValues[1]) / 6) * 100}%`}
+                                                                h="8px"
+                                                                bgGradient="linear(90deg, purple.500, pink.500)"
+                                                                borderRadius="full"
+                                                                transform="translateY(-50%)"
+                                                                boxShadow="0 2px 8px rgba(147, 51, 234, 0.4)"
+                                                            />
+
+                                                            {/* Min Handle */}
+                                                            <Box
+                                                                position="absolute"
+                                                                top="50%"
+                                                                left={`${((sliderValues[0] - 2) / 6) * 100}%`}
+                                                                transform="translate(-50%, -50%)"
+                                                                w="8"
+                                                                h="8"
+                                                                bgGradient="linear(135deg, purple.500, purple.600)"
+                                                                borderRadius="full"
+                                                                border="3px solid"
+                                                                borderColor="white"
+                                                                boxShadow="0 4px 12px rgba(147, 51, 234, 0.4), 0 0 0 1px rgba(147, 51, 234, 0.2)"
+                                                                cursor="pointer"
+                                                                _hover={{
+                                                                    transform: "translate(-50%, -50%) scale(1.2)",
+                                                                    boxShadow: "0 6px 16px rgba(147, 51, 234, 0.6), 0 0 0 1px rgba(147, 51, 234, 0.3)"
+                                                                }}
+                                                                _active={{
+                                                                    transform: "translate(-50%, -50%) scale(1.1)"
+                                                                }}
+                                                                transition="all 0.2s ease"
+                                                                onMouseDown={(e) => handleRangeSliderMouseDown(e, 'min')}
+                                                            >
+                                                                <Box
+                                                                    color="white"
+                                                                    fontSize="xs"
+                                                                    fontWeight="bold"
+                                                                    position="absolute"
+                                                                    top="-20px"
+                                                                    left="50%"
+                                                                    transform="translateX(-50%)"
+                                                                    whiteSpace="nowrap"
+                                                                >
+                                                                    {sliderValues[0]}
+                                                                </Box>
+                                                            </Box>
+
+                                                            {/* Max Handle */}
+                                                            <Box
+                                                                position="absolute"
+                                                                top="50%"
+                                                                left={`${((sliderValues[1] - 2) / 6) * 100}%`}
+                                                                transform="translate(-50%, -50%)"
+                                                                w="8"
+                                                                h="8"
+                                                                bgGradient="linear(135deg, pink.500, pink.600)"
+                                                                borderRadius="full"
+                                                                border="3px solid"
+                                                                borderColor="white"
+                                                                boxShadow="0 4px 12px rgba(236, 72, 153, 0.4), 0 0 0 1px rgba(236, 72, 153, 0.2)"
+                                                                cursor="pointer"
+                                                                _hover={{
+                                                                    transform: "translate(-50%, -50%) scale(1.2)",
+                                                                    boxShadow: "0 6px 16px rgba(236, 72, 153, 0.6), 0 0 0 1px rgba(236, 72, 153, 0.3)"
+                                                                }}
+                                                                _active={{
+                                                                    transform: "translate(-50%, -50%) scale(1.1)"
+                                                                }}
+                                                                transition="all 0.2s ease"
+                                                                onMouseDown={(e) => handleRangeSliderMouseDown(e, 'max')}
+                                                            >
+                                                                <Box
+                                                                    color="white"
+                                                                    fontSize="xs"
+                                                                    fontWeight="bold"
+                                                                    position="absolute"
+                                                                    top="-20px"
+                                                                    left="50%"
+                                                                    transform="translateX(-50%)"
+                                                                    whiteSpace="nowrap"
+                                                                >
+                                                                    {sliderValues[1]}
+                                                                </Box>
+                                                            </Box>
+
+                                                            {/* Clickable Track */}
+                                                            <Box
+                                                                position="absolute"
+                                                                top="0"
+                                                                left="0"
+                                                                right="0"
+                                                                h="8"
+                                                                cursor="pointer"
+                                                                data-slider-track
+                                                                onMouseDown={(e) => handleRangeSliderMouseDown(e, 'track')}
+                                                            />
                                                         </Box>
 
-                                                        {/* Max Handle */}
-                                                        <Box
-                                                            position="absolute"
-                                                            top="50%"
-                                                            left={`${((sliderValues[1] - 2) / 6) * 100}%`}
-                                                            transform="translate(-50%, -50%)"
-                                                            w="8"
-                                                            h="8"
-                                                            bgGradient="linear(135deg, pink.500, pink.600)"
-                                                            borderRadius="full"
-                                                            border="3px solid"
-                                                            borderColor="white"
-                                                            boxShadow="0 4px 12px rgba(236, 72, 153, 0.4), 0 0 0 1px rgba(236, 72, 153, 0.2)"
-                                                            cursor="pointer"
-                                                            _hover={{
-                                                                transform: "translate(-50%, -50%) scale(1.2)",
-                                                                boxShadow: "0 6px 16px rgba(236, 72, 153, 0.6), 0 0 0 1px rgba(236, 72, 153, 0.3)"
-                                                            }}
-                                                            _active={{
-                                                                transform: "translate(-50%, -50%) scale(1.1)"
-                                                            }}
-                                                            transition="all 0.2s ease"
-                                                            onMouseDown={(e) => handleRangeSliderMouseDown(e, 'max')}
-                                                        >
-                                                            <Box
-                                                                color="white"
-                                                                fontSize="xs"
-                                                                fontWeight="bold"
-                                                                position="absolute"
-                                                                top="-20px"
-                                                                left="50%"
-                                                                transform="translateX(-50%)"
-                                                                whiteSpace="nowrap"
-                                                            >
-                                                                {sliderValues[1]}
-                                                            </Box>
-                                                        </Box>
-
-                                                        {/* Clickable Track */}
-                                                        <Box
-                                                            position="absolute"
-                                                            top="0"
-                                                            left="0"
-                                                            right="0"
-                                                            h="8"
-                                                            cursor="pointer"
-                                                            onMouseDown={(e) => handleRangeSliderMouseDown(e, 'track')}
-                                                        />
-                                                    </Box>
-
-                                                    {/* Slider Marks */}
-                                                    <HStack spacing={0} justify="space-between" w="full" px={2}>
-                                                        {[2, 3, 4, 5, 6, 7, 8].map((value) => (
-                                                            <Text
-                                                                key={value}
-                                                                color="gray.400"
-                                                                fontSize="xs"
-                                                                fontWeight="semibold"
-                                                                textAlign="center"
-                                                                minW="20px"
-                                                            >
-                                                                {value}
-                                                            </Text>
-                                                        ))}
-                                                    </HStack>
-                                                </VStack>
-                                            </Box>
-                                        </VStack>
-                                    </Box>
+                                                        {/* Slider Marks */}
+                                                        <HStack spacing={0} justify="space-between" w="full" px={2}>
+                                                            {[2, 3, 4, 5, 6, 7, 8].map((value) => (
+                                                                <Text
+                                                                    key={value}
+                                                                    color="gray.400"
+                                                                    fontSize="xs"
+                                                                    fontWeight="semibold"
+                                                                    textAlign="center"
+                                                                    minW="20px"
+                                                                >
+                                                                    {value}
+                                                                </Text>
+                                                            ))}
+                                                        </HStack>
+                                                    </VStack>
+                                                </Box>
+                                            </VStack>
+                                        </Box>
+                                    )}
 
                                     {(errors.minPlayers || errors.maxPlayers) && (
                                         <Text color="red.400" fontSize="xs" mt={2} textAlign="center" fontWeight="medium">
@@ -872,19 +1047,26 @@ export const CreateTournament: React.FC = () => {
                                 <FormControl isInvalid={!!errors.entryFee}>
                                     <FormLabel
                                         color="white"
-                                        fontSize="sm"
-                                        fontWeight="semibold"
-                                        mb={2}
+                                        fontSize="lg"
+                                        fontWeight="bold"
+                                        mb={4}
+                                        textAlign="center"
                                     >
-                                        <HStack spacing={2}>
+                                        <HStack spacing={3} justify="center">
                                             <Box
-                                                p={1}
+                                                p={2}
                                                 bgGradient="linear(135deg, yellow.500, orange.600)"
-                                                borderRadius="md"
+                                                borderRadius="xl"
+                                                boxShadow="0 8px 20px rgba(250, 204, 21, 0.3)"
                                             >
-                                                <FontAwesomeIcon icon={faCoins} color="white" size="sm" />
+                                                <FontAwesomeIcon icon={faCoins} color="white" size="lg" />
                                             </Box>
-                                            Entry Fee (EGLD)
+                                            <VStack spacing={0} align="center">
+                                                <Text>Entry Fee (EGLD)</Text>
+                                                <Text color="gray.400" fontSize="sm">
+                                                    Drag the slider to set the tournament entry fee
+                                                </Text>
+                                            </VStack>
                                         </HStack>
                                     </FormLabel>
                                     {/* Prize Pool Slider with Logarithmic Values */}
@@ -986,11 +1168,15 @@ export const CreateTournament: React.FC = () => {
                                                         onBlur={() => {
                                                             // Update slider when user finishes typing
                                                             if (isManualInput) {
-                                                                if (formData.entryFee && formData.entryFee.trim() !== '') {
-                                                                    const numValue = parseFloat(formData.entryFee);
+                                                                // Normalize the input value (convert comma to dot)
+                                                                const normalizedValue = formData.entryFee.replace(',', '.');
+                                                                if (normalizedValue && normalizedValue.trim() !== '') {
+                                                                    const numValue = parseFloat(normalizedValue);
                                                                     if (numValue >= 0.01 && numValue <= 100) {
                                                                         const sliderPos = getSliderValueFromAmount(numValue);
                                                                         setPrizePoolSliderValue(sliderPos);
+                                                                        // Update form data with normalized value
+                                                                        setFormData(prev => ({ ...prev, entryFee: normalizedValue }));
                                                                     }
                                                                 } else {
                                                                     // If input is empty, reset to default
@@ -1005,6 +1191,7 @@ export const CreateTournament: React.FC = () => {
                                                         border="2px solid"
                                                         borderColor="gray.600"
                                                         borderRadius="xl"
+                                                        textAlign="center"
                                                         _hover={{
                                                             borderColor: "yellow.400",
                                                             transform: "translateY(-1px)",
@@ -1046,27 +1233,25 @@ export const CreateTournament: React.FC = () => {
                                     }}
                                     transition="all 0.3s ease"
                                 >
-                                    <HStack justify="space-between" align="center" wrap="wrap">
-                                        <HStack spacing={6}>
-                                            <HStack spacing={2}>
-                                                <Box
-                                                    p={1}
-                                                    bgGradient="linear(135deg, green.500, emerald.600)"
-                                                    borderRadius="md"
-                                                >
-                                                    <FontAwesomeIcon icon={faCoins} color="white" size="sm" />
-                                                </Box>
-                                                <Text color="gray.300" fontSize="sm" fontWeight="semibold">
-                                                    Max Prize Pool:
-                                                </Text>
-                                                <Text
-                                                    color="green.400"
-                                                    fontSize="lg"
-                                                    fontWeight="bold"
-                                                >
-                                                    {(parseFloat(formData.entryFee) * parseInt(formData.maxPlayers)).toFixed(4)} EGLD
-                                                </Text>
-                                            </HStack>
+                                    <HStack justify="center" align="center" wrap="wrap">
+                                        <HStack spacing={2}>
+                                            <Box
+                                                p={1}
+                                                bgGradient="linear(135deg, green.500, emerald.600)"
+                                                borderRadius="md"
+                                            >
+                                                <FontAwesomeIcon icon={faCoins} color="white" size="sm" />
+                                            </Box>
+                                            <Text color="gray.300" fontSize="sm" fontWeight="semibold">
+                                                Max Prize Pool:
+                                            </Text>
+                                            <Text
+                                                color="green.400"
+                                                fontSize="lg"
+                                                fontWeight="bold"
+                                            >
+                                                {(parseFloat(formData.entryFee) * parseInt(formData.maxPlayers)).toFixed(4)} EGLD
+                                            </Text>
                                         </HStack>
                                     </HStack>
                                 </Box>
