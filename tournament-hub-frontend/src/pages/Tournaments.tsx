@@ -29,10 +29,16 @@ import {
     Flex,
     Center,
     Progress,
+    Tabs,
+    TabList,
+    TabPanels,
+    Tab,
+    TabPanel,
 } from '@chakra-ui/react';
 import { Users, Award, Calendar, Plus, Search, Filter, ChevronDown, ChevronUp, Trophy, Clock, Copy, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { getActiveTournamentIds, getTournamentDetailsFromContract, getTournamentDetailsFromContractFresh, getGameConfig, getPrizePoolFromContract, getTournamentsFromBlockchain, findTournamentsByTesting, getSubmitResultsTransactionHash, clearApiCaches, getRecentNotifierEvents, getAnyJoinTs, isTournamentCompletedByEvents, parseTournamentHex, forceRefreshTournaments, forceRefreshAllTournaments, TournamentDetails } from '../helpers';
 import { getContractAddress, getNetwork } from '../config/contract';
+import { useGetAccount } from 'lib';
 
 // Using helper to clear caches instead of accessing internals
 
@@ -488,7 +494,9 @@ export const Tournaments = () => {
     const [loadingDetails, setLoadingDetails] = useState<Set<string>>(new Set());
     const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
     const [refreshing, setRefreshing] = useState(false);
+    const [activeTab, setActiveTab] = useState(0);
     const { isOpen, onOpen, onClose } = useDisclosure();
+    const { address: userAddress } = useGetAccount();
 
     const toast = useToast();
     const bgColor = useColorModeValue('gray.800', 'gray.900');
@@ -1148,17 +1156,35 @@ export const Tournaments = () => {
         return filtered;
     }, [tournaments, deferredSearch, statusFilter]);
 
+    // Filter for "My Tournaments" - tournaments where user is creator or participant
+    const myTournaments = useMemo(() => {
+        if (!userAddress) return [];
+
+        return filteredTournaments.filter(tournament => {
+            // Check if user is creator
+            const isCreator = tournament.creator?.toLowerCase() === userAddress.toLowerCase();
+
+            // Check if user is participant
+            const isParticipant = tournament.participants?.some((participant: string) =>
+                participant.toLowerCase() === userAddress.toLowerCase()
+            );
+
+            return isCreator || isParticipant;
+        });
+    }, [filteredTournaments, userAddress]);
+
     // Optimized sorting
     const activeTournaments = useMemo(() => {
+        // Choose the correct tournament list based on active tab
+        const tournamentsToFilter = activeTab === 0 ? filteredTournaments : myTournaments;
 
         // Filter for active tournaments (status 0: Joining, 1: ReadyToStart, 2: Active)
-        const active = filteredTournaments
+        const active = tournamentsToFilter
             .filter(t => t.status !== undefined && t.status <= 2) // Only show joining, ready to start, and active tournaments
             .sort((a, b) => Number(b.id) - Number(a.id));
 
-
         return active;
-    }, [filteredTournaments]);
+    }, [filteredTournaments, myTournaments, activeTab]);
     const completedTournaments = useMemo(() => {
         const completed = tournaments
             .filter(t => t.status === 4) // Completed (status 4) - include fallback tournaments too
@@ -1302,6 +1328,94 @@ export const Tournaments = () => {
                         </HStack>
                     </Button>
                 </HStack>
+            </Box>
+
+            {/* Tournament Tabs */}
+            <Box
+                bgGradient="linear(135deg, gray.800, gray.900)"
+                borderRadius="2xl"
+                border="2px solid"
+                borderColor="gray.600"
+                boxShadow="0 20px 40px rgba(0,0,0,0.3)"
+                mb={8}
+                overflow="hidden"
+            >
+                <Tabs
+                    index={activeTab}
+                    onChange={setActiveTab}
+                    variant="enclosed"
+                    colorScheme="blue"
+                >
+                    <TabList borderBottom="2px solid" borderColor="gray.600">
+                        <Tab
+                            _selected={{
+                                bgGradient: "linear(135deg, blue.500, purple.600)",
+                                color: "white",
+                                borderColor: "blue.400",
+                                fontWeight: "bold"
+                            }}
+                            _hover={{
+                                bg: "gray.700",
+                                color: "blue.300"
+                            }}
+                            px={6}
+                            py={4}
+                            fontSize="md"
+                            fontWeight="semibold"
+                            transition="all 0.3s ease"
+                        >
+                            <HStack spacing={2}>
+                                <Users size={18} />
+                                <Text>All Tournaments</Text>
+                                <Badge
+                                    bg="blue.500"
+                                    color="white"
+                                    borderRadius="full"
+                                    px={2}
+                                    py={1}
+                                    fontSize="xs"
+                                    fontWeight="bold"
+                                >
+                                    {filteredTournaments.filter(t => t.status !== undefined && t.status <= 2).length}
+                                </Badge>
+                            </HStack>
+                        </Tab>
+                        <Tab
+                            _selected={{
+                                bgGradient: "linear(135deg, purple.500, pink.600)",
+                                color: "white",
+                                borderColor: "purple.400",
+                                fontWeight: "bold"
+                            }}
+                            _hover={{
+                                bg: "gray.700",
+                                color: "purple.300"
+                            }}
+                            px={6}
+                            py={4}
+                            fontSize="md"
+                            fontWeight="semibold"
+                            transition="all 0.3s ease"
+                            isDisabled={!userAddress}
+                        >
+                            <HStack spacing={2}>
+                                <Award size={18} />
+                                <Text>My Tournaments</Text>
+                                <Badge
+                                    bg="purple.500"
+                                    color="white"
+                                    borderRadius="full"
+                                    px={2}
+                                    py={1}
+                                    fontSize="xs"
+                                    fontWeight="bold"
+                                >
+                                    {myTournaments.filter(t => t.status !== undefined && t.status <= 2).length}
+                                </Badge>
+                            </HStack>
+                        </Tab>
+                    </TabList>
+                </Tabs>
             </Box>
 
             {/* Cool Search and Filters */}
@@ -1768,7 +1882,10 @@ export const Tournaments = () => {
                             left={0}
                             right={0}
                             h="4px"
-                            bgGradient="linear(90deg, green.500, emerald.500, green.500)"
+                            bgGradient={activeTab === 0
+                                ? "linear(90deg, green.500, emerald.500, green.500)"
+                                : "linear(90deg, purple.500, pink.500, purple.500)"
+                            }
                             backgroundSize="200% 100%"
                             animation="gradient 3s ease infinite"
                             sx={{
@@ -1783,19 +1900,36 @@ export const Tournaments = () => {
                         <VStack spacing={4}>
                             <Box
                                 p={3}
-                                bgGradient="linear(135deg, green.500, emerald.600)"
+                                bgGradient={activeTab === 0
+                                    ? "linear(135deg, green.500, emerald.600)"
+                                    : "linear(135deg, purple.500, pink.600)"
+                                }
                                 borderRadius="xl"
-                                boxShadow="0 8px 20px rgba(34, 197, 94, 0.3)"
+                                boxShadow={activeTab === 0
+                                    ? "0 8px 20px rgba(34, 197, 94, 0.3)"
+                                    : "0 8px 20px rgba(147, 51, 234, 0.3)"
+                                }
                                 _hover={{
                                     transform: "scale(1.1)",
-                                    boxShadow: "0 12px 25px rgba(34, 197, 94, 0.4)"
+                                    boxShadow: activeTab === 0
+                                        ? "0 12px 25px rgba(34, 197, 94, 0.4)"
+                                        : "0 12px 25px rgba(147, 51, 234, 0.4)"
                                 }}
                                 transition="all 0.3s ease"
                             >
-                                <Clock size={32} color="white" />
+                                {activeTab === 0 ? (
+                                    <Clock size={32} color="white" />
+                                ) : (
+                                    <Award size={32} color="white" />
+                                )}
                             </Box>
                             <Text color="gray.300" fontSize="lg" fontWeight="medium">
-                                No active tournaments found. Create one to get started!
+                                {activeTab === 0
+                                    ? "No active tournaments found. Create one to get started!"
+                                    : !userAddress
+                                        ? "Connect your wallet to see your tournaments"
+                                        : "You haven't joined or created any tournaments yet. Join one or create your own!"
+                                }
                             </Text>
                         </VStack>
                     </Box>
