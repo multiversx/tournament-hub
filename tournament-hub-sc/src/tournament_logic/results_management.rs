@@ -42,9 +42,9 @@ pub trait ResultsManagementModule:
         );
         self.results_submitted_event(&(tournament_index as u64), &self.blockchain().get_caller());
 
-        // Validate winner podium
+        // Validate winner podium - allow 0 winners for draws
         require!(
-            winner_podium.len() == game_config.podium_size as usize,
+            winner_podium.len() == game_config.podium_size as usize || winner_podium.len() == 0,
             "Winner podium size mismatch"
         );
 
