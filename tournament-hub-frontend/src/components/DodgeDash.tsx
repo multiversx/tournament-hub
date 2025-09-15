@@ -18,6 +18,8 @@ class DDScene extends Phaser.Scene {
     dashCooldown = 0;
     gameOver = false;
     endText?: Phaser.GameObjects.Text;
+    gameStartTime: number = 0;
+    wave: number = 1;
 
     init(data: { sessionId: string; playerAddress: string }) {
         this.sessionId = data.sessionId;
@@ -44,11 +46,16 @@ class DDScene extends Phaser.Scene {
         this.player.setTexture('dd-dot');
         this.player.setDamping(true).setDrag(0.002).setMaxVelocity(260);
 
+        // Set world bounds to prevent player from exiting the game area
+        this.player.setCollideWorldBounds(true);
+        this.physics.world.setBounds(0, 0, w, h);
+
         this.cursors = this.input.keyboard!.createCursorKeys();
         this.dashKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
         this.hazards = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, runChildUpdate: false });
 
+        this.gameStartTime = this.time.now;
         this.hudText = this.add.text(16, 12, 'Lives: 3  Wave: 1', { fontSize: '14px', color: '#e5e7eb' }).setScrollFactor(0).setDepth(100);
 
         this.time.addEvent({ delay: 1200, loop: true, callback: this.spawnHazard, callbackScope: this });
@@ -80,7 +87,7 @@ class DDScene extends Phaser.Scene {
         const img = hazard as Phaser.Physics.Arcade.Image;
         img.disableBody(true, true);
         this.lives -= 1;
-        this.hudText.setText(`Lives: ${this.lives}  Wave: ∞`);
+        this.hudText.setText(`Lives: ${this.lives}  Wave: ${this.wave}`);
         this.cameras.main.flash(100, 244, 63, 94);
         if (this.lives <= 0) {
             this.endGame(false);
@@ -106,6 +113,13 @@ class DDScene extends Phaser.Scene {
         if (this.cursors.up?.isDown) ay -= accel;
         if (this.cursors.down?.isDown) ay += accel;
         this.player.setAcceleration(ax, ay);
+
+        // Update wave based on time elapsed (every 15 seconds = new wave)
+        const timeElapsed = (this.time.now - this.gameStartTime) / 1000;
+        this.wave = Math.floor(timeElapsed / 15) + 1;
+
+        // Update HUD text
+        this.hudText.setText(`Lives: ${this.lives}  Wave: ${this.wave}`);
 
         // Dash with cooldown
         if (this.dashKey.isDown && this.dashCooldown <= 0) {

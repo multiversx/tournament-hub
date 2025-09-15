@@ -88,6 +88,24 @@ export const ChessGamePro: React.FC<Props> = ({ sessionId, playerAddress }) => {
     const [emoji, setEmoji] = useState('');
     const toast = useToast();
 
+    async function joinGame() {
+        try {
+            const res = await fetch(`${BACKEND_BASE_URL}/join_chess_session?sessionId=${sessionId}&player=${playerAddress}`, {
+                method: 'POST'
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setState(data.game_state);
+                const youWhite = data.game_state.white_player === playerAddress;
+                const youBlack = data.game_state.black_player === playerAddress;
+                setYouAreWhite(youWhite);
+                setIsSpectator(!youWhite && !youBlack);
+            }
+        } catch (e) {
+            console.error('Error joining chess game:', e);
+        }
+    }
+
     async function fetchState() {
         try {
             const res = await fetch(`${BACKEND_BASE_URL}/chess_game_state?sessionId=${sessionId}`);
@@ -97,6 +115,11 @@ export const ChessGamePro: React.FC<Props> = ({ sessionId, playerAddress }) => {
             const youBlack = data.black_player === playerAddress;
             setYouAreWhite(youWhite);
             setIsSpectator(!youWhite && !youBlack);
+
+            // If player is not assigned to any side, try to join
+            if (!youWhite && !youBlack) {
+                await joinGame();
+            }
         } catch (e) {
             // ignore
         } finally {
@@ -262,10 +285,17 @@ export const ChessGamePro: React.FC<Props> = ({ sessionId, playerAddress }) => {
                         <Badge colorScheme={youAreWhite ? 'blue' : 'gray'}>You are {youAreWhite ? 'White' : 'Black'}</Badge>
                     )}
                 </HStack>
-                {state.game_over && <Badge colorScheme="red">Game Over {state.winner ? `– Winner: ${state.winner.slice(0, 8)}…` : ''}</Badge>}
-                {state.game_over && (
-                    <Button size="sm" onClick={() => (window.location.href = '/tournaments')}>Exit</Button>
-                )}
+                <HStack>
+                    {state.game_over && <Badge colorScheme="red">Game Over {state.winner ? `– Winner: ${state.winner.slice(0, 8)}…` : ''}</Badge>}
+                    <Button
+                        size="sm"
+                        colorScheme="red"
+                        onClick={() => (window.location.href = '/tournaments')}
+                        leftIcon={<span>←</span>}
+                    >
+                        Exit Game
+                    </Button>
+                </HStack>
             </HStack>
             <Box ref={boardRef} sx={{ '.cg-board': { borderRadius: '12px' } }} style={{ width: '480px', height: '480px', margin: '0 auto' }} />
             <HStack justify="center" spacing={8}>

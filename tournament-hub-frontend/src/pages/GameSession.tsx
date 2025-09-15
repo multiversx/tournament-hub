@@ -54,20 +54,39 @@ export const GameSession: React.FC = () => {
 
                         console.log('Creating game session with players:', players);
 
-                        // Create game session
-                        const sessionResponse = await fetch(`${BACKEND_BASE_URL}/start_session`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                tournamentId: String(tournamentId),
-                                game_type: gameId,
-                                playerAddresses: players
-                            })
-                        });
+                        // Check if session already exists for this tournament
+                        const existingSessionResponse = await fetch(`${BACKEND_BASE_URL}/get_tournament_session?tournamentId=${tournamentId}`);
+                        let sessionId = null;
 
-                        if (sessionResponse.ok) {
-                            const sessionData = await sessionResponse.json();
-                            setActualSessionId(sessionData.session_id);
+                        if (existingSessionResponse.ok) {
+                            const existingSessionData = await existingSessionResponse.json();
+                            if (existingSessionData.session_id) {
+                                sessionId = existingSessionData.session_id;
+                                console.log('Using existing session:', sessionId);
+                            }
+                        }
+
+                        // Create new session only if none exists
+                        if (!sessionId) {
+                            const sessionResponse = await fetch(`${BACKEND_BASE_URL}/start_session`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    tournamentId: String(tournamentId),
+                                    game_type: gameId,
+                                    playerAddresses: players
+                                })
+                            });
+
+                            if (sessionResponse.ok) {
+                                const sessionData = await sessionResponse.json();
+                                sessionId = sessionData.session_id;
+                                console.log('Created new session:', sessionId);
+                            }
+                        }
+
+                        if (sessionId) {
+                            setActualSessionId(sessionId);
                         }
                     }
                 } catch (error) {
@@ -127,13 +146,25 @@ export const GameSession: React.FC = () => {
                 const response = await fetch(`${BACKEND_BASE_URL}/game_state?session_id=${actualSessionId}`);
                 if (response.ok) {
                     const data = await response.json();
-                    if (data.board && typeof data.board === 'object' && data.current_turn && data.white_player) {
+
+                    // Check for chess (has current_turn and white_player)
+                    if (data.current_turn && data.white_player) {
                         setGameType('chess');
-                    } else if (data.board && Array.isArray(data.board) && data.board.length === 3) {
+                    }
+                    // Check for tic tac toe (3x3 board)
+                    else if (data.board && Array.isArray(data.board) && data.board.length === 3 && data.board[0] && data.board[0].length === 3) {
                         setGameType('tictactoe');
-                    } else if (data.board && Array.isArray(data.board) && data.board.length === 8 && data.board[0] && data.board[0].length === 8) {
+                    }
+                    // Check for color rush (8x8 board with tile objects)
+                    else if (data.board && Array.isArray(data.board) && data.board.length === 8 && data.board[0] && Array.isArray(data.board[0]) && data.board[0].length === 8 && data.board[0][0] && typeof data.board[0][0] === 'object' && data.board[0][0].color) {
                         setGameType('colorrush');
-                    } else {
+                    }
+                    // Check for dodge dash (has specific dodge dash fields)
+                    else if (data.lives !== undefined && data.wave !== undefined) {
+                        setGameType('dodgedash');
+                    }
+                    // Default to cryptobubbles
+                    else {
                         setGameType('cryptobubbles');
                     }
                 }
@@ -163,14 +194,16 @@ export const GameSession: React.FC = () => {
                     <CryptoBubblesGamePhaser sessionId={actualSessionId!} playerAddress={playerAddress} />
                     <Button
                         position="absolute"
-                        top={2}
-                        right={2}
+                        top={4}
+                        right={4}
                         size="sm"
                         colorScheme="red"
                         onClick={() => navigate('/tournaments')}
                         zIndex={200}
+                        leftIcon={<span>←</span>}
+                        boxShadow="0 4px 12px rgba(0,0,0,0.3)"
                     >
-                        Exit Game
+                        Exit
                     </Button>
                 </Box>
             ) : gameType === 'dodgedash' ? (
@@ -193,14 +226,16 @@ export const GameSession: React.FC = () => {
                     <ColorRush sessionId={actualSessionId!} playerAddress={playerAddress} />
                     <Button
                         position="absolute"
-                        top={2}
-                        right={2}
+                        top={4}
+                        right={4}
                         size="sm"
                         colorScheme="red"
                         onClick={() => navigate('/tournaments')}
                         zIndex={200}
+                        leftIcon={<span>←</span>}
+                        boxShadow="0 4px 12px rgba(0,0,0,0.3)"
                     >
-                        Exit Game
+                        Exit
                     </Button>
                 </Box>
             ) : (
