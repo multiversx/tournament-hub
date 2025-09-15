@@ -530,19 +530,15 @@ export const Tournaments = () => {
 
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                 try {
-                    console.log(`loadBasicTournamentData: Fetching details for tournament ${id} (attempt ${attempt}/${maxRetries})...`);
 
                     // Add extra delay for completed tournaments to avoid rate limiting
                     if (attempt > 1) {
                         const delay = attempt * 2000; // 2s, 4s, 6s
-                        console.log(`loadBasicTournamentData: Waiting ${delay}ms before retry for tournament ${id}...`);
                         await new Promise(resolve => setTimeout(resolve, delay));
                     }
 
                     // Use getTournament endpoint (getTournamentBasicInfo doesn't exist in deployed contract)
-                    console.log(`loadBasicTournamentData: Fetching tournament ${id} using getTournament...`);
                     const details: TournamentDetails | null = await getTournamentDetailsFromContractFresh(id);
-                    console.log(`loadBasicTournamentData: Details for tournament ${id}:`, details);
 
                     if (details) {
                         const participantsCount = (details.participants || []).length;
@@ -565,7 +561,6 @@ export const Tournaments = () => {
                             loadingDetails: false
                         };
 
-                        console.log(`loadBasicTournamentData: Created basic data for tournament ${id}:`, basicData);
 
                         // Update persistent cache
                         const updatedPersistentCache = getPersistentCache();
@@ -574,7 +569,6 @@ export const Tournaments = () => {
 
                         return basicData;
                     } else {
-                        console.log(`loadBasicTournamentData: No details returned for tournament ${id}, creating fallback data`);
 
                         // Try to get just the status from the contract before creating fallback data
                         let actualStatus = 0; // Default to Joining status
@@ -600,12 +594,10 @@ export const Tournaments = () => {
                                     const tournament = await parseTournamentHex(tournamentHex, id);
                                     if (tournament) {
                                         actualStatus = tournament.status;
-                                        console.log(`loadBasicTournamentData: Got actual status ${actualStatus} for tournament ${id}`);
                                     }
                                 }
                             }
                         } catch (statusError) {
-                            console.log(`loadBasicTournamentData: Could not get status for tournament ${id}, using default:`, statusError);
                         }
 
                         // Create fallback data for tournaments that fail to load details
@@ -628,7 +620,6 @@ export const Tournaments = () => {
                             isFallback: true // Mark as fallback data
                         };
 
-                        console.log(`loadBasicTournamentData: Created fallback data for tournament ${id}:`, fallbackData);
 
                         // Update persistent cache
                         const updatedPersistentCache = getPersistentCache();
@@ -644,7 +635,6 @@ export const Tournaments = () => {
                     // If this is not the last attempt, wait before retrying
                     if (attempt < maxRetries) {
                         const delay = attempt * 2000; // Exponential backoff: 2s, 4s, 6s
-                        console.log(`loadBasicTournamentData: Retrying tournament ${id} in ${delay}ms...`);
                         await new Promise(resolve => setTimeout(resolve, delay));
                     }
                 }
@@ -677,12 +667,10 @@ export const Tournaments = () => {
                         const tournament = await parseTournamentHex(tournamentHex, id);
                         if (tournament) {
                             actualStatus = tournament.status;
-                            console.log(`loadBasicTournamentData: Got actual status ${actualStatus} for tournament ${id} after retry failure`);
                         }
                     }
                 }
             } catch (statusError) {
-                console.log(`loadBasicTournamentData: Could not get status for tournament ${id} after retry failure, using default:`, statusError);
             }
 
             const fallbackData = {
@@ -704,7 +692,6 @@ export const Tournaments = () => {
                 isFallback: true // Mark as fallback data
             };
 
-            console.log(`loadBasicTournamentData: Created fallback data for tournament ${id} after retry failure:`, fallbackData);
             return fallbackData;
         });
     }, []);
@@ -731,7 +718,6 @@ export const Tournaments = () => {
                     isClosable: true,
                 });
             } else {
-                console.log(`Still getting fallback data for tournament ${id}`);
                 toast({
                     title: 'Still Loading',
                     description: `Tournament ${id} details are still being loaded. Please try again later.`,
@@ -957,10 +943,8 @@ export const Tournaments = () => {
                     const completedFallbacks = fallbackTournaments.filter(t => t.status === 4);
                     const otherFallbacks = fallbackTournaments.filter(t => t.status !== 4);
 
-                    console.log(`Found ${completedFallbacks.length} completed fallback tournaments and ${otherFallbacks.length} other fallback tournaments`);
 
                     // Removed background retry logic to prevent rate limiting
-                    console.log(`Skipping background retry for ${completedFallbacks.length} completed and ${otherFallbacks.length} other fallback tournaments to prevent rate limiting`);
                 }
             } catch (err) {
                 console.error('Error fetching tournaments:', err);
@@ -988,7 +972,6 @@ export const Tournaments = () => {
             const completedFallbacks = tournaments.filter(t => t.status === 4 && t.isFallback);
             if (completedFallbacks.length === 0) return;
 
-            console.log(`Retrying ${completedFallbacks.length} completed tournaments with fallback data...`);
 
             for (const tournament of completedFallbacks) {
                 try {
@@ -1009,10 +992,8 @@ export const Tournaments = () => {
                             return prev.map(t => t.id === tournament.id ? realData : t);
                         });
                     } else {
-                        console.log(`Still getting fallback data for completed tournament ${tournament.id}, will retry later`);
                     }
                 } catch (error) {
-                    console.log(`Enhanced retry failed for completed tournament ${tournament.id}:`, error);
                 }
             }
         };
@@ -1085,7 +1066,6 @@ export const Tournaments = () => {
                             return deduplicateTournaments(newTournaments);
                         });
                     } else if (basic && basic.isFallback) {
-                        console.log(`Skipping fallback tournament ${id} from polling`);
                     }
                 }
                 // Reset error count on successful API call
@@ -1134,7 +1114,6 @@ export const Tournaments = () => {
         const filtered = tournaments.filter(tournament => {
             // Filter out fallback tournaments (mock data) from display
             if (tournament.isFallback) {
-                console.log(`Filtering out fallback tournament ${tournament.id} from display`);
                 return false;
             }
 
@@ -1197,7 +1176,6 @@ export const Tournaments = () => {
         const completed = tournaments
             .filter(t => t.status === 4) // Completed (status 4)
             .sort((a, b) => Number(b.id) - Number(a.id));
-        console.log(`Enhanced completed tournaments: ${completed.length} (total tournaments: ${tournaments.length})`);
         return completed;
     }, [tournaments]);
 

@@ -98,7 +98,6 @@ export async function testApiConnectivity() {
         console.error('Error encoding test address with SDK:', error);
         const addressBytes = Buffer.from(testAddress, 'utf8');
         testHexAddress = addressBytes.toString('hex');
-        console.log('Test fallback encoded address:', testHexAddress);
     }
     const userResult = await makeApiCall('getUserStats', [testHexAddress]);
     console.log('User stats test result:', userResult);
@@ -384,7 +383,6 @@ export function useSimpleTournamentStats() {
                 const tournaments = await Promise.all(tournamentPromises);
                 const validTournaments = tournaments.filter(t => t !== null);
 
-                console.log(`Found ${validTournaments.length} valid tournaments out of ${activeIds.length} total`);
 
                 // Count tournaments by status
                 let joiningCount = 0;
@@ -405,7 +403,6 @@ export function useSimpleTournamentStats() {
                     !validTournaments.some(t => t && Number((t as any).id) === Number(id))
                 );
 
-                console.log(`Checking ${fallbackTournaments.length} fallback tournaments for completion status...`);
 
                 const fallbackCompletionChecks = await Promise.all(
                     fallbackTournaments.map(async (id) => {
@@ -417,7 +414,6 @@ export function useSimpleTournamentStats() {
                 const completedFallbacks = fallbackCompletionChecks.filter(({ isCompleted }) => isCompleted);
                 completedCount += completedFallbacks.length;
 
-                console.log(`Found ${completedFallbacks.length} completed fallback tournaments`);
 
                 const totalTournaments = activeIds.length;
                 const finalStats = {

@@ -2069,13 +2069,10 @@ export async function getActiveTournamentIds() {
             // This handles cases where getNumberOfTournaments lags behind actual tournament count
             const fallbackCheck = numberOfTournaments < 15; // If less than 15, do fallback check
             if (fallbackCheck) {
-                console.log('Number of tournaments seems low, doing fallback check for individual IDs...');
                 const fallbackIds = await findTournamentsByTesting();
-                console.log('Fallback check found tournament IDs:', fallbackIds);
 
                 // If fallback found more tournaments, use those instead
                 if (fallbackIds.length > numberOfTournaments) {
-                    console.log(`Fallback found ${fallbackIds.length} tournaments vs contract count ${numberOfTournaments}, using fallback`);
                     return fallbackIds;
                 }
             }
