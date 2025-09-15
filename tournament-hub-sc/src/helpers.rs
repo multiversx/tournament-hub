@@ -72,26 +72,39 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
         let mut total_prize_distributed = BigUint::zero();
         let mut max_prize_won = BigUint::zero();
 
-        // Distribute prizes to winners and update user statistics
-        for (position, winner) in tournament.final_podium.iter().enumerate() {
-            require!(
-                position < game_config.prize_distribution_percentages.len(),
-                "Position out of bounds for prize distribution"
-            );
-            let percentage = game_config.prize_distribution_percentages.get(position);
-            let prize_amount = &remaining_pool * percentage / 10_000u32;
+        // Handle draws (no winners) - refund all participants their entry fees minus house fee
+        if tournament.final_podium.is_empty() {
+            let refund_per_participant = &remaining_pool / &num_participants;
 
-            if prize_amount > 0 {
-                self.send().direct_egld(&winner, &prize_amount);
-
-                // Track prize statistics
-                total_prize_distributed += &prize_amount;
-                if prize_amount > max_prize_won {
-                    max_prize_won = prize_amount.clone();
+            for participant in tournament.participants.iter() {
+                if refund_per_participant > 0 {
+                    self.send()
+                        .direct_egld(&participant, &refund_per_participant);
+                    total_prize_distributed += &refund_per_participant;
                 }
+            }
+        } else {
+            // Distribute prizes to winners and update user statistics
+            for (position, winner) in tournament.final_podium.iter().enumerate() {
+                require!(
+                    position < game_config.prize_distribution_percentages.len(),
+                    "Position out of bounds for prize distribution"
+                );
+                let percentage = game_config.prize_distribution_percentages.get(position);
+                let prize_amount = &remaining_pool * percentage / 10_000u32;
 
-                // Update winner's statistics
-                self.update_user_tournament_won(&winner, tournament.game_id, &prize_amount);
+                if prize_amount > 0 {
+                    self.send().direct_egld(&winner, &prize_amount);
+
+                    // Track prize statistics
+                    total_prize_distributed += &prize_amount;
+                    if prize_amount > max_prize_won {
+                        max_prize_won = prize_amount.clone();
+                    }
+
+                    // Update winner's statistics
+                    self.update_user_tournament_won(&winner, tournament.game_id, &prize_amount);
+                }
             }
         }
 
