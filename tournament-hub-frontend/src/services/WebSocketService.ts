@@ -39,7 +39,6 @@ class WebSocketService {
 
             // If no WebSocket URL, skip connection and use polling
             if (!wsUrl) {
-                console.log('WebSocket disabled, using polling fallback');
                 this.isConnecting = false;
                 this.startPollingFallback();
                 return;
@@ -242,7 +241,6 @@ class WebSocketService {
 
     // Fallback to polling if WebSocket is not available
     startPollingFallback() {
-        console.log('Starting polling fallback for real-time updates');
 
         // Poll for tournament updates every 5 seconds for faster updates
         setInterval(() => {
