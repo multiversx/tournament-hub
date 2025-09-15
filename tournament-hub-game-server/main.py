@@ -72,7 +72,6 @@ app.add_middleware(
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
-    logger.info(f"Request: {request.method} {request.url.path} - Query: {request.query_params}")
     
     try:
         response = await call_next(request)
@@ -88,7 +87,6 @@ async def log_requests(request: Request, call_next):
             ip_address=request.client.host if request.client else None
         )
         
-        logger.info(f"Response: {response.status_code} for {request.method} {request.url.path} ({response_time_ms}ms)")
         return response
     except Exception as e:
         response_time_ms = int((time.time() - start_time) * 1000)
@@ -461,7 +459,6 @@ def handle_notifier_event(event: Dict):
                     game_id = gid
             game_type = determine_game_type(game_id) if game_id is not None else "cryptobubbles"
             sess = _get_or_create_session(session_id, game_type)
-            logger.info(f"Session created from event: {session_id} game_type={sess['game_type']}")
             # Do NOT create engine here; wait for tournamentStarted/gameStarted
             event_for_ui["game_id"] = game_id
 
@@ -506,7 +503,6 @@ def handle_notifier_event(event: Dict):
                             g.add_player(player_addr)
             except Exception as e:
                 logger.debug(f"Ignoring engine add player error: {e}")
-            logger.info(f"Player joined from event: {player_addr} -> session {session_id}")
             event_for_ui["player"] = player_addr
             # Record recent joins for UI polling
             if player_addr:
@@ -539,7 +535,6 @@ def handle_notifier_event(event: Dict):
                         with sessions_lock:
                             sessions[session_id]["game_type"] = resolved_game_type
                 create_game_instance(resolved_game_type or "cryptobubbles", session_id, sess["players"])
-            logger.info(f"Session {session_id} status from event {identifier}: {sessions[session_id]['status']}")
             if identifier in ("tournamentStarted", "gameStarted"):
                 with recent_game_starts_lock:
                     recent_game_starts_by_tid[session_id] = time.time()
@@ -548,7 +543,6 @@ def handle_notifier_event(event: Dict):
             with sessions_lock:
                 sess = _get_or_create_session(session_id)
                 sess["results_submitted"] = True
-            logger.info(f"Results submitted for session {session_id}")
 
         elif identifier == "prizesDistributed":
             # Cleanup session and engines
@@ -568,7 +562,6 @@ def handle_notifier_event(event: Dict):
                 pass
             with sessions_lock:
                 sessions.pop(session_id, None)
-            logger.info(f"Cleaned up session {session_id} after prizes distribution")
 
         # store compact event for UI polling
         with recent_events_lock:
@@ -728,11 +721,8 @@ def error_response(message: str, status_code: int = 400):
 @app.post("/tournament-hub/start_session")
 async def start_session(request: StartSessionRequest):
     """Start a new game session"""
-    logger.info("=== START_SESSION ROUTE CALLED ===")
     try:
         # Debug logging
-        logger.info(f"Received start_session request: sessionId={request.sessionId}, tournamentId={request.tournamentId}, players={request.players}, game_type={request.game_type}")
-        logger.info(f"Request body: {request}")
         
         # Validate that we have at least one identifier
         if not request.tournamentId and not request.sessionId and not request.players:
@@ -754,7 +744,6 @@ async def start_session(request: StartSessionRequest):
                         from dodgedash_game_engine import get_dodgedash_game, create_dodgedash_game
                         g = get_dodgedash_game(existing_session_id)
                         if not g:
-                            logger.info(f"Creating DodgeDash engine for existing session {existing_session_id}")
                             create_dodgedash_game(existing_session_id, request.playerAddresses or [])
                         else:
                             if request.playerAddresses:
@@ -767,7 +756,6 @@ async def start_session(request: StartSessionRequest):
                         from colorrush_game_engine import get_colorrush_game, create_colorrush_game
                         g = get_colorrush_game(existing_session_id)
                         if not g:
-                            logger.info(f"Creating Color Rush engine for existing session {existing_session_id}")
                             create_colorrush_game(existing_session_id, request.playerAddresses or [])
                         else:
                             if request.playerAddresses:
@@ -777,7 +765,6 @@ async def start_session(request: StartSessionRequest):
                                         g.state.scores[p] = 0
                 except Exception as e:
                     logger.warning(f"Failed to ensure engine for existing session: {e}")
-                logger.info(f"Returning existing session: {existing_session_id} for tournament: {request.tournamentId}")
                 return {"session_id": existing_session_id, "game_type": game_type}
             
             # Create new session if none exists
@@ -813,7 +800,6 @@ async def start_session(request: StartSessionRequest):
             except Exception as e:
                 logger.warning(f"Failed to sync engine players: {e}")
             
-            logger.info(f"Started {game_type} session: {session_id} with players: {players}")
             return {"session_id": session_id, "game_type": game_type}
         
         # Handle sessionId format (legacy)
@@ -841,7 +827,6 @@ async def start_session(request: StartSessionRequest):
             # Create game instance based on game type
             create_game_instance(game_type, session_id, players)
             
-            logger.info(f"Started {game_type} session: {session_id}")
             return {"session_id": session_id, "game_type": game_type}
         
         # Handle old format (direct players list)
@@ -862,7 +847,6 @@ async def start_session(request: StartSessionRequest):
             # Create game instance based on game type
             create_game_instance(game_type, session_id, request.players)
             
-            logger.info(f"Started {game_type} session: {session_id}")
             return {"session_id": session_id, "game_type": game_type}
         
         else:
@@ -904,7 +888,6 @@ async def join_session(session_id: str, request: JoinSessionRequest):
             game_type = session.get("game_type", "cryptobubbles")
             create_game_instance(game_type, session_id, session["players"])
         
-        logger.info(f"Player {player} joined session {session_id}")
         return {"status": "joined", "session_status": session["status"]}
         
     except Exception as e:
@@ -1035,7 +1018,6 @@ async def start_game(session_id: str):
         game_type = session.get("game_type", "cryptobubbles")
         create_game_instance(game_type, session_id, session["players"])
         
-        logger.info(f"Started game for session {session_id}")
         return {"status": "started"}
         
     except Exception as e:
@@ -1450,7 +1432,6 @@ def update_cryptobubbles_games():
                             if signature:
                                 tx_hash = submit_results_to_contract_with_signature(tournament_id, podium, signature)
                                 if tx_hash:
-                                    logger.info(f"Results submitted for tournament {tournament_id}: {tx_hash}")
                                 else:
                                     logger.error(f"Failed to submit results for tournament {tournament_id}")
                             else:

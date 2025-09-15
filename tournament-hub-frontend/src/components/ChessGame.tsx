@@ -120,7 +120,6 @@ export const ChessGame: React.FC<ChessGameProps> = ({ sessionId, playerAddress }
             }
         },
         onError: (error) => {
-            console.log('WebSocket not available, using polling fallback for ChessGame');
         }
     });
 
