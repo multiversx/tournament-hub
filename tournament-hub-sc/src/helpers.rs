@@ -75,12 +75,19 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
         // Handle draws (no winners) - refund all participants their entry fees minus house fee
         if tournament.final_podium.is_empty() {
             let refund_per_participant = &remaining_pool / &num_participants;
+            let remainder = (&remaining_pool % &num_participants).to_u64().unwrap_or(0) as usize;
 
-            for participant in tournament.participants.iter() {
-                if refund_per_participant > 0 {
-                    self.send()
-                        .direct_egld(&participant, &refund_per_participant);
-                    total_prize_distributed += &refund_per_participant;
+            for (index, participant) in tournament.participants.iter().enumerate() {
+                let mut participant_refund = refund_per_participant.clone();
+
+                // Distribute any remainder to the first few participants
+                if index < remainder {
+                    participant_refund += BigUint::from(1u32);
+                }
+
+                if participant_refund > 0 {
+                    self.send().direct_egld(&participant, &participant_refund);
+                    total_prize_distributed += &participant_refund;
                 }
             }
         } else {
