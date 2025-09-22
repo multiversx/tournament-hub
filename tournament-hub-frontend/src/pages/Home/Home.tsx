@@ -1,4 +1,5 @@
 import { Outlet, Link as RouterLink } from 'react-router-dom';
+import { useEffect } from 'react';
 import {
   Box,
   Heading,
@@ -18,14 +19,209 @@ import {
 } from '@chakra-ui/react';
 import { Trophy, Users, Calendar, Plus, Gamepad2, Coins, Gem } from 'lucide-react';
 import { PageWrapper } from 'wrappers';
-import { useTournamentStats } from '../../hooks/useTournamentStats';
+import { useTournamentStats } from '../../hooks/useTournamentStatsEventBased';
 import { UpcomingTournaments } from '../../components/UpcomingTournaments';
 import { useWallet } from '../../contexts/WalletContext';
+import { triggerBlockchainEventPolling, resetBlockchainEventTimestamp } from '../../services/BlockchainEventService';
 
 export const Home = () => {
   const isMobile = useBreakpointValue({ base: true, md: false });
-  const { totalTournaments, joiningTournaments, readyToStartTournaments, activeTournaments, totalActiveTournaments, completedTournaments, highestAmountWon, totalAmountPlayed, maxPrizeWon, totalPrizeDistributed, loading, error } = useTournamentStats();
+  const { totalTournaments, joiningTournaments, readyToStartTournaments, activeTournaments, totalActiveTournaments, completedTournaments, highestAmountWon, totalAmountPlayed, maxPrizeWon, totalPrizeDistributed, loading, error, manualRefresh } = useTournamentStats();
   const { isConnected } = useWallet();
+
+  // Listen for tournament creation events to refresh stats
+  useEffect(() => {
+    const handleTournamentCreated = (event: CustomEvent) => {
+      console.log('Home page: Tournament created event received, refreshing stats...', event.detail);
+      if (manualRefresh) {
+        manualRefresh();
+      }
+    };
+
+    window.addEventListener('tournament_created', handleTournamentCreated as EventListener);
+
+    return () => {
+      window.removeEventListener('tournament_created', handleTournamentCreated as EventListener);
+    };
+  }, [manualRefresh]);
+
+  // Add active polling like the Tournaments page to ensure updates
+  useEffect(() => {
+    let mounted = true;
+    let lastSeenTs = 0;
+    let pollInterval = 3000; // Poll every 3 seconds for stats updates
+
+    const pollForUpdates = async () => {
+      if (!mounted) return;
+
+      try {
+        // Import the notifier function
+        const { getRecentNotifierEvents } = await import('../../helpers');
+        const events = await getRecentNotifierEvents();
+
+        if (!mounted || events.length === 0) {
+          return;
+        }
+
+        // Process only new events
+        const newEvents = events.filter(e => e.ts > lastSeenTs);
+        if (newEvents.length === 0) {
+          return;
+        }
+
+        lastSeenTs = Math.max(lastSeenTs, ...newEvents.map(e => e.ts));
+
+        // Check for tournament-related events
+        const tournamentEvents = newEvents.filter(e =>
+          e.identifier === 'tournamentCreated' ||
+          e.identifier === 'playerJoined' ||
+          e.identifier === 'tournamentStarted' ||
+          e.identifier === 'tournamentCompleted'
+        );
+
+        if (tournamentEvents.length > 0) {
+          console.log('Home page: New tournament events detected, refreshing stats...', tournamentEvents);
+          if (manualRefresh) {
+            manualRefresh();
+          }
+        }
+      } catch (error) {
+        console.error('Home page: Error polling for updates:', error);
+      }
+    };
+
+    // Start polling
+    const interval = setInterval(pollForUpdates, pollInterval);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [manualRefresh]);
+
+  // Refresh stats when page becomes visible (user switches back to tab)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && manualRefresh) {
+        console.log('Home page: Page became visible, refreshing stats...');
+        manualRefresh();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [manualRefresh]);
+
+  const handleTestEvent = () => {
+    console.log('Testing event system...');
+    window.dispatchEvent(new CustomEvent('tournament_created', {
+      detail: {
+        event: 'tournament_created',
+        timestamp: Date.now(),
+        source: 'manual_test'
+      }
+    }));
+  };
+
+  const handleSimulateTournamentCreation = () => {
+    console.log('Simulating tournament creation event...');
+    // Simulate the exact same event that should be dispatched during tournament creation
+    window.dispatchEvent(new CustomEvent('tournament_created', {
+      detail: {
+        event: 'tournament_created',
+        timestamp: Date.now(),
+        source: 'tournament_creation_immediate',
+        sessionId: 'test-session-123'
+      }
+    }));
+  };
+
+  const handlePollBlockchainEvents = () => {
+    console.log('Manually polling blockchain events...');
+    triggerBlockchainEventPolling();
+  };
+
+  const handleResetTimestamp = () => {
+    console.log('Resetting blockchain event timestamp...');
+    resetBlockchainEventTimestamp();
+  };
+
+  const handleTestNotifierEndpoint = async () => {
+    console.log('Testing notifier endpoint...');
+    try {
+      const response = await fetch('/api/notifier/recent');
+      console.log('Notifier response status:', response.status);
+      console.log('Notifier response headers:', response.headers);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Notifier data:', data);
+      } else {
+        console.error('Notifier endpoint error:', response.status, response.statusText);
+      }
+    } catch (error) {
+      console.error('Notifier endpoint test failed:', error);
+    }
+  };
+
+  const handleInjectTestEvent = async () => {
+    console.log('Injecting test event to backend...');
+    try {
+      const url = '/api/notifier/inject-event';
+      console.log('POST request to:', url);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          identifier: 'tournamentCreated',
+          tournament_id: 35, // Use a realistic tournament ID
+          game_id: 1,
+          player: 'erd1test...'
+        })
+      });
+
+      console.log('Inject response status:', response.status, response.statusText);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Test event injected:', data);
+        // Now poll for the event
+        setTimeout(() => {
+          console.log('Polling for injected event...');
+          triggerBlockchainEventPolling();
+        }, 1000);
+      } else {
+        console.error('Failed to inject test event:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+      }
+    } catch (error) {
+      console.error('Error injecting test event:', error);
+    }
+  };
+
+  const handleSimulateBlockchainEvent = () => {
+    console.log('Simulating blockchain event from notifier...');
+    // Simulate the exact event structure that should come from the backend notifier
+    const mockEvent = {
+      identifier: 'tournamentCreated',
+      tournament_id: 999,
+      ts: Date.now(),
+      game_id: 1,
+      player: 'erd1test...'
+    };
+
+    // Dispatch the event as if it came from the blockchain event service
+    window.dispatchEvent(new CustomEvent('tournament_created', {
+      detail: {
+        event: 'tournament_created',
+        blockchainEvent: mockEvent,
+        timestamp: Date.now(),
+        source: 'blockchain_event_service'
+      }
+    }));
+  };
 
   return (
     <PageWrapper>
@@ -139,7 +335,7 @@ export const Home = () => {
                   }}
                 />
 
-                <VStack spacing={4} w="full">
+                <VStack spacing={4} w="full" position="relative">
                   <HStack spacing={3} align="center" justify="center" w="full">
                     <Box
                       p={2}
@@ -154,6 +350,7 @@ export const Home = () => {
                     </Text>
                   </HStack>
 
+
                   <SimpleGrid columns={{ base: 2, md: 3, lg: 4 }} spacing={{ base: 6, md: 6, lg: 8 }} w="full">
                     <VStack spacing={3}>
                       <Box
@@ -166,21 +363,18 @@ export const Home = () => {
                         bgGradient="linear(135deg, yellow.500, orange.600)"
                         borderRadius="xl"
                         boxShadow="0 8px 20px rgba(250, 204, 21, 0.3)"
+                        border={error ? "2px solid" : "none"}
+                        borderColor={error ? "orange.400" : "transparent"}
                         _hover={{
                           transform: "scale(1.05)",
                           boxShadow: "0 12px 25px rgba(250, 204, 21, 0.4)"
                         }}
                         transition="all 0.3s ease"
+                        position="relative"
                       >
-                        {loading ? (
-                          <Skeleton height="40px" width="60px" borderRadius="lg" />
-                        ) : error ? (
-                          <Text fontSize="3xl" fontWeight="bold" color="white">-</Text>
-                        ) : (
-                          <Text fontSize="3xl" fontWeight="bold" color="white">
-                            {joiningTournaments}
-                          </Text>
-                        )}
+                        <Text fontSize="3xl" fontWeight="bold" color="white">
+                          {joiningTournaments}
+                        </Text>
                       </Box>
                       <Text fontSize="sm" color="yellow.300" fontWeight="semibold">Joining</Text>
                     </VStack>
@@ -196,21 +390,18 @@ export const Home = () => {
                         bgGradient="linear(135deg, blue.500, blue.600)"
                         borderRadius="xl"
                         boxShadow="0 8px 20px rgba(59, 130, 246, 0.3)"
+                        border={error ? "2px solid" : "none"}
+                        borderColor={error ? "orange.400" : "transparent"}
                         _hover={{
                           transform: "scale(1.05)",
                           boxShadow: "0 12px 25px rgba(59, 130, 246, 0.4)"
                         }}
                         transition="all 0.3s ease"
+                        position="relative"
                       >
-                        {loading ? (
-                          <Skeleton height="40px" width="60px" borderRadius="lg" />
-                        ) : error ? (
-                          <Text fontSize="3xl" fontWeight="bold" color="white">-</Text>
-                        ) : (
-                          <Text fontSize="3xl" fontWeight="bold" color="white">
-                            {readyToStartTournaments}
-                          </Text>
-                        )}
+                        <Text fontSize="3xl" fontWeight="bold" color="white">
+                          {readyToStartTournaments}
+                        </Text>
                       </Box>
                       <Text fontSize="sm" color="blue.300" fontWeight="semibold">Ready to Start</Text>
                     </VStack>
@@ -226,21 +417,18 @@ export const Home = () => {
                         bgGradient="linear(135deg, green.500, green.600)"
                         borderRadius="xl"
                         boxShadow="0 8px 20px rgba(34, 197, 94, 0.3)"
+                        border={error ? "2px solid" : "none"}
+                        borderColor={error ? "orange.400" : "transparent"}
                         _hover={{
                           transform: "scale(1.05)",
                           boxShadow: "0 12px 25px rgba(34, 197, 94, 0.4)"
                         }}
                         transition="all 0.3s ease"
+                        position="relative"
                       >
-                        {loading ? (
-                          <Skeleton height="40px" width="60px" borderRadius="lg" />
-                        ) : error ? (
-                          <Text fontSize="3xl" fontWeight="bold" color="white">-</Text>
-                        ) : (
-                          <Text fontSize="3xl" fontWeight="bold" color="white">
-                            {activeTournaments}
-                          </Text>
-                        )}
+                        <Text fontSize="3xl" fontWeight="bold" color="white">
+                          {activeTournaments}
+                        </Text>
                       </Box>
                       <Text fontSize="sm" color="green.300" fontWeight="semibold">Playing</Text>
                     </VStack>
@@ -256,21 +444,18 @@ export const Home = () => {
                         bgGradient="linear(135deg, purple.500, pink.600)"
                         borderRadius="xl"
                         boxShadow="0 8px 20px rgba(147, 51, 234, 0.3)"
+                        border={error ? "2px solid" : "none"}
+                        borderColor={error ? "orange.400" : "transparent"}
                         _hover={{
                           transform: "scale(1.05)",
                           boxShadow: "0 12px 25px rgba(147, 51, 234, 0.4)"
                         }}
                         transition="all 0.3s ease"
+                        position="relative"
                       >
-                        {loading ? (
-                          <Skeleton height="40px" width="60px" borderRadius="lg" />
-                        ) : error ? (
-                          <Text fontSize="3xl" fontWeight="bold" color="white">-</Text>
-                        ) : (
-                          <Text fontSize="3xl" fontWeight="bold" color="white">
-                            {completedTournaments}
-                          </Text>
-                        )}
+                        <Text fontSize="3xl" fontWeight="bold" color="white">
+                          {completedTournaments}
+                        </Text>
                       </Box>
                       <Text fontSize="sm" color="purple.300" fontWeight="semibold">Completed</Text>
                     </VStack>
@@ -290,6 +475,8 @@ export const Home = () => {
                         bgGradient="linear(135deg, #00D4AA, #00B894)"
                         borderRadius="xl"
                         boxShadow="0 8px 20px rgba(0, 212, 170, 0.3)"
+                        border={error ? "2px solid" : "none"}
+                        borderColor={error ? "orange.400" : "transparent"}
                         _hover={{
                           transform: "scale(1.05)",
                           boxShadow: "0 12px 25px rgba(0, 212, 170, 0.4)"
@@ -297,23 +484,17 @@ export const Home = () => {
                         transition="all 0.3s ease"
                         position="relative"
                       >
-                        {loading ? (
-                          <Skeleton height="40px" width="60px" borderRadius="lg" />
-                        ) : error ? (
-                          <Text fontSize="3xl" fontWeight="bold" color="white">-</Text>
-                        ) : (
-                          <VStack spacing={1}>
-                            <Text fontSize="3xl" fontWeight="bold" color="white">
-                              {maxPrizeWon.toFixed(3)}
-                            </Text>
-                            <Text fontSize="xs" color="rgba(255,255,255,0.7)" fontWeight="medium">
-                              EGLD
-                            </Text>
-                          </VStack>
-                        )}
+                        <VStack spacing={1}>
+                          <Text fontSize="3xl" fontWeight="bold" color="white">
+                            {maxPrizeWon.toFixed(3)}
+                          </Text>
+                          <Text fontSize="xs" color="rgba(255,255,255,0.7)" fontWeight="medium">
+                            EGLD
+                          </Text>
+                        </VStack>
                       </Box>
                       <Text fontSize="sm" color="#00D4AA" fontWeight="semibold">Max Prize</Text>
-                      {maxPrizeWon === 0 && !loading && (
+                      {maxPrizeWon === 0 && (
                         <Text fontSize="xs" color="gray.400" textAlign="center">
                           No prizes won yet
                         </Text>
@@ -331,6 +512,8 @@ export const Home = () => {
                         bgGradient="linear(135deg, #00D4AA, #00A085)"
                         borderRadius="xl"
                         boxShadow="0 8px 20px rgba(0, 212, 170, 0.3)"
+                        border={error ? "2px solid" : "none"}
+                        borderColor={error ? "orange.400" : "transparent"}
                         _hover={{
                           transform: "scale(1.05)",
                           boxShadow: "0 12px 25px rgba(0, 212, 170, 0.4)"
@@ -338,23 +521,17 @@ export const Home = () => {
                         transition="all 0.3s ease"
                         position="relative"
                       >
-                        {loading ? (
-                          <Skeleton height="40px" width="60px" borderRadius="lg" />
-                        ) : error ? (
-                          <Text fontSize="3xl" fontWeight="bold" color="white">-</Text>
-                        ) : (
-                          <VStack spacing={1}>
-                            <Text fontSize="3xl" fontWeight="bold" color="white">
-                              {totalPrizeDistributed.toFixed(3)}
-                            </Text>
-                            <Text fontSize="xs" color="rgba(255,255,255,0.7)" fontWeight="medium">
-                              EGLD
-                            </Text>
-                          </VStack>
-                        )}
+                        <VStack spacing={1}>
+                          <Text fontSize="3xl" fontWeight="bold" color="white">
+                            {totalPrizeDistributed.toFixed(3)}
+                          </Text>
+                          <Text fontSize="xs" color="rgba(255,255,255,0.7)" fontWeight="medium">
+                            EGLD
+                          </Text>
+                        </VStack>
                       </Box>
                       <Text fontSize="sm" color="#00D4AA" fontWeight="semibold" textAlign="center">Total Prize Distribution</Text>
-                      {totalPrizeDistributed === 0 && !loading && (
+                      {totalPrizeDistributed === 0 && (
                         <Text fontSize="xs" color="gray.400" textAlign="center">
                           No prizes distributed yet
                         </Text>
@@ -364,14 +541,46 @@ export const Home = () => {
                 </VStack>
               </Box>
 
-              {error && (
-                <Text fontSize="sm" color="red.400" textAlign={{ base: 'center', md: 'left' }}>
-                  Failed to load tournament statistics. Please try refreshing the page.
-                </Text>
+              {(error || loading) && (
+                <HStack spacing={3} mt={2} justify="center">
+                  {loading && (
+                    <HStack spacing={2}>
+                      <Spinner size="xs" color="blue.400" />
+                      <Text fontSize="xs" color="blue.400" textAlign="center">
+                        Updating...
+                      </Text>
+                    </HStack>
+                  )}
+                  {error && (
+                    <>
+                      <Text fontSize="xs" color="orange.400" textAlign="center">
+                        Stats may be outdated
+                      </Text>
+                      <Button
+                        size="xs"
+                        colorScheme="orange"
+                        variant="ghost"
+                        onClick={manualRefresh}
+                        leftIcon={<Trophy size={14} />}
+                      >
+                        Refresh
+                      </Button>
+                    </>
+                  )}
+                </HStack>
               )}
 
               {/* Debug button for prize stats */}
               <HStack justify="center" mt={4}>
+                <Button
+                  size="sm"
+                  colorScheme="blue"
+                  variant="outline"
+                  onClick={manualRefresh}
+                  leftIcon={<Trophy size={14} />}
+                >
+                  Force Refresh Stats
+                </Button>
               </HStack>
 
               {/* Cool Action Buttons with Enhanced Gradients */}
@@ -668,6 +877,44 @@ export const Home = () => {
               </Box>
             </SimpleGrid>
           </VStack>
+
+          {/* Debug: Event System Test */}
+          <Box p={4} border="1px solid" borderColor="gray.600" borderRadius="lg" bg="gray.800">
+            <VStack spacing={3}>
+              <Text fontSize="sm" color="gray.400">Debug: Event System Test</Text>
+              <HStack spacing={2} wrap="wrap">
+                <Button size="sm" onClick={handleTestEvent} colorScheme="purple">
+                  Test Event
+                </Button>
+                <Button size="sm" onClick={handleSimulateTournamentCreation} colorScheme="orange">
+                  Simulate Creation
+                </Button>
+                <Button size="sm" onClick={handlePollBlockchainEvents} colorScheme="green">
+                  Poll Blockchain
+                </Button>
+                <Button size="sm" onClick={handleTestNotifierEndpoint} colorScheme="red">
+                  Test Notifier
+                </Button>
+                <Button size="sm" onClick={handleInjectTestEvent} colorScheme="yellow">
+                  Inject Event
+                </Button>
+                <Button size="sm" onClick={handleResetTimestamp} colorScheme="gray">
+                  Reset Timestamp
+                </Button>
+                <Button size="sm" onClick={handleSimulateBlockchainEvent} colorScheme="teal">
+                  Simulate Blockchain
+                </Button>
+                {manualRefresh && (
+                  <Button size="sm" onClick={manualRefresh} colorScheme="blue">
+                    Manual Refresh
+                  </Button>
+                )}
+              </HStack>
+              <Text fontSize="xs" color="gray.500">
+                Total: {totalTournaments} | Active: {totalActiveTournaments} | Completed: {completedTournaments}
+              </Text>
+            </VStack>
+          </Box>
 
           <Outlet />
         </VStack>

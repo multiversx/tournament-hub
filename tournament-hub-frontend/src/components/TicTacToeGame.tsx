@@ -139,16 +139,17 @@ export const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ sessionId, playerA
 
     const renderCell = (row: number, col: number) => {
         const cellValue = gameState?.board[row][col] || '';
-        const isClickable = isMyTurn && !gameState?.game_over && cellValue === '';
+        const hasPlayers = gameState?.x_player && gameState?.o_player;
+        const isClickable = hasPlayers && isMyTurn && !gameState?.game_over && cellValue === '';
 
         return (
             <Box
                 key={`${row}-${col}`}
                 w="80px"
                 h="80px"
-                bg="gray.700"
+                bg={hasPlayers ? "gray.700" : "gray.800"}
                 border="2px solid"
-                borderColor="gray.600"
+                borderColor={hasPlayers ? "gray.600" : "gray.700"}
                 display="flex"
                 alignItems="center"
                 justifyContent="center"
@@ -158,6 +159,7 @@ export const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ sessionId, playerA
                 fontSize="3xl"
                 fontWeight="bold"
                 color={cellValue === 'X' ? 'blue.300' : 'red.300'}
+                opacity={hasPlayers ? 1 : 0.5}
             >
                 {cellValue}
             </Box>
@@ -199,15 +201,21 @@ export const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ sessionId, playerA
                     <Box w="80px" /> {/* Spacer to center the title */}
                 </HStack>
                 <HStack justify="center" spacing={4}>
-                    <Badge colorScheme={gameState.current_turn === 'X' ? 'blue' : 'red'}>
-                        {gameState.current_turn}'s Turn
-                    </Badge>
+                    {gameState.x_player && gameState.o_player ? (
+                        <Badge colorScheme={gameState.current_turn === 'X' ? 'blue' : 'red'}>
+                            {gameState.current_turn}'s Turn
+                        </Badge>
+                    ) : (
+                        <Badge colorScheme="gray">
+                            Waiting for players...
+                        </Badge>
+                    )}
                     {gameState.game_over && (
                         <Badge colorScheme="red">
                             Game Over - {gameState.winner ? `Winner: ${gameState.winner}` : 'Draw'}
                         </Badge>
                     )}
-                    {isMyTurn && !gameState.game_over && (
+                    {isMyTurn && !gameState.game_over && gameState.x_player && gameState.o_player && (
                         <Badge colorScheme="green">Your Turn</Badge>
                     )}
                 </HStack>
@@ -245,10 +253,10 @@ export const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ sessionId, playerA
 
             <HStack justify="center" spacing={4}>
                 <Text fontSize="sm">
-                    X: {gameState.x_player ? `${gameState.x_player.slice(0, 8)}...` : 'Unknown'}
+                    X: {gameState.x_player ? `${gameState.x_player.slice(0, 8)}...` : 'Waiting for player...'}
                 </Text>
                 <Text fontSize="sm">
-                    O: {gameState.o_player ? `${gameState.o_player.slice(0, 8)}...` : 'Unknown'}
+                    O: {gameState.o_player ? `${gameState.o_player.slice(0, 8)}...` : 'Waiting for player...'}
                 </Text>
             </HStack>
         </VStack>

@@ -112,15 +112,8 @@ export const ColorRush: React.FC<ColorRushGameProps> = ({ sessionId, playerAddre
         startGameAttemptedRef.current = true;
 
         try {
-            const response = await fetch(`${BACKEND_BASE_URL}/start_colorrush_game`, {
+            const response = await fetch(`${BACKEND_BASE_URL}/start_colorrush_game?sessionId=${sessionId}&player=${playerAddress}`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    sessionId: sessionId,
-                    player: playerAddress,
-                }),
             });
 
             if (response.ok) {
@@ -228,18 +221,8 @@ export const ColorRush: React.FC<ColorRushGameProps> = ({ sessionId, playerAddre
     // Submit score to backend
     const submitScore = async () => {
         try {
-            const response = await fetch(`${BACKEND_BASE_URL}/submit_colorrush_score`, {
+            const response = await fetch(`${BACKEND_BASE_URL}/submit_colorrush_score?sessionId=${sessionId}&player=${playerAddress}&score=${localScore}&tilesCleared=${localTilesCleared}&combo=${localCombo}`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    sessionId: sessionId,
-                    player: playerAddress,
-                    score: localScore,
-                    tilesCleared: localTilesCleared,
-                    combo: localCombo,
-                }),
             });
 
             if (response.ok) {

@@ -20,6 +20,11 @@ class DDScene extends Phaser.Scene {
     endText?: Phaser.GameObjects.Text;
     gameStartTime: number = 0;
     wave: number = 1;
+    gameState: any = null;
+    stateUpdateTimer: number = 0;
+    lastInputTime: number = 0;
+    inputThrottle: number = 50; // Send input every 50ms (20 FPS)
+    lastSentInput: { ax: number; ay: number; dash: boolean } = { ax: 0, ay: 0, dash: false };
 
     init(data: { sessionId: string; playerAddress: string }) {
         this.sessionId = data.sessionId;
@@ -27,6 +32,63 @@ class DDScene extends Phaser.Scene {
     }
 
     preload() { }
+
+    async fetchGameState() {
+        try {
+            const response = await fetch(`${BACKEND_BASE_URL}/dodgedash_game_state?sessionId=${encodeURIComponent(this.sessionId)}`);
+            if (response.ok) {
+                this.gameState = await response.json();
+                this.syncWithGameState();
+            }
+        } catch (error) {
+            console.error('Error fetching game state:', error);
+        }
+    }
+
+    syncWithGameState() {
+        if (!this.gameState) return;
+
+        // Update player lives from server state
+        const playerData = this.gameState.players[this.playerAddress];
+        if (playerData) {
+            this.lives = playerData.lives;
+            this.gameOver = !playerData.alive;
+        }
+
+        // Update wave from server state (authoritative)
+        if (this.gameState.wave) {
+            this.wave = this.gameState.wave;
+        }
+
+        // Sync hazards from server
+        this.syncHazards();
+
+        // Update HUD
+        this.hudText.setText(`Lives: ${this.lives}  Wave: ${this.wave}`);
+
+        // Check for game over
+        if (this.gameState.game_over && !this.gameOver) {
+            this.endGame(this.gameState.winner === this.playerAddress);
+        }
+    }
+
+    syncHazards() {
+        if (!this.gameState?.hazards) return;
+
+        // Clear existing hazards
+        this.hazards.clear(true, true);
+
+        // Add hazards from server state
+        this.gameState.hazards.forEach((hazard: any) => {
+            if (hazard.x > -500 && hazard.y > -500) { // Only show hazards that are on screen
+                const dot = this.hazards.create(hazard.x, hazard.y, 'dd-dot') as Phaser.Physics.Arcade.Image;
+                dot.setTint(0xf43f5e).setScale(0.7 + (hazard.r / 18) * 0.8).setCircle(12);
+                dot.setVelocity(hazard.vx, hazard.vy);
+                dot.setBounce(1, 1);
+                dot.setCollideWorldBounds(true);
+            }
+        });
+    }
 
     create() {
         this.cameras.main.setBackgroundColor('#0b1220');
@@ -58,40 +120,26 @@ class DDScene extends Phaser.Scene {
         this.gameStartTime = this.time.now;
         this.hudText = this.add.text(16, 12, 'Lives: 3  Wave: 1', { fontSize: '14px', color: '#e5e7eb' }).setScrollFactor(0).setDepth(100);
 
-        this.time.addEvent({ delay: 1200, loop: true, callback: this.spawnHazard, callbackScope: this });
-        // Join server-side shared session
-        fetch(`${BACKEND_BASE_URL}/join_dodgedash_session?sessionId=${encodeURIComponent(this.sessionId)}&player=${encodeURIComponent(this.playerAddress)}`, { method: 'POST' }).catch(() => { });
+        // Join server-side shared session and fetch initial state
+        fetch(`${BACKEND_BASE_URL}/join_dodgedash_session?sessionId=${encodeURIComponent(this.sessionId)}&player=${encodeURIComponent(this.playerAddress)}`, { method: 'POST' })
+            .then(() => this.fetchGameState())
+            .catch(() => { });
+
+        // Set up periodic game state updates (every 200ms for smooth sync)
+        this.time.addEvent({ delay: 200, loop: true, callback: this.fetchGameState, callbackScope: this });
 
         this.physics.add.overlap(this.player, this.hazards, this.onHit, undefined, this);
     }
 
-    spawnHazard() {
-        if (this.gameOver) return;
-        const edge = Phaser.Math.Between(0, 3);
-        const w = this.scale.width, h = this.scale.height;
-        let x = 0, y = 0, vx = 0, vy = 0;
-        const speed = 140 + Math.random() * 120;
-        if (edge === 0) { x = -10; y = Math.random() * h; vx = speed; }
-        else if (edge === 1) { x = w + 10; y = Math.random() * h; vx = -speed; }
-        else if (edge === 2) { x = Math.random() * w; y = -10; vy = speed; }
-        else { x = Math.random() * w; y = h + 10; vy = -speed; }
-        const dot = this.hazards.create(x, y, 'dd-dot') as Phaser.Physics.Arcade.Image;
-        dot.setTint(0xf43f5e).setScale(0.7 + Math.random() * 0.8).setCircle(12);
-        dot.setVelocity(vx, vy);
-        dot.setBounce(1, 1);
-        dot.setCollideWorldBounds(true);
-    }
+    // Hazard spawning is now handled server-side only
 
     onHit = (_p: any, hazard: any) => {
         if (this.gameOver) return;
         const img = hazard as Phaser.Physics.Arcade.Image;
         img.disableBody(true, true);
-        this.lives -= 1;
-        this.hudText.setText(`Lives: ${this.lives}  Wave: ${this.wave}`);
+        // Lives and game over are now handled by server state synchronization
+        // Just show visual feedback
         this.cameras.main.flash(100, 244, 63, 94);
-        if (this.lives <= 0) {
-            this.endGame(false);
-        }
     };
 
     endGame(win: boolean) {
@@ -114,12 +162,11 @@ class DDScene extends Phaser.Scene {
         if (this.cursors.down?.isDown) ay += accel;
         this.player.setAcceleration(ax, ay);
 
-        // Update wave based on time elapsed (every 15 seconds = new wave)
-        const timeElapsed = (this.time.now - this.gameStartTime) / 1000;
-        this.wave = Math.floor(timeElapsed / 15) + 1;
-
-        // Update HUD text
-        this.hudText.setText(`Lives: ${this.lives}  Wave: ${this.wave}`);
+        // Wave and lives are now updated from server state in syncWithGameState()
+        // Only update HUD if we don't have server state yet
+        if (!this.gameState) {
+            this.hudText.setText(`Lives: ${this.lives}  Wave: ${this.wave}`);
+        }
 
         // Dash with cooldown
         if (this.dashKey.isDown && this.dashCooldown <= 0) {
@@ -133,14 +180,28 @@ class DDScene extends Phaser.Scene {
         }
         if (this.dashCooldown > 0) this.dashCooldown -= dt;
 
-        // Send inputs to server (accelerations + dash flag)
-        const netAx = (this.cursors.left?.isDown ? -600 : 0) + (this.cursors.right?.isDown ? 600 : 0);
-        const netAy = (this.cursors.up?.isDown ? -600 : 0) + (this.cursors.down?.isDown ? 600 : 0);
-        const wantDash = this.dashKey.isDown && this.dashCooldown <= 0;
-        fetch(`${BACKEND_BASE_URL}/dodgedash_move`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId: this.sessionId, player: this.playerAddress, ax: netAx, ay: netAy, dash: wantDash })
-        }).catch(() => { });
+        // Send inputs to server (accelerations + dash flag) - throttled to 20 FPS
+        const now = this.time.now;
+        if (now - this.lastInputTime >= this.inputThrottle) {
+            const netAx = (this.cursors.left?.isDown ? -600 : 0) + (this.cursors.right?.isDown ? 600 : 0);
+            const netAy = (this.cursors.up?.isDown ? -600 : 0) + (this.cursors.down?.isDown ? 600 : 0);
+            const wantDash = this.dashKey.isDown && this.dashCooldown <= 0;
+
+            // Only send if input has changed or there's a dash
+            const currentInput = { ax: netAx, ay: netAy, dash: wantDash };
+            const inputChanged = currentInput.ax !== this.lastSentInput.ax ||
+                currentInput.ay !== this.lastSentInput.ay ||
+                currentInput.dash !== this.lastSentInput.dash;
+
+            if (inputChanged) {
+                fetch(`${BACKEND_BASE_URL}/dodgedash_move`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId: this.sessionId, player: this.playerAddress, ax: netAx, ay: netAy, dash: wantDash })
+                }).catch(() => { });
+                this.lastSentInput = currentInput;
+                this.lastInputTime = now;
+            }
+        }
     }
 }
 

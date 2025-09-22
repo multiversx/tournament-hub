@@ -544,7 +544,6 @@ function getGameName(gameId: number): string {
         1: 'Tic Tac Toe',
         2: 'Chess',
         3: 'CryptoBubbles',
-        4: 'ColorRush',
         5: 'Agar.io',
         6: 'DodgeDash'
     };
@@ -746,6 +745,13 @@ export async function debugContractState(): Promise<void> {
 // Enhanced cache management functions
 export function invalidateCacheByEvent(event: string) {
     cacheInvalidationManager.triggerInvalidation(event);
+
+    // Also dispatch window event for event-based systems
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('cacheInvalidated', {
+            detail: { event, timestamp: Date.now() }
+        }));
+    }
 }
 
 export function invalidateCacheByKey(key: string) {
@@ -1291,7 +1297,7 @@ async function sleep(ms: number): Promise<void> {
 }
 
 // Lightweight fetch wrapper with timeout and retry logic
-async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = 15000, maxRetries = 3): Promise<Response> {
+async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = 8000, maxRetries = 2): Promise<Response> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -1541,12 +1547,16 @@ export async function getTournamentsFromBlockchain() {
 
 export async function getRecentNotifierEvents(): Promise<Array<{ identifier: string; tournament_id: number; ts: number; game_id?: number; player?: string }>> {
     try {
-        const res = await fetch(`${BACKEND_BASE_URL}/notifier/recent`);
+        const url = `${BACKEND_BASE_URL}/notifier/recent`;
+        console.log('Fetching notifier events from:', url);
+        const res = await fetch(url);
+        console.log('Notifier response status:', res.status, res.statusText);
         if (!res.ok) {
             console.warn(`Notifier API error: ${res.status} ${res.statusText}`);
             return [];
         }
         const data = await res.json();
+        console.log('Notifier events received:', data);
         if (!Array.isArray(data)) return [];
         return data;
     } catch (error) {
@@ -1630,7 +1640,10 @@ export async function parseTournamentHex(hex: string, tournamentId?: number | bi
 
     let offset = 0;
     function logField(name: string, raw: string, value: any) {
-        // no-op to avoid excessive logging in production
+        // Enable logging for participants to debug the issue
+        if (name === 'participants') {
+            console.log(`parseTournamentHex: ${name}`, { raw, value, length: Array.isArray(value) ? value.length : 'not array' });
+        }
     }
 
     const remaining = () => rawHex.length - offset;
@@ -1668,6 +1681,12 @@ export async function parseTournamentHex(hex: string, tournamentId?: number | bi
         const MAX_VEC = 128; // sanity cap
         const addresses = [] as string[];
         const safeLen = Math.min(len, MAX_VEC);
+
+        // Debug logging for participants
+        if (name === 'participants') {
+            console.log(`readVecAddress: ${name} - len: ${len}, safeLen: ${safeLen}, remaining: ${remaining()}`);
+        }
+
         // Ensure enough data remains for declared length
         if (safeLen * 64 > remaining()) {
             if (name) logField(name || 'vec_addr_invalid', '', []);
@@ -1677,6 +1696,11 @@ export async function parseTournamentHex(hex: string, tournamentId?: number | bi
             const addrHex = readHex(64);
             const addr = hexToBech32(addrHex);
             addresses.push(addr);
+
+            // Debug logging for participants
+            if (name === 'participants') {
+                console.log(`readVecAddress: ${name} - address ${i}: ${addrHex} -> ${addr}`);
+            }
         }
         if (name) logField(name, `[${safeLen} addresses]`, addresses);
         return addresses;
@@ -1879,7 +1903,7 @@ export async function getTournamentDetailsFromContract(tournamentId: number | bi
 // Force fetch tournament details without any caching
 export async function getTournamentDetailsFromContractFresh(tournamentId: number | bigint) {
     try {
-        const response = await fetch(`${getApiUrl()}/vm-values/query`, {
+        const response = await fetchWithTimeout(`${getApiUrl()}/vm-values/query`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1891,7 +1915,7 @@ export async function getTournamentDetailsFromContractFresh(tournamentId: number
                 caller: getContractAddress(),
                 gasLimit: 50000000
             }),
-        });
+        }, 5000, 1); // 5s timeout, 1 retry
 
         const data = await response.json();
 
@@ -1980,104 +2004,7 @@ export async function getActiveTournamentIds() {
 
     return deduplicateApiRequest(cacheKey, async () => {
         try {
-            // First check how many tournaments actually exist
-            const numberOfTournamentsResponse = await fetchWithTimeout(`${getApiUrl()}/vm-values/query`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    scAddress: getContractAddress(),
-                    funcName: 'getNumberOfTournaments',
-                    args: [],
-                }),
-            });
-
-            const numberOfTournamentsData = await numberOfTournamentsResponse.json();
-            console.log('getNumberOfTournaments response:', numberOfTournamentsData);
-
-            let numberOfTournaments = 0;
-
-            // Try different response formats
-            let numberOfTournamentsReturnData = null;
-            if (numberOfTournamentsData?.data?.data?.returnData) {
-                numberOfTournamentsReturnData = numberOfTournamentsData.data.data.returnData;
-            } else if (numberOfTournamentsData?.data?.returnData) {
-                numberOfTournamentsReturnData = numberOfTournamentsData.data.returnData;
-            } else if (numberOfTournamentsData?.returnData) {
-                numberOfTournamentsReturnData = numberOfTournamentsData.returnData;
-            } else if (numberOfTournamentsData?.data) {
-                numberOfTournamentsReturnData = numberOfTournamentsData.data;
-            }
-
-            console.log('Raw returnData for numberOfTournaments:', numberOfTournamentsReturnData);
-
-            if (numberOfTournamentsReturnData && Array.isArray(numberOfTournamentsReturnData) && numberOfTournamentsReturnData.length > 0) {
-                const base64Data = numberOfTournamentsReturnData[0];
-                if (base64Data && typeof base64Data === 'string') {
-                    try {
-                        const decoded = atob(base64Data);
-                        console.log('Decoded numberOfTournaments data:', decoded);
-                        console.log('Decoded data length:', decoded.length);
-                        console.log('Decoded data as hex:', Array.from(decoded).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(''));
-
-                        // Try different parsing methods
-                        if (decoded.length === 1) {
-                            // Single byte - direct conversion
-                            numberOfTournaments = decoded.charCodeAt(0);
-                            console.log('Parsed as single byte:', numberOfTournaments);
-                        } else if (decoded.length === 4) {
-                            // 4 bytes - little endian u32
-                            const bytes = Array.from(decoded).map(c => c.charCodeAt(0));
-                            numberOfTournaments = bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
-                            console.log('Parsed as little endian u32:', numberOfTournaments);
-                        } else if (decoded.length === 8) {
-                            // 8 bytes - little endian u64
-                            const bytes = Array.from(decoded).map(c => c.charCodeAt(0));
-                            numberOfTournaments = bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24) |
-                                (bytes[4] << 32) | (bytes[5] << 40) | (bytes[6] << 48) | (bytes[7] << 56);
-                            console.log('Parsed as little endian u64:', numberOfTournaments);
-                        } else {
-                            // Try hex parsing as fallback
-                            const hexString = Array.from(decoded).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
-                            numberOfTournaments = parseInt(hexString, 16);
-                            console.log('Parsed as hex string:', numberOfTournaments);
-                        }
-
-                        console.log('Final parsed numberOfTournaments:', numberOfTournaments);
-                    } catch (error) {
-                        console.error('Error decoding numberOfTournaments data:', error);
-                    }
-                }
-            }
-
-            // Validate the parsed number
-            if (isNaN(numberOfTournaments) || numberOfTournaments < 0) {
-                console.log('Invalid number of tournaments parsed, defaulting to 0');
-                numberOfTournaments = 0;
-            }
-
-            console.log('Number of tournaments in contract:', numberOfTournaments);
-
-            // If there are no tournaments, return empty array immediately
-            if (numberOfTournaments === 0) {
-                console.log('No tournaments in contract, returning empty array');
-                return [];
-            }
-
-            // Add fallback: if numberOfTournaments seems low, try to find tournaments by testing individual IDs
-            // This handles cases where getNumberOfTournaments lags behind actual tournament count
-            const fallbackCheck = numberOfTournaments < 15; // If less than 15, do fallback check
-            if (fallbackCheck) {
-                const fallbackIds = await findTournamentsByTesting();
-
-                // If fallback found more tournaments, use those instead
-                if (fallbackIds.length > numberOfTournaments) {
-                    return fallbackIds;
-                }
-            }
-
-            // Now get the tournament IDs
+            // Try to get tournament IDs directly first (most efficient)
             const response = await fetchWithTimeout(`${getApiUrl()}/vm-values/query`, {
                 method: 'POST',
                 headers: {
@@ -2088,7 +2015,7 @@ export async function getActiveTournamentIds() {
                     funcName: 'getActiveTournamentIds',
                     args: [],
                 }),
-            });
+            }, 5000, 1); // Reduced timeout and retries
 
             const data = await response.json();
 
@@ -2104,53 +2031,49 @@ export async function getActiveTournamentIds() {
                 activeTournamentIdsReturnData = data.data;
             }
 
-            if (!activeTournamentIdsReturnData || !Array.isArray(activeTournamentIdsReturnData) || activeTournamentIdsReturnData.length === 0) {
-                console.log('No active tournament IDs returned');
-                return [];
-            }
+            if (activeTournamentIdsReturnData && Array.isArray(activeTournamentIdsReturnData) && activeTournamentIdsReturnData.length > 0) {
+                // The returnData should contain a single base64 string with all tournament IDs
+                const base64Data = activeTournamentIdsReturnData[0];
+                if (base64Data && typeof base64Data === 'string') {
+                    // Decode the base64 data and parse multiple U64 values (8 bytes each)
+                    const decoded = atob(base64Data);
+                    console.log('Decoded tournament IDs data length:', decoded.length);
 
-            // The returnData should contain a single base64 string with all tournament IDs
-            const base64Data = activeTournamentIdsReturnData[0];
-            if (!base64Data || typeof base64Data !== 'string') {
-                console.log('Invalid base64 data for tournament IDs');
-                return [];
-            }
+                    const tournamentIds = [];
+                    for (let i = 0; i < decoded.length; i += 8) {
+                        if (i + 8 <= decoded.length) {
+                            // Extract 8 bytes and convert to hex
+                            const chunk = decoded.slice(i, i + 8);
+                            const hexString = Array.from(chunk).map(char => char.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+                            const id = parseInt(hexString, 16);
+                            tournamentIds.push(BigInt(id));
+                        }
+                    }
 
-            // Decode the base64 data and parse multiple U64 values (8 bytes each)
-            const decoded = atob(base64Data);
-            console.log('Decoded tournament IDs data length:', decoded.length);
+                    // Filter out invalid IDs (only filter out zero or negative IDs)
+                    const validIds = tournamentIds.filter(id => Number(id) > 0);
+                    console.log('Valid tournament IDs (filtered):', validIds);
 
-            const tournamentIds = [];
-            for (let i = 0; i < decoded.length; i += 8) {
-                if (i + 8 <= decoded.length) {
-                    // Extract 8 bytes and convert to hex
-                    const chunk = decoded.slice(i, i + 8);
-                    const hexString = Array.from(chunk).map(char => char.charCodeAt(0).toString(16).padStart(2, '0')).join('');
-                    const id = parseInt(hexString, 16);
-                    tournamentIds.push(BigInt(id));
+                    if (validIds.length > 0) {
+                        return validIds;
+                    }
                 }
             }
 
-            console.log('Parsed active tournament IDs:', tournamentIds);
-            console.log('Number of tournaments from contract:', numberOfTournaments);
-            console.log('Tournament ID range:', tournamentIds.length > 0 ? `${Math.min(...tournamentIds.map(Number))} to ${Math.max(...tournamentIds.map(Number))}` : 'none');
+            // Fallback: try to find tournaments by testing individual IDs
+            console.log('Direct method failed, trying fallback discovery');
+            const fallbackIds = await findTournamentsByTesting();
+            return fallbackIds;
 
-            // Filter out invalid IDs (only filter out zero or negative IDs)
-            // Remove the upper bound filter as it was causing new tournaments to be filtered out
-            const validIds = tournamentIds.filter(id => Number(id) > 0);
-            console.log('Valid tournament IDs (filtered):', validIds);
-            console.log('Filtered count vs contract count:', validIds.length, 'vs', numberOfTournaments);
-
-            // If there are no valid tournaments, return empty array
-            if (validIds.length === 0) {
-                console.log('No valid tournament IDs found, returning empty array');
-                return [];
-            }
-
-            return validIds;
         } catch (error) {
             console.error('Error in getActiveTournamentIds:', error);
-            return [];
+            // Final fallback: try testing method
+            try {
+                return await findTournamentsByTesting();
+            } catch (fallbackError) {
+                console.error('Fallback method also failed:', fallbackError);
+                return [];
+            }
         }
     });
 }
@@ -2161,8 +2084,8 @@ export async function findTournamentsByTesting() {
         const tournamentIds: bigint[] = [];
 
 
-        // Test a reasonable range of tournament IDs (reduced from 50 to 20 for efficiency)
-        for (let i = 1; i <= 20; i++) {
+        // Test a smaller range of tournament IDs for faster discovery
+        for (let i = 1; i <= 10; i++) {
             try {
                 const details = await getTournamentDetailsFromContractFresh(BigInt(i));
                 if (details) {
@@ -3115,6 +3038,55 @@ if (typeof window !== 'undefined') {
         } catch (error) {
             console.error('Tournament parsing test failed:', error);
             return { error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    };
+
+    // Add a function to debug tournament participants parsing
+    (window as any).debugTournamentParticipants = async (tournamentId: number) => {
+        console.log(`=== DEBUGGING TOURNAMENT ${tournamentId} PARTICIPANTS ===`);
+
+        try {
+            // Get raw contract response
+            const response = await fetch(`${getApiUrl()}/vm-values/query`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    scAddress: getContractAddress(),
+                    funcName: 'getTournament',
+                    args: [tournamentId.toString(16).padStart(16, '0')],
+                    caller: getContractAddress(),
+                }),
+            });
+
+            const data = await response.json();
+            console.log('Raw contract response:', data);
+
+            if (data.data && data.data.data && data.data.data.returnData && data.data.data.returnData.length > 0) {
+                const hex = data.data.data.returnData[0];
+                console.log('Raw hex data:', hex);
+                console.log('Hex length:', hex.length);
+
+                // Parse the hex
+                const parsed = await parseTournamentHex(hex, tournamentId);
+                console.log('Parsed tournament:', parsed);
+                console.log('Participants:', parsed?.participants);
+                console.log('Participants length:', parsed?.participants?.length);
+
+                return {
+                    rawResponse: data,
+                    hex: hex,
+                    parsed: parsed,
+                    participants: parsed?.participants
+                };
+            } else {
+                console.log('No return data from contract');
+                return { error: 'No return data' };
+            }
+        } catch (error) {
+            console.error('Error debugging tournament participants:', error);
+            return { error: error.message };
         }
     };
 
@@ -4073,7 +4045,7 @@ export async function getPrizeStatsFromContract() {
                     funcName: 'getPrizeStats',
                     args: [],
                 }),
-            }, 20000, 3); // 20s timeout, 3 retries
+            }, 8000, 2); // 8s timeout, 2 retries
 
             console.log('getPrizeStatsFromContract: Response status:', response.status);
             if (!response.ok) {

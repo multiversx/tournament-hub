@@ -1,4 +1,5 @@
 import { invalidateCacheByEvent } from '../helpers';
+import { eventDispatcher, TournamentEvents, GameEvents, UserEvents } from './EventDispatcher';
 
 interface WebSocketMessage {
     type: string;
@@ -37,10 +38,10 @@ class WebSocketService {
             // Determine WebSocket URL based on environment
             const wsUrl = this.getWebSocketUrl();
 
-            // If no WebSocket URL, skip connection and use polling
+            // If no WebSocket URL, skip connection and use event-based system instead
             if (!wsUrl) {
                 this.isConnecting = false;
-                this.startPollingFallback();
+                console.log('WebSocket URL not configured, using event-based system instead of polling');
                 return;
             }
 
@@ -175,36 +176,43 @@ class WebSocketService {
     private handleTournamentCreated(data: any) {
         console.log('Tournament created:', data);
         invalidateCacheByEvent('tournament_created');
+        eventDispatcher.dispatch(TournamentEvents.CREATED, data, 'websocket');
     }
 
     private handleTournamentUpdated(data: any) {
         console.log('Tournament updated:', data);
         invalidateCacheByEvent('tournament_updated');
+        eventDispatcher.dispatch(TournamentEvents.UPDATED, data, 'websocket');
     }
 
     private handleTournamentJoined(data: any) {
         console.log('Tournament joined:', data);
         invalidateCacheByEvent('tournament_joined');
+        eventDispatcher.dispatch(TournamentEvents.JOINED, data, 'websocket');
     }
 
     private handleTournamentStarted(data: any) {
         console.log('Tournament started:', data);
         invalidateCacheByEvent('tournament_started');
+        eventDispatcher.dispatch(TournamentEvents.STARTED, data, 'websocket');
     }
 
     private handleTournamentCompleted(data: any) {
         console.log('Tournament completed:', data);
         invalidateCacheByEvent('tournament_completed');
+        eventDispatcher.dispatch(TournamentEvents.COMPLETED, data, 'websocket');
     }
 
     private handleGameStateUpdated(data: any) {
         console.log('Game state updated:', data);
         invalidateCacheByEvent('game_state_updated');
+        eventDispatcher.dispatch(GameEvents.STATE_UPDATED, data, 'websocket');
     }
 
     private handleUserStatsUpdated(data: any) {
         console.log('User stats updated:', data);
         invalidateCacheByEvent('user_stats_updated');
+        eventDispatcher.dispatch(UserEvents.STATS_UPDATED, data, 'websocket');
     }
 
     // Public API
@@ -242,10 +250,10 @@ class WebSocketService {
     // Fallback to polling if WebSocket is not available
     startPollingFallback() {
 
-        // Poll for tournament updates every 5 seconds for faster updates
+        // Poll for tournament updates every 15 seconds to reduce server load
         setInterval(() => {
             this.pollForUpdates();
-        }, 5000);
+        }, 15000);
     }
 
     private async pollForUpdates() {
@@ -259,6 +267,9 @@ class WebSocketService {
                 // Invalidate tournament-related caches to trigger refetch
                 invalidateCacheByEvent('tournament_updated');
                 invalidateCacheByEvent('tournament_status_changed');
+
+                // Also dispatch events for consistency
+                eventDispatcher.dispatch(TournamentEvents.UPDATED, null, 'polling_fallback');
             }).catch(error => {
                 console.error('Error importing cache functions:', error);
             });
@@ -273,11 +284,12 @@ class WebSocketService {
 export const webSocketService = new WebSocketService();
 
 // Fallback to polling if WebSocket fails
-if (typeof window !== 'undefined') {
-    // Start polling fallback after a delay to allow WebSocket to connect first
-    setTimeout(() => {
-        if (!webSocketService.isConnected()) {
-            webSocketService.startPollingFallback();
-        }
-    }, 5000);
-}
+// DISABLED: Use event-based system instead of polling fallback
+// if (typeof window !== 'undefined') {
+//     // Start polling fallback after a delay to allow WebSocket to connect first
+//     setTimeout(() => {
+//         if (!webSocketService.isConnected()) {
+//             webSocketService.startPollingFallback();
+//         }
+//     }, 5000);
+// }
