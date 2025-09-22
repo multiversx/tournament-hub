@@ -115,6 +115,24 @@ kill_port() {
     fi
 }
 
+# Function to cleanup processes on exit
+cleanup_processes() {
+    print_status "Cleaning up processes..."
+    if [ -n "$BACKEND_PID" ] && kill -0 $BACKEND_PID 2>/dev/null; then
+        print_status "Stopping backend server (PID: $BACKEND_PID)..."
+        kill $BACKEND_PID 2>/dev/null
+    fi
+    if [ -n "$FRONTEND_PID" ] && kill -0 $FRONTEND_PID 2>/dev/null; then
+        print_status "Stopping frontend server (PID: $FRONTEND_PID)..."
+        kill $FRONTEND_PID 2>/dev/null
+    fi
+    # Also kill by port as backup
+    kill_port 8000
+    kill_port 3000
+    print_success "Cleanup complete!"
+    exit 0
+}
+
 # Function to setup backend
 setup_backend() {
     print_status "Setting up backend..."
@@ -198,6 +216,16 @@ run_backend() {
     # Activate virtual environment
     source venv/bin/activate
 
+    # Load environment variables from env.local if it exists
+    if [ -f "env.local" ]; then
+        print_status "Loading environment variables from env.local..."
+        source env.local
+        # Export all variables to make them available to the Python process
+        export $(cat env.local | grep -v '^#' | grep -v '^$' | xargs)
+    else
+        print_warning "env.local not found. Using default environment variables."
+    fi
+
     # Ensure dependencies (update in case requirements changed)
     print_status "Installing/updating Python dependencies..."
     pip install -r requirements.txt
@@ -206,20 +234,31 @@ run_backend() {
     print_status "Starting FastAPI server on port 8000..."
     python main.py &
     BACKEND_PID=$!
+    export BACKEND_PID
     
-    # Wait a moment for server to start
-    sleep 3
+    # Wait for server to start with multiple attempts
+    print_status "Waiting for backend server to start..."
+    local attempts=0
+    local max_attempts=30  # 30 seconds total
     
-    # Check if server is running
-    if curl -s http://localhost:8000/docs >/dev/null 2>&1; then
-        print_success "Backend server started successfully!"
-        print_status "Backend API docs: http://localhost:8000/docs"
-    else
-        print_error "Failed to start backend server"
-        exit 1
-    fi
+    while [ $attempts -lt $max_attempts ]; do
+        if curl -s http://localhost:8000/ >/dev/null 2>&1; then
+            print_success "Backend server started successfully!"
+            print_status "Backend API docs: http://localhost:8000/docs"
+            cd ..
+            return 0
+        fi
+        sleep 1
+        attempts=$((attempts + 1))
+        if [ $((attempts % 5)) -eq 0 ]; then
+            print_status "Still waiting for backend server... (${attempts}s)"
+        fi
+    done
     
+    print_error "Failed to start backend server after ${max_attempts} seconds"
+    print_error "Please check the server logs for errors"
     cd ..
+    exit 1
 }
 
 # Function to run frontend
@@ -248,8 +287,9 @@ run_frontend() {
 
     # Start the development server
     print_status "Starting Vite dev server on port 3000 (HTTPS)..."
-    npm run dev &
+    PORT=3000 npm run dev &
     FRONTEND_PID=$!
+    export FRONTEND_PID
     
     # Wait for server to become ready (retry for up to 30 seconds)
     READY=false
@@ -348,6 +388,11 @@ case "${1:-help}" in
         load_env_config
         configure_frontend_env "${ENV_PRESET}"
         show_notifier_config
+        
+        # Initialize PIDs
+        BACKEND_PID=""
+        FRONTEND_PID=""
+        
         if [ "${ENV_PRESET}" = "local" ]; then
             run_backend
             run_frontend
@@ -357,6 +402,7 @@ case "${1:-help}" in
         elif [ "${ENV_PRESET}" = "cloudflare" ]; then
             print_status "Preset 'cloudflare': configure env for build. Not starting local servers."
             print_status "To build for Cloudflare: cd tournament-hub-frontend && npm run build"
+            exit 0
         else
             print_warning "Unknown preset '${ENV_PRESET}', defaulting to local."
             run_backend
@@ -373,8 +419,19 @@ case "${1:-help}" in
         fi
         print_status "Press Ctrl+C to stop all services"
         
-        # Wait for user to stop
-        wait
+        # Set up signal handler for cleanup
+        trap 'cleanup_processes' INT TERM
+        
+        # Wait for processes
+        if [ -n "$BACKEND_PID" ] && [ -n "$FRONTEND_PID" ]; then
+            wait $BACKEND_PID $FRONTEND_PID
+        elif [ -n "$BACKEND_PID" ]; then
+            wait $BACKEND_PID
+        elif [ -n "$FRONTEND_PID" ]; then
+            wait $FRONTEND_PID
+        else
+            wait
+        fi
         ;;
     "backend")
         load_env_config
