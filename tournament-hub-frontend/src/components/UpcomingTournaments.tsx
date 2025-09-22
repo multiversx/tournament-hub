@@ -58,7 +58,6 @@ const GAME_TYPES: { [key: number]: GameInfo } = {
     1: { name: 'Tic Tac Toe', description: 'Classic 3x3 grid strategy game', icon: '🎯' },
     2: { name: 'Chess', description: 'Strategic board game', icon: '♟️' },
     3: { name: 'Dodge Dash', description: 'Fast-paced obstacle avoidance', icon: '🏃' },
-    4: { name: 'Color Rush', description: 'Tile-matching puzzle game', icon: '🎨' },
     5: { name: 'CryptoBubbles', description: 'Real-time cell battle arena', icon: '🫧' },
 };
 
@@ -67,7 +66,6 @@ const getGameColor = (gameId: number): string => {
         1: 'purple', // Tic Tac Toe
         2: 'blue',   // Chess
         3: 'red',    // Dodge Dash
-        4: 'yellow', // Color Rush
         5: 'cyan',   // CryptoBubbles
     };
     return colors[gameId as keyof typeof colors] || 'gray';

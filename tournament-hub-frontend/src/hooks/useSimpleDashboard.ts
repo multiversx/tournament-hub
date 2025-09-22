@@ -445,15 +445,15 @@ export function useSimpleTournamentStats() {
         fetchTournamentStats();
     }, [refreshTrigger]);
 
-    // Auto-refresh every 30 seconds
-    useEffect(() => {
-        const interval = setInterval(() => {
-            console.log('Auto-refreshing tournament stats...');
-            setRefreshTrigger(prev => prev + 1);
-        }, 30000); // 30 seconds
-
-        return () => clearInterval(interval);
-    }, []);
+    // DISABLED: Auto-refresh every 30 seconds - using event-based system instead
+    // useEffect(() => {
+    //     const interval = setInterval(() => {
+    //         console.log('Auto-refreshing tournament stats...');
+    //         setRefreshTrigger(prev => prev + 1);
+    //     }, 30000); // 30 seconds
+    //
+    //     return () => clearInterval(interval);
+    // }, []);
 
     return { ...stats, refreshStats };
 }

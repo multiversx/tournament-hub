@@ -88,7 +88,7 @@ export const TournamentDetails = () => {
 
                 // Fetch transaction hash for completed tournaments
                 let resultTxHash = null;
-                if (details.status === 2) { // Completed status
+                if (details.status === 4) { // Completed status
                     try {
                         resultTxHash = await getSubmitResultsTransactionHash(BigInt(id));
                     } catch (e) {
@@ -135,7 +135,7 @@ export const TournamentDetails = () => {
 
             // Fetch transaction hash for completed tournaments
             let resultTxHash = null;
-            if (details.status === 2) { // Completed status
+            if (details.status === 4) { // Completed status
                 try {
                     resultTxHash = await getSubmitResultsTransactionHash(BigInt(id));
                 } catch (e) {
@@ -189,6 +189,20 @@ export const TournamentDetails = () => {
             } catch { }
         }, 1000);
         return () => { mounted = false; clearInterval(interval); };
+    }, [id]);
+
+    // Listen for tournament results submission to refresh immediately
+    useEffect(() => {
+        const handleResultsSubmitted = () => {
+            // Refresh tournament details when results are submitted
+            fetchTournamentFresh();
+        };
+
+        window.addEventListener('tournamentResultsSubmitted', handleResultsSubmitted);
+
+        return () => {
+            window.removeEventListener('tournamentResultsSubmitted', handleResultsSubmitted);
+        };
     }, [id]);
 
     // Notify creator when a player joins (poll recent joins)

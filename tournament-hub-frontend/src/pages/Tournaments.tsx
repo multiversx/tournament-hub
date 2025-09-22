@@ -806,26 +806,12 @@ export const Tournaments = () => {
         };
 
         window.addEventListener('forceClearTournaments', handleForceClear);
-        return () => window.removeEventListener('forceClearTournaments', handleForceClear);
+
+        return () => {
+            window.removeEventListener('forceClearTournaments', handleForceClear);
+        };
     }, []);
 
-    // Automatic cache refresh every 5 minutes to prevent stale data
-    useEffect(() => {
-        const interval = setInterval(async () => {
-            try {
-                // Silently refresh tournaments in the background
-                const freshTournaments = await forceRefreshAllTournaments();
-                if (freshTournaments.length !== tournaments.length) {
-                    setTournaments(freshTournaments);
-                    setLastRefresh(Date.now());
-                }
-            } catch (error) {
-                // Silently fail - don't show errors for background refresh
-            }
-        }, 1000); // 1 second
-
-        return () => clearInterval(interval);
-    }, [tournaments.length]);
 
     // Refresh function
     const refreshTournaments = useCallback(async () => {
@@ -861,6 +847,63 @@ export const Tournaments = () => {
             setRefreshing(false);
         }
     }, [toast]);
+
+    // Listen for tournament results submission to refresh tournaments
+    useEffect(() => {
+        const handleResultsSubmitted = () => {
+            // Clear caches and refresh tournaments when results are submitted
+            clearApiCaches();
+            tournamentCache.clear();
+            localStorage.removeItem(PERSISTENT_CACHE_KEY);
+
+            // Refresh tournaments
+            refreshTournaments();
+        };
+
+        window.addEventListener('tournamentResultsSubmitted', handleResultsSubmitted);
+
+        return () => {
+            window.removeEventListener('tournamentResultsSubmitted', handleResultsSubmitted);
+        };
+    }, [refreshTournaments]);
+
+    // Periodic check for tournament status changes (especially for auto-submitted results)
+    // Temporarily disabled to fix white page issue
+    // useEffect(() => {
+    //     const interval = setInterval(async () => {
+    //         try {
+    //             // Only check if we have tournaments and they're not currently refreshing
+    //             if (tournaments.length === 0 || refreshing) return;
+    //             
+    //             // Check for status changes in active tournaments
+    //             const activeTournaments = tournaments.filter(t => t.status <= 2); // Joining, ReadyToStart, Active
+    //             if (activeTournaments.length === 0) return;
+    //             
+    //             // Check a few active tournaments for status changes
+    //             for (const tournament of activeTournaments.slice(0, 3)) { // Check up to 3 tournaments
+    //                 try {
+    //                     const freshDetails = await getTournamentDetailsFromContractFresh(tournament.id);
+    //                     if (freshDetails && freshDetails.status !== tournament.status) {
+    //                         console.log(`Tournament ${tournament.id} status changed from ${tournament.status} to ${freshDetails.status}`);
+    //                         
+    //                         // Clear caches and refresh all tournaments
+    //                         clearApiCaches();
+    //                         tournamentCache.clear();
+    //                         localStorage.removeItem(PERSISTENT_CACHE_KEY);
+    //                         refreshTournaments();
+    //                         break; // Only refresh once per interval
+    //                     }
+    //                 } catch (error) {
+    //                     // Silently continue checking other tournaments
+    //                 }
+    //             }
+    //         } catch (error) {
+    //             // Silently fail - don't show errors for background refresh
+    //         }
+    //     }, 10000); // Check every 10 seconds
+
+    //     return () => clearInterval(interval);
+    // }, [tournaments, refreshing, refreshTournaments]);
 
     // Optimized initial load
     useEffect(() => {
@@ -1009,9 +1052,16 @@ export const Tournaments = () => {
         let lastSeenTs = 0;
         let lastJoinTs = 0;
         let consecutiveErrors = 0;
-        let pollInterval = 1000; // Start with 1 second for faster updates
+        let pollInterval = 3000; // Start with 3 seconds for more responsive updates
+        let isPolling = false; // Prevent multiple polling instances
 
         const pollNotifier = async () => {
+            if (isPolling) {
+                console.log('Polling already in progress, skipping...');
+                return;
+            }
+            isPolling = true;
+
             try {
                 // quick refresh on any join (players list often updated)
                 const anyJoinTs = await getAnyJoinTs();
@@ -1024,7 +1074,7 @@ export const Tournaments = () => {
                 if (!mounted || events.length === 0) {
                     // Reset error count on successful API call
                     consecutiveErrors = 0;
-                    pollInterval = 1000;
+                    pollInterval = 3000;
                     return;
                 }
                 // Process only new events
@@ -1032,7 +1082,7 @@ export const Tournaments = () => {
                 if (newEvents.length === 0) {
                     // Reset error count on successful API call
                     consecutiveErrors = 0;
-                    pollInterval = 1000;
+                    pollInterval = 3000;
                     return;
                 }
                 lastSeenTs = Math.max(lastSeenTs, ...newEvents.map(e => e.ts));
@@ -1041,13 +1091,15 @@ export const Tournaments = () => {
                 if (created.length === 0) {
                     // Reset error count on successful API call
                     consecutiveErrors = 0;
-                    pollInterval = 1000;
+                    pollInterval = 3000;
                     return;
                 }
                 const uniqueIds = Array.from(new Set(created.map(e => BigInt(e.tournament_id))));
                 for (const id of uniqueIds) {
                     // Skip if already present - use more robust comparison
-                    if (tournaments.some(t => BigInt(t.id) === id)) {
+                    // Use a ref to get current tournaments state
+                    const currentTournaments = tournaments;
+                    if (currentTournaments.some(t => BigInt(t.id) === id)) {
                         console.log(`Tournament ${id} already exists, skipping...`);
                         continue;
                     }
@@ -1077,9 +1129,11 @@ export const Tournaments = () => {
 
                 // Increase polling interval on consecutive errors to reduce server load
                 if (consecutiveErrors >= 3) {
-                    pollInterval = Math.min(pollInterval * 1.5, 10000); // Max 10 seconds
+                    pollInterval = Math.min(pollInterval * 1.5, 30000); // Max 30 seconds
                     console.log(`Increased polling interval to ${pollInterval}ms due to errors`);
                 }
+            } finally {
+                isPolling = false;
             }
         };
 
@@ -1104,7 +1158,7 @@ export const Tournaments = () => {
                 clearTimeout(interval);
             }
         };
-    }, [tournaments, loadBasicTournamentData]);
+    }, []); // Remove dependencies to prevent restarting polling
 
     const columns = useBreakpointValue({ base: 1, md: 2, lg: 3 });
 

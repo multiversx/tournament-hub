@@ -4,7 +4,6 @@ import { CryptoBubblesGame } from '../components/CryptoBubblesGame';
 import { CryptoBubblesGamePhaser } from '../components/CryptoBubblesGamePhaser';
 import { ChessGamePro } from '../components/ChessGamePro';
 import { TicTacToeGame } from '../components/TicTacToeGame';
-import { ColorRush } from '../components/ColorRush';
 import DodgeDash from '../components/DodgeDash';
 import { Box, Text, VStack, Spinner, useToast, Button } from '@chakra-ui/react';
 import { useGetAccount } from 'lib';
@@ -35,15 +34,23 @@ export const GameSession: React.FC = () => {
                         console.log('Tournament details:', {
                             gameId,
                             participants,
-                            participantsLength: participants.length
+                            participantsLength: participants.length,
+                            tournamentDetails: tournamentDetails
                         });
+
+                        // Debug: Make the debug function available globally for this tournament
+                        if (typeof window !== 'undefined') {
+                            (window as any).debugThisTournament = () => {
+                                return (window as any).debugTournamentParticipants(Number(tournamentId));
+                            };
+                            console.log('Debug function available: debugThisTournament()');
+                        }
 
                         // Create game session based on game type
                         const gameTypeMap: { [key: number]: string } = {
                             1: 'tictactoe',
                             2: 'chess',
-                            3: 'cryptobubbles',
-                            4: 'colorrush'
+                            3: 'cryptobubbles'
                         };
 
                         const gameType = gameTypeMap[gameId] || (gameId === 6 ? 'dodgedash' : 'cryptobubbles');
@@ -53,6 +60,13 @@ export const GameSession: React.FC = () => {
                         const players = participants.slice(0, 2); // Take first 2 players for Tic Tac Toe
 
                         console.log('Creating game session with players:', players);
+
+                        // Check if we have enough players for the game
+                        if (players.length < 2) {
+                            console.log('Not enough players for Tic Tac Toe. Need at least 2 players.');
+                            setLoading(false);
+                            return;
+                        }
 
                         // Check if session already exists for this tournament
                         const existingSessionResponse = await fetch(`${BACKEND_BASE_URL}/get_tournament_session?tournamentId=${tournamentId}`);
@@ -68,14 +82,18 @@ export const GameSession: React.FC = () => {
 
                         // Create new session only if none exists
                         if (!sessionId) {
+                            const sessionData = {
+                                tournamentId: String(tournamentId),
+                                game_type: gameId,
+                                playerAddresses: players
+                            };
+
+                            console.log('Creating game session with data:', sessionData);
+
                             const sessionResponse = await fetch(`${BACKEND_BASE_URL}/start_session`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    tournamentId: String(tournamentId),
-                                    game_type: gameId,
-                                    playerAddresses: players
-                                })
+                                body: JSON.stringify(sessionData)
                             });
 
                             if (sessionResponse.ok) {
@@ -120,6 +138,23 @@ export const GameSession: React.FC = () => {
         );
     }
 
+    // If we have a tournamentId but no actualSessionId and no loading, show insufficient players message
+    if (tournamentId && !actualSessionId && !loading) {
+        return (
+            <Box textAlign="center" py={8}>
+                <Text fontSize="xl" mb={4}>Tournament Not Ready</Text>
+                <Text mb={4}>This tournament needs at least 2 participants to start a game.</Text>
+                <Button
+                    colorScheme="blue"
+                    onClick={() => navigate('/tournaments')}
+                    leftIcon={<span>←</span>}
+                >
+                    Back to Tournaments
+                </Button>
+            </Box>
+        );
+    }
+
     // If we have a tournamentId but no actualSessionId yet, show loading
     if (tournamentId && !actualSessionId) {
         return (
@@ -146,25 +181,34 @@ export const GameSession: React.FC = () => {
                 const response = await fetch(`${BACKEND_BASE_URL}/game_state?session_id=${actualSessionId}`);
                 if (response.ok) {
                     const data = await response.json();
+                    console.log('Game state data for type detection:', data);
 
                     // Check for chess (has current_turn and white_player)
                     if (data.current_turn && data.white_player) {
+                        console.log('Detected game type: chess');
                         setGameType('chess');
                     }
                     // Check for tic tac toe (3x3 board)
                     else if (data.board && Array.isArray(data.board) && data.board.length === 3 && data.board[0] && data.board[0].length === 3) {
+                        console.log('Detected game type: tictactoe');
                         setGameType('tictactoe');
-                    }
-                    // Check for color rush (8x8 board with tile objects)
-                    else if (data.board && Array.isArray(data.board) && data.board.length === 8 && data.board[0] && Array.isArray(data.board[0]) && data.board[0].length === 8 && data.board[0][0] && typeof data.board[0][0] === 'object' && data.board[0][0].color) {
-                        setGameType('colorrush');
                     }
                     // Check for dodge dash (has specific dodge dash fields)
                     else if (data.lives !== undefined && data.wave !== undefined) {
+                        console.log('Detected game type: dodgedash');
                         setGameType('dodgedash');
                     }
                     // Default to cryptobubbles
                     else {
+                        console.log('Detected game type: cryptobubbles (default)');
+                        console.log('Board info:', {
+                            hasBoard: !!data.board,
+                            isArray: Array.isArray(data.board),
+                            length: data.board?.length,
+                            firstRowLength: data.board?.[0]?.length,
+                            firstTile: data.board?.[0]?.[0],
+                            hasColor: data.board?.[0]?.[0]?.color
+                        });
                         setGameType('cryptobubbles');
                     }
                 }
@@ -219,23 +263,6 @@ export const GameSession: React.FC = () => {
                         zIndex={200}
                     >
                         Exit Game
-                    </Button>
-                </Box>
-            ) : gameType === 'colorrush' ? (
-                <Box position="relative">
-                    <ColorRush sessionId={actualSessionId!} playerAddress={playerAddress} />
-                    <Button
-                        position="absolute"
-                        top={4}
-                        right={4}
-                        size="sm"
-                        colorScheme="red"
-                        onClick={() => navigate('/tournaments')}
-                        zIndex={200}
-                        leftIcon={<span>←</span>}
-                        boxShadow="0 4px 12px rgba(0,0,0,0.3)"
-                    >
-                        Exit
                     </Button>
                 </Box>
             ) : (

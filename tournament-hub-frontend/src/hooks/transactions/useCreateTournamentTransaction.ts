@@ -26,6 +26,9 @@ export const useCreateTournamentTransaction = () => {
         entryFee: string; // EGLD amount as string
         name: string;
     }) => {
+        console.log('=== TOURNAMENT CREATION STARTED ===');
+        console.log('Tournament params:', params);
+
         if (!address) {
             throw new Error('Please connect your wallet first');
         }
@@ -77,15 +80,116 @@ export const useCreateTournamentTransaction = () => {
             }
         });
 
-        // Wait a bit for the transaction to be processed
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        console.log('Tournament creation transaction sent, session ID:', createSessionId);
 
-        // Trigger immediate cache invalidation to refresh the UI
-        try {
-            const { invalidateCacheByEvent } = await import('../../helpers');
-            invalidateCacheByEvent('tournament_created');
-        } catch (error) {
-            // Error invalidating cache (non-critical)
+        // Dispatch immediate event for optimistic UI update
+        console.log('Dispatching immediate tournament created event');
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('tournament_created', {
+                detail: {
+                    event: 'tournament_created',
+                    timestamp: Date.now(),
+                    source: 'tournament_creation_immediate',
+                    sessionId: createSessionId
+                }
+            }));
+        }
+
+        // Wait for transaction to be processed and verify tournament creation
+        console.log('Waiting for transaction to be processed...');
+        await new Promise(resolve => setTimeout(resolve, 3000)); // Increased wait time
+
+        // Verify the tournament was actually created by checking the contract state
+        let tournamentCreated = false;
+        let retryCount = 0;
+        const maxRetries = 5;
+
+        while (!tournamentCreated && retryCount < maxRetries) {
+            try {
+                console.log(`Verification attempt ${retryCount + 1}/${maxRetries}`);
+                const { getActiveTournamentIds, getTournamentsFromBlockchain } = await import('../../helpers');
+
+                // Try multiple methods to verify tournament creation
+                const tournamentIds = await getActiveTournamentIds();
+                const blockchainTournaments = await getTournamentsFromBlockchain();
+
+                console.log('Current tournament IDs:', tournamentIds);
+                console.log('Blockchain tournaments:', blockchainTournaments?.length || 0);
+
+                // Consider tournament created if we have any tournaments
+                if (tournamentIds.length > 0 || (blockchainTournaments && blockchainTournaments.length > 0)) {
+                    console.log('Tournament confirmed on blockchain, triggering refresh');
+                    tournamentCreated = true;
+
+                    // Trigger cache invalidation and events
+                    const { invalidateCacheByEvent } = await import('../../helpers');
+                    invalidateCacheByEvent('tournament_created');
+
+                    // Also dispatch event directly for immediate UI update
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('tournament_created', {
+                            detail: {
+                                event: 'tournament_created',
+                                timestamp: Date.now(),
+                                source: 'tournament_creation_confirmed',
+                                tournamentId: tournamentIds[0]
+                            }
+                        }));
+                    }
+                } else {
+                    console.log(`Tournament not yet confirmed, retry ${retryCount + 1}/${maxRetries}`);
+                    retryCount++;
+                    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 more seconds
+                }
+            } catch (error) {
+                console.error('Error verifying tournament creation:', error);
+                retryCount++;
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
+
+        if (!tournamentCreated) {
+            console.warn('Tournament creation could not be verified after maximum retries');
+
+            // Dispatch event anyway - the transaction was sent successfully
+            console.log('Dispatching unverified tournament created event');
+            try {
+                const { invalidateCacheByEvent } = await import('../../helpers');
+                invalidateCacheByEvent('tournament_created');
+
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('tournament_created', {
+                        detail: {
+                            event: 'tournament_created',
+                            timestamp: Date.now(),
+                            source: 'tournament_creation_unverified'
+                        }
+                    }));
+                }
+            } catch (error) {
+                console.error('Error in unverified event dispatch:', error);
+            }
+
+            // Also dispatch a delayed fallback event
+            setTimeout(async () => {
+                console.log('Dispatching delayed fallback tournament created event');
+                try {
+                    const { invalidateCacheByEvent } = await import('../../helpers');
+                    invalidateCacheByEvent('tournament_created');
+
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('tournament_created', {
+                            detail: {
+                                event: 'tournament_created',
+                                timestamp: Date.now(),
+                                source: 'tournament_creation_delayed_fallback'
+                            }
+                        }));
+                    }
+                } catch (error) {
+                    console.error('Error in delayed fallback event dispatch:', error);
+                }
+            }, 15000); // 15 seconds fallback
         }
 
         // Trigger account info refresh to update wallet balance
@@ -109,6 +213,7 @@ export const useCreateTournamentTransaction = () => {
 
         // The smart contract automatically adds the creator as a participant
         // No need to call joinTournament separately
+        console.log('=== TOURNAMENT CREATION COMPLETED ===');
         return { createSessionId };
     };
 

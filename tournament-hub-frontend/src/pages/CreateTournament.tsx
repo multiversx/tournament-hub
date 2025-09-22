@@ -99,10 +99,10 @@ export const CreateTournament: React.FC = () => {
     // Slider state for better UX
     const [sliderValues, setSliderValues] = useState([2, 2]); // [min, max]
 
-    // Ensure PvP games (TicTacToe=1, Chess=2, ColorRush=4) always show 2/2 even on initial load
+    // Ensure PvP games (TicTacToe=1, Chess=2) always show 2/2 even on initial load
     React.useEffect(() => {
         const gameId = parseInt(formData.gameType);
-        if ((gameId === 1 || gameId === 2 || gameId === 4) && (formData.maxPlayers !== '2' || formData.minPlayers !== '2')) {
+        if ((gameId === 1 || gameId === 2) && (formData.maxPlayers !== '2' || formData.minPlayers !== '2')) {
             setFormData(prev => ({ ...prev, maxPlayers: '2', minPlayers: '2' }));
             setSliderValues([2, 2]);
         }
@@ -249,7 +249,7 @@ export const CreateTournament: React.FC = () => {
     };
 
     const handleRangeSliderMouseDown = (e: React.MouseEvent, type: 'min' | 'max' | 'track') => {
-        if (parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1 || parseInt(formData.gameType) === 4) {
+        if (parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1) {
             return; // Disabled for PvP games
         }
 
@@ -339,16 +339,6 @@ export const CreateTournament: React.FC = () => {
                     "Time limit applies - manage your moves wisely"
                 ]
             },
-            4: {
-                title: "Color Rush",
-                description: "Fast-paced color matching",
-                rules: [
-                    "Match tiles of the same color to clear them",
-                    "Clear as many tiles as possible within the time limit",
-                    "Higher scores come from longer chains and combos",
-                    "Speed and pattern recognition are key"
-                ]
-            },
             5: {
                 title: "Crypto Bubbles",
                 description: "Real-time battle royale",
@@ -359,16 +349,7 @@ export const CreateTournament: React.FC = () => {
                     "Last player standing wins the tournament"
                 ]
             },
-            6: {
-                title: "Dodge Dash",
-                description: "Survival obstacle course",
-                rules: [
-                    "Navigate through waves of obstacles",
-                    "Avoid red obstacles - they reduce your lives",
-                    "Collect power-ups to gain advantages",
-                    "Survive as many waves as possible"
-                ]
-            }
+            // DodgeDash removed from tournament creation options
         };
         return instructions[gameId as keyof typeof instructions] || null;
     };
@@ -729,7 +710,7 @@ export const CreateTournament: React.FC = () => {
                                             <VStack spacing={0} align="center">
                                                 <Text>Player Range</Text>
                                                 <Text color="gray.400" fontSize="sm">
-                                                    {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1 || parseInt(formData.gameType) === 4)
+                                                    {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1)
                                                         ? "Fixed to 2 players for PvP games"
                                                         : "Drag the handles to set min and max players"}
                                                 </Text>
@@ -738,7 +719,7 @@ export const CreateTournament: React.FC = () => {
                                     </FormLabel>
 
                                     {/* Show simple display for 2-player games, slider for others */}
-                                    {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1 || parseInt(formData.gameType) === 4) ? (
+                                    {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1) ? (
                                         <Box
                                             bg="gray.700"
                                             borderRadius="2xl"
@@ -1013,7 +994,7 @@ export const CreateTournament: React.FC = () => {
                                 )}
 
                                 {/* PvP Game Mode Info */}
-                                {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1 || parseInt(formData.gameType) === 4) && (
+                                {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1) && (
                                     <Box
                                         bgGradient="linear(135deg, purple.500, pink.600)"
                                         borderRadius="xl"

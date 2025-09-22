@@ -18,13 +18,6 @@ export const GAME_CONFIGS = {
     gameType: "turn_based",
     description: "Strategic board game"
   },
-  4: {
-    name: "Color Rush",
-    minPlayers: 2,
-    maxPlayers: 2,
-    gameType: "real_time",
-    description: "Match colorful tiles to score points in 60 seconds"
-  },
   5: {
     name: "CryptoBubbles",
     minPlayers: 2,
@@ -32,13 +25,7 @@ export const GAME_CONFIGS = {
     gameType: "real_time_duel",
     description: "Real-time cell battle game"
   },
-  6: {
-    name: "DodgeDash",
-    minPlayers: 2,
-    maxPlayers: 4,
-    gameType: "real_time",
-    description: "Dodge waves of projectiles – last alive wins"
-  },
+  // DodgeDash removed from tournament creation options
 };
 
 export interface TournamentSession {
@@ -172,7 +159,25 @@ export async function submitTournamentResults(sessionId: string, winner: string)
     throw new Error(error.error || 'Failed to submit tournament results');
   }
 
-  return response.json();
+  const result = await response.json();
+
+  // Clear caches after successful result submission
+  try {
+    const { clearApiCaches } = await import('../helpers');
+    clearApiCaches();
+
+    // Also clear localStorage cache
+    localStorage.removeItem('tournament_persistent_cache');
+
+    // Trigger a custom event to notify other components
+    window.dispatchEvent(new CustomEvent('tournamentResultsSubmitted', {
+      detail: { sessionId, winner }
+    }));
+  } catch (error) {
+    console.warn('Failed to clear caches after result submission:', error);
+  }
+
+  return result;
 }
 
 export async function getGameConfigs(): Promise<any> {
