@@ -65,6 +65,14 @@ class DodgeDashGameEngine:
             st['vy'] *= scale
 
     def add_player(self, player: str):
+        # Validate player address format
+        if not player or not isinstance(player, str):
+            return
+        if not player.startswith('erd') or len(player) < 60:
+            return
+        if any(ord(c) < 32 or ord(c) > 126 for c in player):  # Check for non-printable characters
+            return
+            
         if player in self.player_state:
             return
         self.players.append(player)
@@ -147,13 +155,56 @@ class DodgeDashGameEngine:
         alive_humans = [p for p in self.players if self.player_state.get(p, {}).get('alive')]
         if len(alive_humans) <= 1:
             self.game_over = True
-            self.winner = alive_humans[0] if alive_humans else (self.last_survivor or (self.players[0] if self.players else None))
+            # Find a valid winner from alive players, last survivor, or valid players
+            potential_winners = []
+            if alive_humans:
+                potential_winners.extend(alive_humans)
+            if self.last_survivor:
+                potential_winners.append(self.last_survivor)
+            if self.players:
+                potential_winners.extend(self.players)
+            
+            # Find first valid address
+            for candidate in potential_winners:
+                if (candidate and isinstance(candidate, str) and 
+                    candidate.startswith('erd') and len(candidate) >= 60 and
+                    not any(ord(c) < 32 or ord(c) > 126 for c in candidate)):
+                    self.winner = candidate
+                    break
+            else:
+                self.winner = None  # No valid winner found
+
+    def cleanup_corrupted_players(self):
+        """Remove corrupted player addresses from the game"""
+        corrupted_players = []
+        for player in self.players:
+            if (not player or not isinstance(player, str) or 
+                not player.startswith('erd') or len(player) < 60 or
+                any(ord(c) < 32 or ord(c) > 126 for c in player)):
+                corrupted_players.append(player)
+        
+        for player in corrupted_players:
+            if player in self.players:
+                self.players.remove(player)
+            if player in self.player_state:
+                del self.player_state[player]
+        
+        if corrupted_players:
+            print(f"Cleaned up corrupted players: {corrupted_players}")
 
     def get_game_state(self) -> Dict:
+        # Clean up any corrupted players first
+        self.cleanup_corrupted_players()
+        
+        # Calculate current wave based on game time
+        current_wave = int((time.time() - self.created_at) / 15) + 1
+        
         return {
             'session_id': self.session_id,
             'game_type': 'dodgedash',
             'arena_size': self.arena_size,
+            'created_at': self.created_at,
+            'wave': current_wave,
             'players': {
                 p: {
                     'x': st['x'], 'y': st['y'], 'vx': st['vx'], 'vy': st['vy'], 'lives': st['lives'], 'alive': st['alive']
