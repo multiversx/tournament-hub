@@ -487,10 +487,18 @@ def handle_notifier_event(event: Dict):
                     continue
             if not player_addr and len(topics) >= 2:
                 player_addr = _decode_topic_to_str(topics[1])
+            
+            # Validate player address before adding
+            if player_addr and (not player_addr.startswith('erd') or len(player_addr) < 60 or 
+                              any(ord(c) < 32 or ord(c) > 126 for c in player_addr)):
+                logger.warning(f"Invalid player address decoded: '{player_addr}' from topics: {topics}")
+                player_addr = None
+            
             sess = _get_or_create_session(session_id)
             with sessions_lock:
                 if player_addr and player_addr not in sess["players"]:
                     sess["players"].append(player_addr)
+                    logger.info(f"Added player {player_addr} to session {session_id}")
             # Try to reflect in game engine where applicable
             try:
                 if sess.get("game_type") == "dodgedash":
@@ -599,6 +607,30 @@ async def get_recent_game_start(tournamentId: str):
 @app.get("/tournament-hub/notifier/joins-any")
 async def get_recent_any_join():
     return {"ts": last_global_join_ts}
+
+@app.post("/notifier/inject-event")
+@app.post("/tournament-hub/notifier/inject-event")
+async def inject_test_event(event_data: dict):
+    """Manually inject a test event for debugging purposes"""
+    try:
+        # Create a test event structure
+        test_event = {
+            "identifier": event_data.get("identifier", "tournamentCreated"),
+            "tournament_id": event_data.get("tournament_id", 999),
+            "ts": int(time.time() * 1000),  # milliseconds
+            "game_id": event_data.get("game_id"),
+            "player": event_data.get("player", "erd1test...")
+        }
+        
+        # Add to recent events
+        with recent_events_lock:
+            recent_notifier_events.append(test_event)
+        
+        logger.info(f"Injected test event: {test_event}")
+        return {"success": True, "event": test_event}
+    except Exception as e:
+        logger.error(f"Error injecting test event: {e}")
+        return {"success": False, "error": str(e)}
 
 @app.get("/health")
 async def health_check():
@@ -733,6 +765,7 @@ async def start_session(request: StartSessionRequest):
         if request.tournamentId:
             # Determine game type based on request.game_type
             game_type = determine_game_type(request.game_type)
+            logger.info(f"Start session request: tournamentId={request.tournamentId}, game_type={game_type}, playerAddresses={request.playerAddresses}")
             
             # Use deterministic session id per tournament so all players join same game
             existing_session_id = str(request.tournamentId) if str(request.tournamentId) in sessions else None
@@ -740,7 +773,25 @@ async def start_session(request: StartSessionRequest):
             if existing_session_id:
                 # Ensure engine exists and includes provided players
                 try:
-                    if game_type == 'dodgedash':
+                    if game_type == 'tictactoe':
+                        from tictactoe_game_engine import get_tictactoe_game, create_tictactoe_game
+                        g = get_tictactoe_game(existing_session_id)
+                        if not g:
+                            logger.info(f"Creating TicTacToe game for session {existing_session_id} with players: {request.playerAddresses or []}")
+                            create_tictactoe_game(existing_session_id, request.playerAddresses or [])
+                        else:
+                            logger.info(f"TicTacToe game already exists for session {existing_session_id}")
+                        # TicTacToe games are created with fixed players, no need to add more
+                    elif game_type == 'chess':
+                        from chess_game_engine import get_chess_game, create_chess_game
+                        g = get_chess_game(existing_session_id)
+                        if not g:
+                            logger.info(f"Creating Chess game for session {existing_session_id} with players: {request.playerAddresses or []}")
+                            create_chess_game(existing_session_id, request.playerAddresses or [])
+                        else:
+                            logger.info(f"Chess game already exists for session {existing_session_id}")
+                        # Chess games are created with fixed players, no need to add more
+                    elif game_type == 'dodgedash':
                         from dodgedash_game_engine import get_dodgedash_game, create_dodgedash_game
                         g = get_dodgedash_game(existing_session_id)
                         if not g:
@@ -750,8 +801,14 @@ async def start_session(request: StartSessionRequest):
                                 for p in request.playerAddresses:
                                     g.add_player(p)
                     elif game_type == 'cryptobubbles':
-                        # Engines for other games are created on demand elsewhere; skip for now
-                        pass
+                        from cryptobubbles_game_engine import get_cryptobubbles_game, create_cryptobubbles_game
+                        g = get_cryptobubbles_game(existing_session_id)
+                        if not g:
+                            logger.info(f"Creating CryptoBubbles game for session {existing_session_id} with players: {request.playerAddresses or []}")
+                            create_cryptobubbles_game(existing_session_id, request.playerAddresses or [])
+                        else:
+                            logger.info(f"CryptoBubbles game already exists for session {existing_session_id}")
+                        # CryptoBubbles games are created with fixed players, no need to add more
                     elif game_type == 'colorrush':
                         from colorrush_game_engine import get_colorrush_game, create_colorrush_game
                         g = get_colorrush_game(existing_session_id)
@@ -1066,6 +1123,14 @@ async def dodgedash_move(req: DodgeDashMoveRequest):
 @app.post("/join_dodgedash_session")
 @app.post("/tournament-hub/join_dodgedash_session")
 async def join_dodgedash_session(sessionId: str, player: str):
+    # Validate player address format
+    if not player or not isinstance(player, str):
+        raise HTTPException(status_code=400, detail="Invalid player address")
+    if not player.startswith('erd') or len(player) < 60:
+        raise HTTPException(status_code=400, detail="Invalid player address format")
+    if any(ord(c) < 32 or ord(c) > 126 for c in player):  # Check for non-printable characters
+        raise HTTPException(status_code=400, detail="Invalid player address characters")
+    
     game = get_dodgedash_game(sessionId)
     if not game:
         # Create engine if missing and add player
@@ -1432,6 +1497,7 @@ def update_cryptobubbles_games():
                             if signature:
                                 tx_hash = submit_results_to_contract_with_signature(tournament_id, podium, signature)
                                 if tx_hash:
+                                    logger.info(f"Successfully submitted results for tournament {tournament_id} with tx_hash: {tx_hash}")
                                 else:
                                     logger.error(f"Failed to submit results for tournament {tournament_id}")
                             else:
@@ -1444,6 +1510,22 @@ def update_cryptobubbles_games():
         except Exception as e:
             logger.error(f"Error updating CryptoBubbles games: {e}")
             time.sleep(5)  # Wait longer on error
+
+def update_dodgedash_games():
+    """Background task to update all active DodgeDash games"""
+    while True:
+        try:
+            from dodgedash_game_engine import dodgedash_games
+            
+            if dodgedash_games:
+                for session_id, game in dodgedash_games.items():
+                    game.update_game_state()
+                
+            time.sleep(0.1)  # Update every 100ms for smooth gameplay
+                
+        except Exception as e:
+            logger.error(f"Error updating DodgeDash games: {e}")
+            time.sleep(1)  # Wait 1 second on error
 
 def check_and_submit_game_results():
     """Background task to check if Chess and TicTacToe games are finished and submit results"""
@@ -1537,13 +1619,41 @@ def check_and_submit_game_results():
                         except Exception as e:
                             logger.error(f"Error processing Color Rush game results for {session_id}: {e}")
 
-            # Update DodgeDash games and submit results
+            # Clean up corrupted DodgeDash games
+            corrupted_sessions = []
             for session_id, game in dodgedash_games.items():
-                game.update_game_state()
+                game.cleanup_corrupted_players()
+                # If no valid players remain, mark for removal
+                if not game.players or all(not p.startswith('erd') or len(p) < 60 for p in game.players):
+                    corrupted_sessions.append(session_id)
+            
+            # Remove corrupted sessions
+            for session_id in corrupted_sessions:
+                logger.info(f"Removing corrupted DodgeDash session {session_id}")
+                del dodgedash_games[session_id]
+
+            # Submit DodgeDash game results
+            for session_id, game in dodgedash_games.items():
                 if not getattr(game, 'results_submitted', False) and game.game_over and game.winner:
+                    # Validate winner address before submitting
+                    winner = game.winner
+                    if (not winner or not isinstance(winner, str) or 
+                        not winner.startswith('erd') or len(winner) < 60 or
+                        any(ord(c) < 32 or ord(c) > 126 for c in winner)):
+                        logger.warning(f"Skipping results submission for {session_id}: invalid winner address '{winner}'")
+                        game.results_submitted = True  # Mark as submitted to stop retrying
+                        continue
+                    
                     try:
                         tournament_id = int(session_id.split('_')[-1]) if session_id.startswith('session_') else int(session_id)
                         podium = [game.winner]
+                        
+                        # Additional validation before attempting to sign/submit
+                        if not game.winner or not isinstance(game.winner, str):
+                            logger.warning(f"Skipping results submission for {session_id}: winner is not a valid string")
+                            game.results_submitted = True
+                            continue
+                            
                         signature = sign_results_for_tournament(tournament_id, podium)
                         if signature:
                             tx_hash = submit_results_to_contract_with_signature(tournament_id, podium, signature)
@@ -1552,6 +1662,10 @@ def check_and_submit_game_results():
                                 game.results_submitted = True
                     except Exception as e:
                         logger.error(f"Error submitting DodgeDash results for {session_id}: {e}")
+                        # Check if it's an address validation error
+                        if "Invalid bech32 address format" in str(e) or "non-printable characters" in str(e):
+                            logger.warning(f"Skipping corrupted address in DodgeDash results for {session_id}")
+                        game.results_submitted = True  # Mark as submitted to stop retrying
             
             time.sleep(1)  # Check every second
             
@@ -1569,12 +1683,33 @@ async def join_colorrush_session(sessionId: str, player: str):
             # Create new game if it doesn't exist
             create_colorrush_game(sessionId, [player])
             logger.info(f"Created new Color Rush game session {sessionId} for player {player}")
+            
+            # Register session in main sessions dictionary
+            with sessions_lock:
+                sessions[sessionId] = {
+                    "id": sessionId,
+                    "players": [player],
+                    "game_type": "colorrush",
+                    "created_at": time.time(),
+                }
         else:
             game = get_colorrush_game(sessionId)
             if player not in game.players:
                 game.players.append(player)
                 game.state.scores[player] = 0
                 logger.info(f"Player {player} joined Color Rush game session {sessionId}")
+                
+                # Update session in main sessions dictionary
+                with sessions_lock:
+                    if sessionId in sessions:
+                        sessions[sessionId]["players"] = game.players
+                    else:
+                        sessions[sessionId] = {
+                            "id": sessionId,
+                            "players": game.players,
+                            "game_type": "colorrush",
+                            "created_at": time.time(),
+                        }
         
         return {"success": True, "message": "Joined Color Rush session"}
     except Exception as e:
@@ -1652,6 +1787,10 @@ async def colorrush_tile_click(sessionId: str, player: str, tileId: str):
 update_thread = threading.Thread(target=update_cryptobubbles_games, daemon=True)
 update_thread.start()
 
+# Start background thread for updating DodgeDash games
+dodgedash_update_thread = threading.Thread(target=update_dodgedash_games, daemon=True)
+dodgedash_update_thread.start()
+
 # Start background thread for checking game results
 results_thread = threading.Thread(target=check_and_submit_game_results, daemon=True)
 results_thread.start()
@@ -1663,21 +1802,28 @@ results_thread.start()
 async def startup_event():
     logger.info("Starting Tournament Hub Game Server...")
     
+    # Clean up any existing corrupted DodgeDash games
+    try:
+        from dodgedash_game_engine import dodgedash_games
+        corrupted_sessions = []
+        for session_id, game in dodgedash_games.items():
+            game.cleanup_corrupted_players()
+            if not game.players or all(not p.startswith('erd') or len(p) < 60 for p in game.players):
+                corrupted_sessions.append(session_id)
+        
+        for session_id in corrupted_sessions:
+            logger.info(f"Cleaning up corrupted DodgeDash session {session_id} on startup")
+            del dodgedash_games[session_id]
+    except Exception as e:
+        logger.error(f"Error cleaning up corrupted games on startup: {e}")
+    
     # Check if we have a contract address configured
     contract_address = os.getenv("MX_TOURNAMENT_CONTRACT")
     if not contract_address:
         logger.warning("MX_TOURNAMENT_CONTRACT not set - notifier events will not be filtered by contract address")
     
-    # Temporarily disable notifiers due to DNS resolution issues
-    # All MultiversX notifier endpoints are currently failing DNS resolution
-    logger.warning("Notifiers temporarily disabled due to DNS resolution issues")
-    logger.info("Game server will run without blockchain event notifications")
-    logger.info("Tournament events will need to be processed manually or via other means")
-    
-    # TODO: Re-enable notifiers when DNS issues are resolved
-    # The following code is commented out until notifier endpoints are working:
-    """
     # Try to start notifiers with graceful fallback
+    logger.info("Attempting to start notifier subscribers...")
     notifier_started = False
     
     # Prefer RabbitMQ notifier if AMQP config provided
@@ -1690,37 +1836,127 @@ async def startup_event():
     
     if use_amqp:
         try:
+            logger.info(f"AMQP Config - Host: {os.getenv('MX_AMQP_HOST')}, Port: {os.getenv('MX_AMQP_PORT')}, VHost: {os.getenv('MX_AMQP_VHOST')}, User: {os.getenv('MX_AMQP_USER')}, Exchange: {os.getenv('MX_AMQP_EXCHANGE')}")
+            logger.info("Creating RabbitNotifierSubscriber instance...")
+            
             # Start RabbitMQ subscriber in background thread
             subscriber = RabbitNotifierSubscriber(
                 amqp_host=os.getenv("MX_AMQP_HOST", "devnet-external-k8s-proxy.multiversx.com"),
                 amqp_port=int(os.getenv("MX_AMQP_PORT", "30006")),
                 amqp_vhost=os.getenv("MX_AMQP_VHOST", "devnet2"),
-                amqp_user=os.getenv("MX_AMQP_USER", ""),
-                amqp_pass=os.getenv("MX_AMQP_PASS", ""),
+                amqp_user=os.getenv("MX_AMQP_USER", "costin_carabas_tmp_user"),
+                amqp_pass=os.getenv("MX_AMQP_PASS", "decde2e3de377ba08617300146b76dce"),
                 exchange=os.getenv("MX_AMQP_EXCHANGE", "all_events"),
                 event_callback=handle_notifier_event,
             )
+            logger.info("RabbitNotifierSubscriber instance created successfully")
+            
+            logger.info("Starting RabbitNotifierSubscriber...")
             subscriber.start()
+            logger.info("RabbitNotifierSubscriber.start() called successfully")
+            
+            # Give it a moment to initialize
+            import time
+            time.sleep(1)
+            
             logger.info("Started RabbitMQ notifier subscriber")
             notifier_started = True
         except Exception as e:
-            logger.warning(f"Failed to start RabbitMQ notifier subscriber: {e}")
+            logger.error(f"Failed to start RabbitMQ notifier subscriber: {e}")
+            logger.error(f"Exception type: {type(e).__name__}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
     
-    # Fallback to WebSocket notifier
-    if not notifier_started:
-        try:
-            asyncio.create_task(start_notifier_subscriber(handle_notifier_event))
-            logger.info("Started WebSocket notifier subscriber")
-            notifier_started = True
-        except Exception as e:
-            logger.error(f"Failed to start WebSocket notifier subscriber: {e}")
+    # Skip WebSocket notifier - use AMQP only
+    # if not notifier_started:
+    #     try:
+    #         asyncio.create_task(start_notifier_subscriber(handle_notifier_event))
+    #         logger.info("Started WebSocket notifier subscriber")
+    #         notifier_started = True
+    #     except Exception as e:
+    #         logger.error(f"Failed to start WebSocket notifier subscriber: {e}")
     
     if not notifier_started:
         logger.error("Failed to start any notifier subscriber - events will not be received from the blockchain")
         logger.info("Game server will continue to run but tournament events will not be processed automatically")
     else:
         logger.info("Notifier subscriber started successfully")
-    """
+
+@app.post("/cleanup-stuck-tournaments")
+@app.post("/tournament-hub/cleanup-stuck-tournaments")
+async def cleanup_stuck_tournaments():
+    """Clean up stuck tournaments with corrupted addresses"""
+    try:
+        cleaned_sessions = []
+        
+        # Clean up DodgeDash games
+        from dodgedash_game_engine import dodgedash_games
+        for session_id, game in list(dodgedash_games.items()):
+            if game.game_over and getattr(game, 'results_submitted', False) == False:
+                # Check if winner has corrupted address
+                winner = game.winner
+                if (not winner or not isinstance(winner, str) or 
+                    not winner.startswith('erd') or len(winner) < 60 or
+                    any(ord(c) < 32 or ord(c) > 126 for c in winner)):
+                    logger.info(f"Cleaning up corrupted DodgeDash session: {session_id}")
+                    game.results_submitted = True  # Mark as submitted to stop retrying
+                    cleaned_sessions.append(f"dodgedash:{session_id}")
+        
+        # Clean up other game engines similarly
+        try:
+            from tictactoe_game_engine import tictactoe_games
+            for session_id, game in list(tictactoe_games.items()):
+                if hasattr(game, 'game_over') and game.game_over and getattr(game, 'results_submitted', False) == False:
+                    winner = getattr(game, 'winner', None)
+                    if (not winner or not isinstance(winner, str) or 
+                        not winner.startswith('erd') or len(winner) < 60 or
+                        any(ord(c) < 32 or ord(c) > 126 for c in winner)):
+                        logger.info(f"Cleaning up corrupted TicTacToe session: {session_id}")
+                        game.results_submitted = True
+                        cleaned_sessions.append(f"tictactoe:{session_id}")
+        except Exception as e:
+            logger.warning(f"Error cleaning TicTacToe games: {e}")
+        
+        try:
+            from chess_game_engine import chess_games
+            for session_id, game in list(chess_games.items()):
+                if hasattr(game, 'game_over') and game.game_over and getattr(game, 'results_submitted', False) == False:
+                    winner = getattr(game, 'winner', None)
+                    if (not winner or not isinstance(winner, str) or 
+                        not winner.startswith('erd') or len(winner) < 60 or
+                        any(ord(c) < 32 or ord(c) > 126 for c in winner)):
+                        logger.info(f"Cleaning up corrupted Chess session: {session_id}")
+                        game.results_submitted = True
+                        cleaned_sessions.append(f"chess:{session_id}")
+        except Exception as e:
+            logger.warning(f"Error cleaning Chess games: {e}")
+        
+        try:
+            from colorrush_game_engine import colorrush_games
+            for session_id, game in list(colorrush_games.items()):
+                if hasattr(game, 'game_over') and game.game_over and getattr(game, 'results_submitted', False) == False:
+                    winner = getattr(game, 'winner', None)
+                    if (not winner or not isinstance(winner, str) or 
+                        not winner.startswith('erd') or len(winner) < 60 or
+                        any(ord(c) < 32 or ord(c) > 126 for c in winner)):
+                        logger.info(f"Cleaning up corrupted ColorRush session: {session_id}")
+                        game.results_submitted = True
+                        cleaned_sessions.append(f"colorrush:{session_id}")
+        except Exception as e:
+            logger.warning(f"Error cleaning ColorRush games: {e}")
+        
+        return {
+            "status": "success",
+            "message": f"Cleaned up {len(cleaned_sessions)} corrupted sessions",
+            "cleaned_sessions": cleaned_sessions
+        }
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up stuck tournaments: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to clean up tournaments: {e}"
+        }
 
 if __name__ == "__main__":
     root_path = os.getenv("ROOT_PATH", "")
@@ -1728,5 +1964,5 @@ if __name__ == "__main__":
         app, 
         host="0.0.0.0", 
         port=8000,
-        root_path=root_path  # ✅ Add this line
+        root_path=root_path
     )

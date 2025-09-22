@@ -13,6 +13,18 @@ def bech32_to_bytes(addr: str) -> bytes:
     Convert bech32 address to bytes for MultiversX.
     Uses the SDK's Address class for proper conversion.
     """
+    # Validate address format before attempting conversion
+    if not addr or not isinstance(addr, str):
+        raise Exception(f"Invalid address: not a string or empty")
+    
+    # Check for basic bech32 format
+    if not addr.startswith('erd') or len(addr) < 60:
+        raise Exception(f"Invalid bech32 address format: '{addr}'")
+    
+    # Check for non-printable characters that indicate corruption
+    if any(ord(c) < 32 or ord(c) > 126 for c in addr):
+        raise Exception(f"Address contains non-printable characters: '{addr}'")
+    
     try:
         # Use the SDK's Address class for proper conversion
         address = Address.new_from_bech32(addr)
@@ -55,6 +67,14 @@ def construct_result_message(tournament_id: int, podium: list[str]) -> bytes:
     """
     msg = tournament_id.to_bytes(8, "big")
     for addr in podium:
+        # Validate address before attempting conversion
+        if not addr or not isinstance(addr, str):
+            raise Exception(f"Invalid address in podium: not a string or empty")
+        if not addr.startswith('erd') or len(addr) < 60:
+            raise Exception(f"Invalid bech32 address format in podium: '{addr}'")
+        if any(ord(c) < 32 or ord(c) > 126 for c in addr):
+            raise Exception(f"Address contains non-printable characters in podium: '{addr}'")
+        
         # Use the same address encoding as the contract call
         addr_bytes = bech32_to_bytes(addr)
         msg += addr_bytes
@@ -70,8 +90,20 @@ def encode_submit_results_args(tournament_id: int, podium: list[str], signature_
     Returns the data string for the contract call.
     """
     arg_tournament_id = tournament_id.to_bytes(8, "big").hex()
-    # Convert bech32 addresses to hex format for contract call
-    arg_podium = "".join([bech32_to_bytes(addr).hex() for addr in podium])
+    
+    # Validate and convert bech32 addresses to hex format for contract call
+    arg_podium = ""
+    for addr in podium:
+        # Validate address before attempting conversion
+        if not addr or not isinstance(addr, str):
+            raise Exception(f"Invalid address in podium: not a string or empty")
+        if not addr.startswith('erd') or len(addr) < 60:
+            raise Exception(f"Invalid bech32 address format in podium: '{addr}'")
+        if any(ord(c) < 32 or ord(c) > 126 for c in addr):
+            raise Exception(f"Address contains non-printable characters in podium: '{addr}'")
+        
+        arg_podium += bech32_to_bytes(addr).hex()
+    
     arg_signature = signature_hex
 
     print(f"Encoded data: submitResults@{arg_tournament_id}@{arg_podium}@{arg_signature}")
