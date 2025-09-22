@@ -48,3 +48,6 @@ tournament-hub-frontend/node_modules/
 tournament-hub-frontend/.env
 tournament-hub-frontend/.env.*
 tournament-hub-frontend/.DS_Store
+
+tournament-hub-game-server/tournament_hub.db
+
