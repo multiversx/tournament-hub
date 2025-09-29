@@ -20,7 +20,7 @@ const defaultConfig: RateLimitConfig = {
 };
 
 class RateLimitHandler {
-    private requestQueue = new Map<string, number>();
+    private requestQueue = new Map<string, number[]>();
     private retryCounts = new Map<string, number>();
 
     /**
@@ -32,7 +32,7 @@ class RateLimitHandler {
 
         // Clean old entries
         const requests = this.requestQueue.get(url) || [];
-        const recentRequests = requests.filter(timestamp => timestamp > minuteAgo);
+        const recentRequests = requests.filter((timestamp: number) => timestamp > minuteAgo);
 
         if (recentRequests.length >= maxRequestsPerMinute) {
             console.warn(`Rate limiting active for ${url}. Recent requests: ${recentRequests.length}`);
@@ -95,7 +95,7 @@ class RateLimitHandler {
     /**
      * Check if an error is a rate limit error
      */
-    private isRateLimitError(error: any): boolean {
+    public isRateLimitError(error: any): boolean {
         if (error?.status === 429) return true;
         if (error?.message?.includes('429')) return true;
         if (error?.message?.includes('Too Many Requests')) return true;
@@ -119,7 +119,7 @@ class RateLimitHandler {
         this.requestQueue.forEach((requests, url) => {
             const now = Date.now();
             const minuteAgo = now - 60000;
-            const recentRequests = requests.filter(timestamp => timestamp > minuteAgo);
+            const recentRequests = requests.filter((timestamp: number) => timestamp > minuteAgo);
 
             status[url] = {
                 requests: recentRequests.length,

@@ -3086,7 +3086,7 @@ if (typeof window !== 'undefined') {
             }
         } catch (error) {
             console.error('Error debugging tournament participants:', error);
-            return { error: error.message };
+            return { error: error instanceof Error ? error.message : 'Unknown error' };
         }
     };
 
