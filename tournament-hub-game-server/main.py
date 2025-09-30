@@ -1100,6 +1100,7 @@ async def start_game(session_id: str):
 # CryptoBubbles specific endpoints
 
 @app.get("/cryptobubbles_game_state")
+@app.get("/tournament-hub/cryptobubbles_game_state")
 async def get_cryptobubbles_game_state(sessionId: str):
     """Get current CryptoBubbles game state"""
     game = get_cryptobubbles_game(sessionId)
@@ -1108,6 +1109,7 @@ async def get_cryptobubbles_game_state(sessionId: str):
     
     return game.get_game_state()
 @app.get("/dodgedash_game_state")
+@app.get("/tournament-hub/dodgedash_game_state")
 async def get_dodgedash_game_state(sessionId: str):
     game = get_dodgedash_game(sessionId)
     if not game:
@@ -1231,6 +1233,7 @@ async def join_cryptobubbles_session(sessionId: str, player: str):
 
 # Chess-specific endpoints
 @app.get("/chess_game_state")
+@app.get("/tournament-hub/chess_game_state")
 async def get_chess_game_state(sessionId: str):
     """Get the current state of a chess game"""
     try:
@@ -1751,6 +1754,7 @@ async def start_colorrush_game(sessionId: str, player: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/colorrush_game_state")
+@app.get("/tournament-hub/colorrush_game_state")
 async def get_colorrush_game_state(sessionId: str):
     """Get Color Rush game state"""
     try:
