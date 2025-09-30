@@ -113,12 +113,12 @@ class CryptoBubblesGameEngine:
                 size=self.min_cell_size, player=self.players[0]
             )
         elif num_players == 2:
-            # Two players at opposite corners
+            # Two players at opposite corners with more distance
             self.state.cells[self.players[0]] = Cell(
-                x=200, y=200, size=self.min_cell_size, player=self.players[0]
+                x=300, y=300, size=self.min_cell_size, player=self.players[0]
             )
             self.state.cells[self.players[1]] = Cell(
-                x=arena_size[0] - 200, y=arena_size[1] - 200,
+                x=arena_size[0] - 300, y=arena_size[1] - 300,
                 size=self.min_cell_size, player=self.players[1]
             )
         else:
@@ -162,44 +162,65 @@ class CryptoBubblesGameEngine:
             self.state.pellets.append(pellet)
     
     def _add_bots(self):
-        """Add bots to the game"""
+        """Add bots to the game with safe distance from players and other bots"""
         arena_size = self.state.arena_size
+        min_safe_distance = 400  # Minimum distance from players and other bots
         
         for i in range(self.bot_count):
             bot_name = f"Bot_{i+1}"
+            bot_size = self.min_cell_size  # Start bots at minimum size for fairness
             
-            # Place bots in different areas of the map
-            if i == 0:
-                # Bot 1: Top-left area
-                x = random.randint(500, arena_size[0] // 3)
-                y = random.randint(500, arena_size[1] // 3)
-            elif i == 1:
-                # Bot 2: Top-right area
-                x = random.randint(2 * arena_size[0] // 3, arena_size[0] - 500)
-                y = random.randint(500, arena_size[1] // 3)
-            elif i == 2:
-                # Bot 3: Bottom-left area
-                x = random.randint(500, arena_size[0] // 3)
-                y = random.randint(2 * arena_size[1] // 3, arena_size[1] - 500)
-            elif i == 3:
-                # Bot 4: Bottom-right area
-                x = random.randint(2 * arena_size[0] // 3, arena_size[0] - 500)
-                y = random.randint(2 * arena_size[1] // 3, arena_size[1] - 500)
-            elif i == 4:
-                # Bot 5: Center area
-                x = random.randint(arena_size[0] // 3, 2 * arena_size[0] // 3)
-                y = random.randint(arena_size[1] // 3, 2 * arena_size[1] // 3)
-            else:
-                # Bot 6+: Random position
-                x = random.randint(500, arena_size[0] - 500)
-                y = random.randint(500, arena_size[1] - 500)
-            
-            # Random size between min and max
-            bot_size = random.randint(self.min_cell_size, self.min_cell_size + 10)
-            
-            self.state.cells[bot_name] = Cell(
-                x=x, y=y, size=bot_size, player=bot_name
-            )
+            # Try to find a safe position for the bot
+            max_attempts = 50
+            for attempt in range(max_attempts):
+                # Place bots in different areas of the map with larger safe zones
+                if i == 0:
+                    # Bot 1: Top-left area (away from player spawns)
+                    x = random.randint(800, arena_size[0] // 3)
+                    y = random.randint(800, arena_size[1] // 3)
+                elif i == 1:
+                    # Bot 2: Top-right area (away from player spawns)
+                    x = random.randint(2 * arena_size[0] // 3, arena_size[0] - 800)
+                    y = random.randint(800, arena_size[1] // 3)
+                elif i == 2:
+                    # Bot 3: Bottom-left area (away from player spawns)
+                    x = random.randint(800, arena_size[0] // 3)
+                    y = random.randint(2 * arena_size[1] // 3, arena_size[1] - 800)
+                elif i == 3:
+                    # Bot 4: Bottom-right area (away from player spawns)
+                    x = random.randint(2 * arena_size[0] // 3, arena_size[0] - 800)
+                    y = random.randint(2 * arena_size[1] // 3, arena_size[1] - 800)
+                elif i == 4:
+                    # Bot 5: Center area (but away from any existing players/bots)
+                    x = random.randint(arena_size[0] // 3, 2 * arena_size[0] // 3)
+                    y = random.randint(arena_size[1] // 3, 2 * arena_size[1] // 3)
+                else:
+                    # Bot 6+: Random position with safe distance
+                    x = random.randint(800, arena_size[0] - 800)
+                    y = random.randint(800, arena_size[1] - 800)
+                
+                # Check if this position is safe from existing cells
+                is_safe = True
+                for existing_cell in self.state.cells.values():
+                    distance = math.sqrt((x - existing_cell.x)**2 + (y - existing_cell.y)**2)
+                    if distance < min_safe_distance:
+                        is_safe = False
+                        break
+                
+                if is_safe:
+                    # Found a safe position
+                    self.state.cells[bot_name] = Cell(
+                        x=x, y=y, size=bot_size, player=bot_name
+                    )
+                    break
+                elif attempt == max_attempts - 1:
+                    # Fallback: place at edge of arena if no safe position found
+                    x = random.randint(1000, arena_size[0] - 1000)
+                    y = random.randint(1000, arena_size[1] - 1000)
+                    self.state.cells[bot_name] = Cell(
+                        x=x, y=y, size=bot_size, player=bot_name
+                    )
+                    print(f"WARNING: Bot {bot_name} placed at fallback position ({x}, {y}) after {max_attempts} attempts")
     
     def _move_bots(self):
         """Move bots randomly around the arena"""
@@ -339,11 +360,15 @@ class CryptoBubblesGameEngine:
         # Move bots randomly
         self._move_bots()
         
-        # Check for collisions
-        self._check_collisions()
+        # Only check for collisions after a brief initialization period (2 seconds)
+        # This prevents immediate collisions right after game start
+        if time.time() - self.state.start_time >= 2.0:
+            self._check_collisions()
         
-        # Check win conditions
-        self._check_win_conditions()
+        # Only check win conditions after a brief initialization period (3 seconds)
+        # This prevents immediate game end right after game start
+        if time.time() - self.state.start_time >= 3.0:
+            self._check_win_conditions()
     
     def _check_collisions(self):
         """Check for collisions between cells and pellets"""

@@ -472,7 +472,7 @@ def handle_notifier_event(event: Dict):
                     session_id = str(tournament_id)
             # 2) Decode player from base64 -> hex -> bech32 (prefe  r topic with 32-byte pubkey)
             player_addr = ""
-            for t in topics:
+            for i, t in enumerate(topics):
                 try:
                     b64s = str(t)
                     hx = base64.b64decode(b64s + ("=" * ((4 - len(b64s) % 4) % 4))).hex()
@@ -480,19 +480,35 @@ def handle_notifier_event(event: Dict):
                         data_bytes = bytes.fromhex(hx[-64:])
                         five_bits = convertbits(list(data_bytes), 8, 5, True)
                         addr = bech32_encode("erd", five_bits)
-                        if addr and addr.startswith("erd"):
+                        if addr and addr.startswith("erd") and len(addr) >= 60:
                             player_addr = addr
+                            logger.debug(f"Successfully decoded player address from topic {i}: {addr}")
                             break
-                except Exception:
+                        else:
+                            logger.debug(f"Invalid bech32 address from topic {i}: {addr}")
+                except Exception as e:
+                    logger.debug(f"Failed to decode topic {i} as bech32 address: {e}")
                     continue
+            # Fallback: try to decode as string if bech32 decoding failed
             if not player_addr and len(topics) >= 2:
-                player_addr = _decode_topic_to_str(topics[1])
+                try:
+                    player_addr = _decode_topic_to_str(topics[1])
+                    logger.debug(f"Fallback decoded player address as string: {player_addr}")
+                except Exception as e:
+                    logger.debug(f"Fallback string decoding failed: {e}")
             
             # Validate player address before adding
-            if player_addr and (not player_addr.startswith('erd') or len(player_addr) < 60 or 
-                              any(ord(c) < 32 or ord(c) > 126 for c in player_addr)):
-                logger.warning(f"Invalid player address decoded: '{player_addr}' from topics: {topics}")
-                player_addr = None
+            if player_addr:
+                # Check for basic bech32 format
+                if not player_addr.startswith('erd') or len(player_addr) < 60:
+                    logger.warning(f"Invalid player address format: '{player_addr}' (should start with 'erd' and be at least 60 chars)")
+                    player_addr = None
+                # Check for non-printable characters that indicate corruption
+                elif any(ord(c) < 32 or ord(c) > 126 for c in player_addr):
+                    logger.warning(f"Invalid player address contains non-printable characters: '{player_addr}' from topics: {topics}")
+                    player_addr = None
+                else:
+                    logger.debug(f"Valid player address decoded: {player_addr}")
             
             sess = _get_or_create_session(session_id)
             with sessions_lock:
