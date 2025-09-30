@@ -7,3 +7,4 @@ multiversx-sdk
 websockets
 pika
 pydantic
+bech32
