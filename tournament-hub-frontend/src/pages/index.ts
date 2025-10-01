@@ -8,3 +8,4 @@ export { default as TournamentDetails } from './TournamentDetails';
 export { default as CreateTournament } from './CreateTournament';
 export { default as GameSession } from './GameSession';
 export { default as ColorRushDemoPage } from './ColorRushDemoPage';
+export * from './Battleship';

@@ -4,6 +4,8 @@ import { CryptoBubblesGame } from '../components/CryptoBubblesGame';
 import { CryptoBubblesGamePhaser } from '../components/CryptoBubblesGamePhaser';
 import { ChessGamePro } from '../components/ChessGamePro';
 import { TicTacToeGame } from '../components/TicTacToeGame';
+import { ConnectFourGame } from '../components/ConnectFourGame';
+import BattleshipGame from './Battleship/BattleshipGame';
 import DodgeDash from '../components/DodgeDash';
 import { Box, Text, VStack, Spinner, useToast, Button } from '@chakra-ui/react';
 import { useGetAccount } from 'lib';
@@ -50,10 +52,14 @@ export const GameSession: React.FC = () => {
                         const gameTypeMap: { [key: number]: string } = {
                             1: 'tictactoe',
                             2: 'chess',
-                            3: 'cryptobubbles'
+                            3: 'cryptobubbles',
+                            5: 'cryptobubbles',
+                            6: 'dodgedash',
+                            7: 'connectfour',
+                            8: 'battleship'
                         };
 
-                        const gameType = gameTypeMap[gameId] || (gameId === 6 ? 'dodgedash' : 'cryptobubbles');
+                        const gameType = gameTypeMap[gameId] || 'cryptobubbles';
                         setGameType(gameType);
 
                         // Use actual tournament participants
@@ -188,6 +194,11 @@ export const GameSession: React.FC = () => {
                         console.log('Detected game type: chess');
                         setGameType('chess');
                     }
+                    // Check for Connect Four (6x7 board and red_player/yellow_player)
+                    else if (data.board && Array.isArray(data.board) && data.board.length === 6 && data.board[0] && data.board[0].length === 7 && data.red_player) {
+                        console.log('Detected game type: connectfour');
+                        setGameType('connectfour');
+                    }
                     // Check for tic tac toe (3x3 board)
                     else if (data.board && Array.isArray(data.board) && data.board.length === 3 && data.board[0] && data.board[0].length === 3) {
                         console.log('Detected game type: tictactoe');
@@ -233,6 +244,10 @@ export const GameSession: React.FC = () => {
                 <TicTacToeGame sessionId={actualSessionId!} playerAddress={playerAddress} />
             ) : gameType === 'chess' ? (
                 <ChessGamePro sessionId={actualSessionId!} playerAddress={playerAddress} />
+            ) : gameType === 'connectfour' ? (
+                <ConnectFourGame sessionId={actualSessionId!} playerAddress={playerAddress} />
+            ) : gameType === 'battleship' ? (
+                <BattleshipGame sessionId={actualSessionId!} />
             ) : gameType === 'cryptobubbles' ? (
                 <Box position="relative">
                     <CryptoBubblesGamePhaser sessionId={actualSessionId!} playerAddress={playerAddress} />
@@ -267,7 +282,7 @@ export const GameSession: React.FC = () => {
                 </Box>
             ) : (
                 <Box textAlign="center" py={8}>
-                    <Text>Unknown game type</Text>
+                    <Text>Unknown game type: {gameType}</Text>
                 </Box>
             )}
         </VStack>

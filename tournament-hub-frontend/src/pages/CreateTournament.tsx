@@ -99,10 +99,10 @@ export const CreateTournament: React.FC = () => {
     // Slider state for better UX
     const [sliderValues, setSliderValues] = useState([2, 2]); // [min, max]
 
-    // Ensure PvP games (TicTacToe=1, Chess=2) always show 2/2 even on initial load
+    // Ensure PvP games (TicTacToe=1, Chess=2, ConnectFour=7) always show 2/2 even on initial load
     React.useEffect(() => {
         const gameId = parseInt(formData.gameType);
-        if ((gameId === 1 || gameId === 2) && (formData.maxPlayers !== '2' || formData.minPlayers !== '2')) {
+        if ((gameId === 1 || gameId === 2 || gameId === 7) && (formData.maxPlayers !== '2' || formData.minPlayers !== '2')) {
             setFormData(prev => ({ ...prev, maxPlayers: '2', minPlayers: '2' }));
             setSliderValues([2, 2]);
         }
@@ -207,9 +207,9 @@ export const CreateTournament: React.FC = () => {
         // Normalize decimal separator for entry fee - convert comma to dot
         const normalizedValue = field === 'entryFee' ? value.replace(',', '.') : value;
 
-        // Force PvP (Chess) to 2 players only
+        // Force PvP games to 2 players only
         const gameId = field === 'gameType' ? parseInt(normalizedValue) : parseInt(formData.gameType);
-        const isPvpTwoPlayer = gameId === 2 || gameId === 1; // 2 = Chess, 1 = TicTacToe
+        const isPvpTwoPlayer = gameId === 2 || gameId === 1 || gameId === 7; // 2 = Chess, 1 = TicTacToe, 7 = ConnectFour
         let next = { ...formData, [field]: normalizedValue } as FormData;
         if (isPvpTwoPlayer) {
             next.maxPlayers = '2';
@@ -249,7 +249,7 @@ export const CreateTournament: React.FC = () => {
     };
 
     const handleRangeSliderMouseDown = (e: React.MouseEvent, type: 'min' | 'max' | 'track') => {
-        if (parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1) {
+        if (parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1 || parseInt(formData.gameType) === 7 || parseInt(formData.gameType) === 8) {
             return; // Disabled for PvP games
         }
 
@@ -347,6 +347,26 @@ export const CreateTournament: React.FC = () => {
                     "Avoid larger cells that can eat you",
                     "Eat white dots and smaller players to increase size",
                     "Last player standing wins the tournament"
+                ]
+            },
+            7: {
+                title: "Connect Four",
+                description: "Classic strategy game",
+                rules: [
+                    "Drop colored discs into a 7x6 grid",
+                    "First to get 4 in a row (horizontal, vertical, or diagonal) wins",
+                    "Players take turns dropping one disc per turn",
+                    "Perfect for strategic thinking and pattern recognition"
+                ]
+            },
+            8: {
+                title: "Battleship",
+                description: "Naval strategy game",
+                rules: [
+                    "Place your 5 ships on a 10x10 grid (hidden from opponent)",
+                    "Take turns firing shots at opponent's grid",
+                    "First to sink all opponent's ships wins",
+                    "Ships: Carrier (5), Battleship (4), Cruiser (3), Submarine (3), Destroyer (2)"
                 ]
             },
             // DodgeDash removed from tournament creation options
@@ -710,7 +730,7 @@ export const CreateTournament: React.FC = () => {
                                             <VStack spacing={0} align="center">
                                                 <Text>Player Range</Text>
                                                 <Text color="gray.400" fontSize="sm">
-                                                    {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1)
+                                                    {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1 || parseInt(formData.gameType) === 7 || parseInt(formData.gameType) === 8)
                                                         ? "Fixed to 2 players for PvP games"
                                                         : "Drag the handles to set min and max players"}
                                                 </Text>
@@ -719,7 +739,7 @@ export const CreateTournament: React.FC = () => {
                                     </FormLabel>
 
                                     {/* Show simple display for 2-player games, slider for others */}
-                                    {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1) ? (
+                                    {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1 || parseInt(formData.gameType) === 7 || parseInt(formData.gameType) === 8) ? (
                                         <Box
                                             bg="gray.700"
                                             borderRadius="2xl"
@@ -994,7 +1014,7 @@ export const CreateTournament: React.FC = () => {
                                 )}
 
                                 {/* PvP Game Mode Info */}
-                                {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1) && (
+                                {(parseInt(formData.gameType) === 2 || parseInt(formData.gameType) === 1 || parseInt(formData.gameType) === 7 || parseInt(formData.gameType) === 8) && (
                                     <Box
                                         bgGradient="linear(135deg, purple.500, pink.600)"
                                         borderRadius="xl"

@@ -25,6 +25,20 @@ export const GAME_CONFIGS = {
     gameType: "real_time_duel",
     description: "Real-time cell battle game"
   },
+  7: {
+    name: "Connect Four",
+    minPlayers: 2,
+    maxPlayers: 2,
+    gameType: "turn_based",
+    description: "Classic strategy game - connect 4 in a row to win"
+  },
+  8: {
+    name: "Battleship",
+    minPlayers: 2,
+    maxPlayers: 2,
+    gameType: "turn_based",
+    description: "Naval strategy game - sink all opponent ships to win"
+  },
   // DodgeDash removed from tournament creation options
 };
 

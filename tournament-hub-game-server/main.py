@@ -48,6 +48,12 @@ from tictactoe_game_engine import create_tictactoe_game, get_tictactoe_game, rem
 # Import Color Rush game engine
 from colorrush_game_engine import create_colorrush_game, get_colorrush_game, remove_colorrush_game, ColorRushGameEngine, colorrush_games
 
+# Import Connect Four game engine
+from connectfour_game_engine import create_connectfour_game, get_connectfour_game, remove_connectfour_game, ConnectFourGameEngine, connectfour_games
+
+# Import Battleship game engine
+from battleship_game_engine import create_battleship_game, get_battleship_game, remove_battleship_game, BattleshipGameEngine, battleship_games
+
 # Import contract interaction
 from contract.submit_results import sign_results_for_tournament, submit_results_to_contract_with_signature
 from notifier_subscriber import start_notifier_subscriber
@@ -203,8 +209,8 @@ def determine_game_type(game_type_id: Optional[int]) -> str:
         return "dodgedash"
     elif game_type_id == 7:  # Connect Four
         return "connectfour"
-    elif game_type_id == 8:  # Memory Match
-        return "memorymatch"
+    elif game_type_id == 8:  # Battleship
+        return "battleship"
     elif game_type_id == 9:  # Word Scramble
         return "wordscramble"
     elif game_type_id == 10:  # Math Challenge
@@ -223,6 +229,10 @@ def create_game_instance(game_type: str, session_id: str, players: List[str]):
         create_chess_game(session_id, players)
     elif game_type == "tictactoe":
         create_tictactoe_game(session_id, players)
+    elif game_type == "connectfour":
+        create_connectfour_game(session_id, players)
+    elif game_type == "battleship":
+        create_battleship_game(session_id, players)
     elif game_type == "dodgedash":
         create_dodgedash_game(session_id, players)
     elif game_type == "colorrush":
@@ -578,6 +588,10 @@ def handle_notifier_event(event: Dict):
                     remove_chess_game(session_id)
                 elif game_type == "tictactoe":
                     remove_tictactoe_game(session_id)
+                elif game_type == "connectfour":
+                    remove_connectfour_game(session_id)
+                elif game_type == "battleship":
+                    remove_battleship_game(session_id)
                 elif game_type == "dodgedash":
                     remove_dodgedash_game(session_id)
                 else:
@@ -761,6 +775,27 @@ class TicTacToeMoveRequest(BaseModel):
     player: str
     row: int
     col: int
+
+# Pydantic models for Connect Four endpoints
+class ConnectFourMoveRequest(BaseModel):
+    sessionId: str
+    player: str
+    col: int
+
+# Pydantic models for Battleship endpoints
+class BattleshipPlaceShipRequest(BaseModel):
+    sessionId: str
+    player: str
+    shipType: str
+    x: int
+    y: int
+    orientation: str
+
+class BattleshipFireRequest(BaseModel):
+    sessionId: str
+    player: str
+    x: int
+    y: int
 
 def error_response(message: str, status_code: int = 400):
     return {"error": message, "status_code": status_code}
@@ -987,6 +1022,12 @@ async def get_tournament_session(tournamentId: str):
                     elif game_type == "tictactoe":
                         game_state = await get_tictactoe_game_state(sessionId=session_id)
                         game_over = game_state.get("game_over", False)
+                    elif game_type == "connectfour":
+                        game_state = await get_connectfour_game_state(sessionId=session_id)
+                        game_over = game_state.get("game_over", False)
+                    elif game_type == "battleship":
+                        game_state = await get_battleship_game_state(sessionId=session_id)
+                        game_over = game_state.get("game_over", False)
                     elif game_type == "dodgedash":
                         game_state = await get_dodgedash_game_state(sessionId=session_id)
                         game_over = game_state.get("game_over", False)
@@ -1022,6 +1063,10 @@ async def get_game_state(session_id: str):
             return await get_chess_game_state(sessionId=session_id)
         elif game_type == "tictactoe":
             return await get_tictactoe_game_state(sessionId=session_id)
+        elif game_type == "connectfour":
+            return await get_connectfour_game_state(sessionId=session_id)
+        elif game_type == "battleship":
+            return await get_battleship_game_state(sessionId=session_id)
         elif game_type == "dodgedash":
             return await get_dodgedash_game_state(sessionId=session_id)
         elif game_type == "colorrush":
@@ -1053,6 +1098,12 @@ async def submit_move(session_id: str, request: MoveRequest):
             # For Tic Tac Toe, we need row and col, but MoveRequest only has x,y
             # This is a limitation - Tic Tac Toe moves should use the tictactoe-specific endpoint
             raise HTTPException(status_code=400, detail="Tic Tac Toe moves must use /tictactoe_move endpoint with row and col")
+        elif game_type == "connectfour":
+            # For Connect Four, we need col, but MoveRequest only has x,y
+            raise HTTPException(status_code=400, detail="Connect Four moves must use /connectfour_move endpoint with col")
+        elif game_type == "battleship":
+            # For Battleship, we need specific endpoints for ship placement and firing
+            raise HTTPException(status_code=400, detail="Battleship moves must use /battleship_place_ship or /battleship_fire endpoints")
         elif game_type == "dodgedash":
             raise HTTPException(status_code=400, detail="Use /dodgedash_move endpoint with ax, ay, dash")
         else:  # cryptobubbles
@@ -1108,6 +1159,7 @@ async def get_cryptobubbles_game_state(sessionId: str):
         raise HTTPException(status_code=404, detail="CryptoBubbles game not found")
     
     return game.get_game_state()
+
 @app.get("/dodgedash_game_state")
 @app.get("/tournament-hub/dodgedash_game_state")
 async def get_dodgedash_game_state(sessionId: str):
@@ -1429,6 +1481,169 @@ async def start_tictactoe_game(sessionId: str):
         logger.error(f"Error starting Tic Tac Toe game: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ===== Connect Four Endpoints =====
+
+@app.get("/connectfour_game_state")
+@app.get("/tournament-hub/connectfour_game_state")
+async def get_connectfour_game_state(sessionId: str):
+    """Get the current state of a Connect Four game"""
+    try:
+        # Add validation for sessionId
+        if not sessionId or sessionId == "null" or sessionId.strip() == "":
+            logger.warning(f"Invalid sessionId provided: '{sessionId}'")
+            return {"error": "Invalid sessionId provided", "sessionId": sessionId, "status": "error"}
+        
+        logger.info(f"Fetching Connect Four game state for session: {sessionId}")
+        game = get_connectfour_game(sessionId)
+        if not game:
+            logger.warning(f"Connect Four game not found for session: {sessionId}")
+            return {"error": "Connect Four game not found", "sessionId": sessionId, "status": "not_found"}
+        
+        game_state = game.get_game_state()
+        logger.info(f"Successfully retrieved Connect Four game state for session: {sessionId}")
+        return game_state
+    except Exception as e:
+        logger.error(f"Error getting Connect Four game state for session {sessionId}: {e}")
+        return {"error": str(e), "sessionId": sessionId, "status": "error"}
+
+@app.post("/connectfour_move")
+@app.post("/tournament-hub/connectfour_move")
+async def submit_connectfour_move(request: ConnectFourMoveRequest):
+    """Submit a move in a Connect Four game"""
+    logger.info("=== CONNECTFOUR_MOVE ROUTE CALLED ===")
+    try:
+        logger.info(f"Connect Four move request: sessionId={request.sessionId}, player={request.player}, col={request.col}")
+        game = get_connectfour_game(request.sessionId)
+        if not game:
+            logger.warning(f"Connect Four game not found for session: {request.sessionId}")
+            raise HTTPException(status_code=404, detail="Connect Four game not found")
+        
+        # Make the move
+        success = game.make_move(request.col, request.player)
+        if not success:
+            logger.warning(f"Invalid move attempted: player={request.player}, col={request.col}")
+            raise HTTPException(status_code=400, detail="Invalid move")
+        
+        logger.info(f"Move successful for player {request.player} at column {request.col}")
+        return {"status": "moved", "game_state": game.get_game_state()}
+    except Exception as e:
+        logger.error(f"Error making Connect Four move: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/start_connectfour_game")
+@app.post("/tournament-hub/start_connectfour_game")
+async def start_connectfour_game(sessionId: str):
+    """Start a Connect Four game (games start automatically when created)"""
+    try:
+        game = get_connectfour_game(sessionId)
+        if not game:
+            raise HTTPException(status_code=404, detail="Connect Four game not found")
+        
+        # Connect Four games start automatically when created
+        return {"status": "started", "game_state": game.get_game_state()}
+    except Exception as e:
+        logger.error(f"Error starting Connect Four game: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== Battleship Endpoints =====
+
+@app.get("/battleship_game_state")
+@app.get("/tournament-hub/battleship_game_state")
+async def get_battleship_game_state(sessionId: str, player: str = None):
+    """Get the current state of a Battleship game"""
+    try:
+        # Add validation for sessionId
+        if not sessionId or sessionId == "null" or sessionId.strip() == "":
+            logger.warning(f"Invalid sessionId provided: '{sessionId}'")
+            return {"error": "Invalid sessionId provided", "sessionId": sessionId, "status": "error"}
+        
+        logger.info(f"Fetching Battleship game state for session: {sessionId}, player: {player}")
+        game = get_battleship_game(sessionId)
+        if not game:
+            logger.warning(f"Battleship game not found for session: {sessionId}")
+            return {"error": "Battleship game not found", "sessionId": sessionId, "status": "not_found"}
+        
+        # Pass the requesting player to get the correct view
+        game_state = game.get_game_state(requesting_player=player)
+        logger.info(f"Successfully retrieved Battleship game state for session: {sessionId}, player: {player}")
+        return game_state
+    except Exception as e:
+        logger.error(f"Error getting Battleship game state for session {sessionId}: {e}")
+        return {"error": str(e), "sessionId": sessionId, "status": "error"}
+
+@app.post("/battleship_place_ship")
+@app.post("/tournament-hub/battleship_place_ship")
+async def place_battleship_ship(request: BattleshipPlaceShipRequest):
+    """Place a ship on the Battleship board"""
+    logger.info("=== BATTLESHIP_PLACE_SHIP ROUTE CALLED ===")
+    try:
+        logger.info(f"Battleship place ship request: sessionId={request.sessionId}, player={request.player}, shipType={request.shipType}, x={request.x}, y={request.y}, orientation={request.orientation}")
+        game = get_battleship_game(request.sessionId)
+        if not game:
+            logger.warning(f"Battleship game not found for session: {request.sessionId}")
+            raise HTTPException(status_code=404, detail="Battleship game not found")
+        
+        # Import the enums
+        from battleship_game_engine import ShipType, Orientation
+        
+        # Convert string to enum
+        try:
+            ship_type = ShipType(request.shipType.lower())
+            orientation = Orientation(request.orientation.lower())
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid ship type or orientation: {e}")
+        
+        # Place the ship
+        success = game.place_ship(request.player, ship_type, request.x, request.y, orientation)
+        if not success:
+            logger.warning(f"Invalid ship placement: player={request.player}, shipType={request.shipType}, x={request.x}, y={request.y}, orientation={request.orientation}")
+            raise HTTPException(status_code=400, detail="Invalid ship placement")
+        
+        logger.info(f"Ship placed successfully for player {request.player}")
+        return {"status": "ship_placed", "game_state": game.get_game_state(requesting_player=request.player)}
+    except Exception as e:
+        logger.error(f"Error placing Battleship ship: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/battleship_fire")
+@app.post("/tournament-hub/battleship_fire")
+async def fire_battleship_shot(request: BattleshipFireRequest):
+    """Fire a shot in a Battleship game"""
+    logger.info("=== BATTLESHIP_FIRE ROUTE CALLED ===")
+    try:
+        logger.info(f"Battleship fire request: sessionId={request.sessionId}, player={request.player}, x={request.x}, y={request.y}")
+        game = get_battleship_game(request.sessionId)
+        if not game:
+            logger.warning(f"Battleship game not found for session: {request.sessionId}")
+            raise HTTPException(status_code=404, detail="Battleship game not found")
+        
+        # Fire the shot
+        result = game.fire_shot(request.player, request.x, request.y)
+        if not result.get("success", False):
+            logger.warning(f"Invalid shot: player={request.player}, x={request.x}, y={request.y}")
+            raise HTTPException(status_code=400, detail=result.get("error", "Invalid shot"))
+        
+        logger.info(f"Shot fired successfully for player {request.player}: hit={result.get('hit', False)}")
+        return {"status": "shot_fired", "result": result, "game_state": game.get_game_state(requesting_player=request.player)}
+    except Exception as e:
+        logger.error(f"Error firing Battleship shot: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/start_battleship_game")
+@app.post("/tournament-hub/start_battleship_game")
+async def start_battleship_game(sessionId: str):
+    """Start a Battleship game (games start in setup phase when created)"""
+    try:
+        game = get_battleship_game(sessionId)
+        if not game:
+            raise HTTPException(status_code=404, detail="Battleship game not found")
+        
+        # Battleship games start in setup phase when created
+        return {"status": "started", "game_state": game.get_game_state()}
+    except Exception as e:
+        logger.error(f"Error starting Battleship game: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/game_config")
 async def get_game_config(game_type: str):
     """Get game configuration"""
@@ -1442,6 +1657,18 @@ async def get_game_config(game_type: str):
         "chess": {
             "name": "Chess",
             "description": "Strategic board game",
+            "max_players": 2,
+            "min_players": 2,
+        },
+        "connectfour": {
+            "name": "Connect Four",
+            "description": "Classic strategy game - connect 4 in a row to win",
+            "max_players": 2,
+            "min_players": 2,
+        },
+        "battleship": {
+            "name": "Battleship",
+            "description": "Naval strategy game - sink all opponent ships to win",
             "max_players": 2,
             "min_players": 2,
         }
@@ -1469,6 +1696,20 @@ async def get_game_configs():
             "maxPlayers": 8,
             "gameType": "real_time_battle",
             "description": "Real-time cell battle game"
+        },
+        "7": {
+            "name": "Connect Four",
+            "minPlayers": 2,
+            "maxPlayers": 2,
+            "gameType": "turn_based",
+            "description": "Classic strategy game - connect 4 in a row to win"
+        },
+        "8": {
+            "name": "Battleship",
+            "minPlayers": 2,
+            "maxPlayers": 2,
+            "gameType": "turn_based",
+            "description": "Naval strategy game - sink all opponent ships to win"
         }
     }
 
@@ -1650,6 +1891,52 @@ def check_and_submit_game_results():
             for session_id in corrupted_sessions:
                 logger.info(f"Removing corrupted DodgeDash session {session_id}")
                 del dodgedash_games[session_id]
+
+            # Submit Connect Four game results
+            from connectfour_game_engine import connectfour_games
+            for session_id, game in connectfour_games.items():
+                if not getattr(game, 'results_submitted', False):
+                    game_state = game.get_game_state()
+                    if game_state.get('game_over', False) and game_state.get('winner'):
+                        logger.info(f"Connect Four game {session_id} finished! Winner: {game_state['winner']}")
+                        game.results_submitted = True
+                        try:
+                            tournament_id = int(session_id)
+                            podium = [game_state['winner']]
+                            signature = sign_results_for_tournament(tournament_id, podium)
+                            if signature:
+                                tx_hash = submit_results_to_contract_with_signature(tournament_id, podium, signature)
+                                if tx_hash:
+                                    logger.info(f"Connect Four results submitted for tournament {tournament_id}: {tx_hash}")
+                                else:
+                                    logger.error(f"Failed to submit Connect Four results for tournament {tournament_id}")
+                            else:
+                                logger.error(f"Failed to sign Connect Four results for tournament {tournament_id}")
+                        except Exception as e:
+                            logger.error(f"Error submitting Connect Four results for tournament {tournament_id}: {e}")
+
+            # Submit Battleship game results
+            from battleship_game_engine import battleship_games
+            for session_id, game in battleship_games.items():
+                if not getattr(game, 'results_submitted', False):
+                    game_state = game.get_game_state()
+                    if game_state.get('game_over', False) and game_state.get('winner'):
+                        logger.info(f"Battleship game {session_id} finished! Winner: {game_state['winner']}")
+                        game.results_submitted = True
+                        try:
+                            tournament_id = int(session_id)
+                            podium = [game_state['winner']]
+                            signature = sign_results_for_tournament(tournament_id, podium)
+                            if signature:
+                                tx_hash = submit_results_to_contract_with_signature(tournament_id, podium, signature)
+                                if tx_hash:
+                                    logger.info(f"Battleship results submitted for tournament {tournament_id}: {tx_hash}")
+                                else:
+                                    logger.error(f"Failed to submit Battleship results for tournament {tournament_id}")
+                            else:
+                                logger.error(f"Failed to sign Battleship results for tournament {tournament_id}")
+                        except Exception as e:
+                            logger.error(f"Error submitting Battleship results for tournament {tournament_id}: {e}")
 
             # Submit DodgeDash game results
             for session_id, game in dodgedash_games.items():

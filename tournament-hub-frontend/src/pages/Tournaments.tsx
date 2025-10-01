@@ -206,7 +206,9 @@ function getGameName(gameId: number): string {
         1: "Tic Tac Toe",
         2: "Chess",
         5: "CryptoBubbles",
-        6: "DodgeDash"
+        6: "DodgeDash",
+        7: "Connect Four",
+        8: "Battleship"
     };
 
     return gameConfigs[gameId as keyof typeof gameConfigs] || `Game ID: ${gameId}`;
