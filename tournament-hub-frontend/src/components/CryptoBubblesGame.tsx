@@ -259,7 +259,7 @@ export const CryptoBubblesGame: React.FC<CryptoBubblesGameProps> = ({ sessionId,
         if (lastCursorPosition && gameState && !gameEnded && !mouseOverPlayer) {
             submitMove(lastCursorPosition.x, lastCursorPosition.y);
         }
-    }, 50); // Update every 50ms for more responsive movement
+    }, 100); // Update every 100ms to reduce server load
 
     // Update viewport to follow player movement
     useInterval(() => {
@@ -273,7 +273,7 @@ export const CryptoBubblesGame: React.FC<CryptoBubblesGameProps> = ({ sessionId,
         if (!gameEnded) {
             fetchGameState();
         }
-    }, 50); // 20 FPS for smoother updates
+    }, 1000); // Poll every 1 second to reduce server load
 
     // Auto-join and start game when component mounts
     useEffect(() => {

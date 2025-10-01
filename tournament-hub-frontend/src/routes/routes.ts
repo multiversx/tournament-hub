@@ -1,5 +1,7 @@
 import { RouteNamesEnum } from 'localConstants';
 import { Dashboard, Disclaimer, Home, Unlock, Tournaments, TournamentDetails, CreateTournament, GameSession, ColorRushDemoPage } from 'pages';
+import BattleshipGame from 'pages/Battleship/BattleshipGame';
+import BattleshipTest from 'pages/Battleship/BattleshipTest';
 import { RouteType } from 'types';
 
 interface RouteWithTitleType extends RouteType {
@@ -62,14 +64,29 @@ export const routes: RouteWithTitleType[] = [
     component: GameSession
   },
   {
+    path: '/game/connectfour/:tournamentId',
+    title: 'Connect Four Game',
+    component: GameSession
+  },
+  {
     path: '/game/colorrush/:tournamentId',
     title: 'Color Rush Game',
     component: GameSession
   },
   {
+    path: '/game/battleship/:sessionId',
+    title: 'Battleship Game',
+    component: BattleshipGame
+  },
+  {
     path: '/demo/colorrush',
     title: 'Color Rush Demo',
     component: ColorRushDemoPage
+  },
+  {
+    path: '/demo/battleship',
+    title: 'Battleship Test',
+    component: BattleshipTest
   },
   {
     path: RouteNamesEnum.disclaimer,

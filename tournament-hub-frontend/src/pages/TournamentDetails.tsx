@@ -721,6 +721,8 @@ export const TournamentDetails = () => {
                                         const gameType = getGameName(Number(tournament.game_id));
                                         if (gameType === 'Chess') {
                                             navigate(`/game/chess/${id}`);
+                                        } else if (gameType === 'Connect Four') {
+                                            navigate(`/game/connectfour/${id}`);
                                         } else if (gameType === 'Tic Tac Toe') {
                                             navigate(`/game/tictactoe/${id}`);
                                         } else {

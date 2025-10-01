@@ -59,6 +59,8 @@ const GAME_TYPES: { [key: number]: GameInfo } = {
     2: { name: 'Chess', description: 'Strategic board game', icon: '♟️' },
     3: { name: 'Dodge Dash', description: 'Fast-paced obstacle avoidance', icon: '🏃' },
     5: { name: 'CryptoBubbles', description: 'Real-time cell battle arena', icon: '🫧' },
+    7: { name: 'Connect Four', description: 'Classic strategy game - connect 4 in a row to win', icon: '🔴' },
+    8: { name: 'Battleship', description: 'Classic naval warfare strategy game', icon: '🚢' },
 };
 
 const getGameColor = (gameId: number): string => {
@@ -67,6 +69,8 @@ const getGameColor = (gameId: number): string => {
         2: 'blue',   // Chess
         3: 'red',    // Dodge Dash
         5: 'cyan',   // CryptoBubbles
+        7: 'orange', // Connect Four
+        8: 'teal',   // Battleship
     };
     return colors[gameId as keyof typeof colors] || 'gray';
 };

@@ -545,7 +545,9 @@ function getGameName(gameId: number): string {
         2: 'Chess',
         3: 'CryptoBubbles',
         5: 'Agar.io',
-        6: 'DodgeDash'
+        6: 'DodgeDash',
+        7: 'Connect Four',
+        8: 'Battleship'
     };
     return gameNames[gameId] || `Game ${gameId}`;
 }
