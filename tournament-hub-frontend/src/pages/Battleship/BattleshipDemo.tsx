@@ -1,5 +1,5 @@
 import React from 'react';
-import { BattleshipGame } from './BattleshipGame';
+import BattleshipGame from './BattleshipGame';
 
 const BattleshipDemo: React.FC = () => {
     // For demo purposes, we'll use a mock session ID
