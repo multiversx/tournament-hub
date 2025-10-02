@@ -23,7 +23,7 @@ interface CachedStats {
 }
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-const CACHE_KEY = 'tournament_stats_cache_v2'; // Updated to force cache clear
+const CACHE_KEY = 'tournament_stats_cache_v3'; // Updated to force cache clear
 
 export function useEnhancedTournamentStats() {
     const [stats, setStats] = useState<EnhancedTournamentStats>({

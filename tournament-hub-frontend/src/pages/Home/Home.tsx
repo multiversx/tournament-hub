@@ -414,6 +414,7 @@ export const Home = () => {
                                 color="white"
                                 fontSize="3xl"
                                 fontWeight="bold"
+                                formatValue={(val) => Math.round(val).toString()}
                               />
                             </Box>
                             <Text fontSize="sm" color="yellow.300" fontWeight="semibold">Joining</Text>
@@ -448,6 +449,7 @@ export const Home = () => {
                                 color="white"
                                 fontSize="3xl"
                                 fontWeight="bold"
+                                formatValue={(val) => Math.round(val).toString()}
                               />
                             </Box>
                             <Text fontSize="sm" color="blue.300" fontWeight="semibold">Ready to Start</Text>
@@ -482,6 +484,7 @@ export const Home = () => {
                                 color="white"
                                 fontSize="3xl"
                                 fontWeight="bold"
+                                formatValue={(val) => Math.round(val).toString()}
                               />
                             </Box>
                             <Text fontSize="sm" color="green.300" fontWeight="semibold">Playing</Text>
@@ -516,6 +519,7 @@ export const Home = () => {
                                 color="white"
                                 fontSize="3xl"
                                 fontWeight="bold"
+                                formatValue={(val) => Math.round(val).toString()}
                               />
                             </Box>
                             <Text fontSize="sm" color="purple.300" fontWeight="semibold">Completed</Text>
@@ -547,32 +551,20 @@ export const Home = () => {
                             position="relative"
                           >
                             <VStack spacing={1}>
-                              <Box>
-                                {statsLoading ? (
-                                  <Text
-                                    color="white"
-                                    fontSize="3xl"
-                                    fontWeight="bold"
-                                    opacity={0.6}
-                                    filter="blur(1px)"
-                                  >
-                                    ---
-                                  </Text>
-                                ) : (
-                                  <Text
-                                    color="white"
-                                    fontSize="3xl"
-                                    fontWeight="bold"
-                                    dangerouslySetInnerHTML={{
-                                      __html: (() => {
-                                        const integer = Math.floor(maxPrizeWon);
-                                        const decimal = Math.round((maxPrizeWon - integer) * 100);
-                                        return `${integer}<sup style="font-size: 0.6em; vertical-align: super;">${decimal}</sup>`;
-                                      })()
-                                    }}
-                                  />
-                                )}
-                              </Box>
+                              <StatLoader
+                                value={maxPrizeWon}
+                                isLoading={statsLoading}
+                                delay={400}
+                                color="white"
+                                fontSize="3xl"
+                                fontWeight="bold"
+                                suffix=""
+                                formatValue={(val) => {
+                                  const integer = Math.floor(val);
+                                  const decimal = Math.round((val - integer) * 100);
+                                  return `${integer}<sup style="font-size: 0.6em; vertical-align: super;">${decimal}</sup>`;
+                                }}
+                              />
                               <Text fontSize="xs" color="rgba(255,255,255,0.7)" fontWeight="medium">
                                 EGLD
                               </Text>
@@ -607,32 +599,20 @@ export const Home = () => {
                             position="relative"
                           >
                             <VStack spacing={1}>
-                              <Box>
-                                {statsLoading ? (
-                                  <Text
-                                    color="white"
-                                    fontSize="3xl"
-                                    fontWeight="bold"
-                                    opacity={0.6}
-                                    filter="blur(1px)"
-                                  >
-                                    ---
-                                  </Text>
-                                ) : (
-                                  <Text
-                                    color="white"
-                                    fontSize="3xl"
-                                    fontWeight="bold"
-                                    dangerouslySetInnerHTML={{
-                                      __html: (() => {
-                                        const integer = Math.floor(totalPrizeDistributed);
-                                        const decimal = Math.round((totalPrizeDistributed - integer) * 100);
-                                        return `${integer}<sup style="font-size: 0.6em; vertical-align: super;">${decimal}</sup>`;
-                                      })()
-                                    }}
-                                  />
-                                )}
-                              </Box>
+                              <StatLoader
+                                value={totalPrizeDistributed}
+                                isLoading={statsLoading}
+                                delay={500}
+                                color="white"
+                                fontSize="3xl"
+                                fontWeight="bold"
+                                suffix=""
+                                formatValue={(val) => {
+                                  const integer = Math.floor(val);
+                                  const decimal = Math.round((val - integer) * 100);
+                                  return `${integer}<sup style="font-size: 0.6em; vertical-align: super;">${decimal}</sup>`;
+                                }}
+                              />
                               <Text fontSize="xs" color="rgba(255,255,255,0.7)" fontWeight="medium">
                                 EGLD
                               </Text>
