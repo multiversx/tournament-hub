@@ -38,22 +38,33 @@ import {
 } from 'lucide-react';
 import { useGetAccountInfo, useGetIsLoggedIn } from 'lib';
 import { useSimpleTournamentStats, useSimpleUserStats, testApiConnectivity } from '../../hooks/useSimpleDashboard';
+import { useEnhancedTournamentStats } from '../../hooks/useEnhancedTournamentStats';
 import { useNavigate } from 'react-router-dom';
 import { RouteNamesEnum } from 'localConstants';
+import { SkeletonLoader, StatCardSkeleton, UserStatsSkeleton } from '../../components/SkeletonLoader';
+import { ProgressiveLoader, StatLoader } from '../../components/ProgressiveLoader';
+import { ErrorRetry, DataLoadError } from '../../components/ErrorRetry';
 
 export const Dashboard = () => {
   const { address, account } = useGetAccountInfo();
   const isLoggedIn = useGetIsLoggedIn();
   const navigate = useNavigate();
+  // Use enhanced stats hook with caching and better loading states
   const {
     totalTournaments,
     joiningTournaments,
     readyToStartTournaments,
     activeTournaments,
     completedTournaments,
+    maxPrizeWon,
+    totalPrizeDistributed,
     loading: statsLoading,
+    refreshing: statsRefreshing,
+    error: statsError,
+    lastUpdated,
+    hasCachedData,
     refreshStats
-  } = useSimpleTournamentStats();
+  } = useEnhancedTournamentStats();
 
   const {
     gamesPlayed,
@@ -129,85 +140,132 @@ export const Dashboard = () => {
               Welcome back! Here's your tournament overview and statistics.
             </Text>
           </VStack>
-          <Button
-            onClick={refreshStats}
-            isLoading={statsLoading}
-            loadingText="Refreshing..."
-            colorScheme="blue"
-            variant="outline"
-            leftIcon={<RefreshCw size={16} />}
-            size="sm"
-          >
-            Refresh Stats
-          </Button>
+          <VStack spacing={2} align="end">
+            <Button
+              onClick={refreshStats}
+              isLoading={statsRefreshing}
+              loadingText="Refreshing..."
+              colorScheme="blue"
+              variant="outline"
+              leftIcon={<RefreshCw size={16} />}
+              size="sm"
+            >
+              Refresh Stats
+            </Button>
+            {lastUpdated && (
+              <Text fontSize="xs" color="gray.500">
+                {hasCachedData && statsRefreshing ? 'Using cached data, refreshing...' : `Updated ${lastUpdated.toLocaleTimeString()}`}
+              </Text>
+            )}
+          </VStack>
         </HStack>
 
         {/* Quick Stats */}
-        <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={6}>
-          <Card bg={cardBg} border="1px solid" borderColor={borderColor}>
-            <CardBody>
-              <Stat>
-                <StatLabel color="gray.400" fontSize="sm" fontWeight="medium">
-                  Total Tournaments
-                </StatLabel>
-                <StatNumber color="blue.400" fontSize="2xl" fontWeight="bold">
-                  {statsLoading ? '...' : totalTournaments}
-                </StatNumber>
-                <StatHelpText color="gray.500" fontSize="xs">
-                  All time
-                </StatHelpText>
-              </Stat>
-            </CardBody>
-          </Card>
+        {statsError ? (
+          <ErrorRetry
+            error={statsError}
+            onRetry={refreshStats}
+            isRetrying={statsRefreshing}
+            variant="inline"
+            title="Failed to Load Tournament Statistics"
+          />
+        ) : statsLoading && !hasCachedData ? (
+          <StatCardSkeleton count={4} />
+        ) : (
+          <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={6}>
+            <ProgressiveLoader isLoading={false} delay={0} animation="scale">
+              <Card bg={cardBg} border="1px solid" borderColor={borderColor}>
+                <CardBody>
+                  <Stat>
+                    <StatLabel color="gray.400" fontSize="sm" fontWeight="medium">
+                      Total Tournaments
+                    </StatLabel>
+                    <StatLoader
+                      value={totalTournaments}
+                      isLoading={statsLoading}
+                      delay={0}
+                      color="blue.400"
+                      fontSize="2xl"
+                      fontWeight="bold"
+                    />
+                    <StatHelpText color="gray.500" fontSize="xs">
+                      All time
+                    </StatHelpText>
+                  </Stat>
+                </CardBody>
+              </Card>
+            </ProgressiveLoader>
 
-          <Card bg={cardBg} border="1px solid" borderColor={borderColor}>
-            <CardBody>
-              <Stat>
-                <StatLabel color="gray.400" fontSize="sm" fontWeight="medium">
-                  Currently Playing
-                </StatLabel>
-                <StatNumber color="green.400" fontSize="2xl" fontWeight="bold">
-                  {statsLoading ? '...' : activeTournaments}
-                </StatNumber>
-                <StatHelpText color="gray.500" fontSize="xs">
-                  Active games
-                </StatHelpText>
-              </Stat>
-            </CardBody>
-          </Card>
+            <ProgressiveLoader isLoading={false} delay={100} animation="scale">
+              <Card bg={cardBg} border="1px solid" borderColor={borderColor}>
+                <CardBody>
+                  <Stat>
+                    <StatLabel color="gray.400" fontSize="sm" fontWeight="medium">
+                      Currently Playing
+                    </StatLabel>
+                    <StatLoader
+                      value={activeTournaments}
+                      isLoading={statsLoading}
+                      delay={100}
+                      color="green.400"
+                      fontSize="2xl"
+                      fontWeight="bold"
+                    />
+                    <StatHelpText color="gray.500" fontSize="xs">
+                      Active games
+                    </StatHelpText>
+                  </Stat>
+                </CardBody>
+              </Card>
+            </ProgressiveLoader>
 
-          <Card bg={cardBg} border="1px solid" borderColor={borderColor}>
-            <CardBody>
-              <Stat>
-                <StatLabel color="gray.400" fontSize="sm" fontWeight="medium">
-                  Ready to Start
-                </StatLabel>
-                <StatNumber color="blue.400" fontSize="2xl" fontWeight="bold">
-                  {statsLoading ? '...' : readyToStartTournaments}
-                </StatNumber>
-                <StatHelpText color="gray.500" fontSize="xs">
-                  Waiting for players
-                </StatHelpText>
-              </Stat>
-            </CardBody>
-          </Card>
+            <ProgressiveLoader isLoading={false} delay={200} animation="scale">
+              <Card bg={cardBg} border="1px solid" borderColor={borderColor}>
+                <CardBody>
+                  <Stat>
+                    <StatLabel color="gray.400" fontSize="sm" fontWeight="medium">
+                      Ready to Start
+                    </StatLabel>
+                    <StatLoader
+                      value={readyToStartTournaments}
+                      isLoading={statsLoading}
+                      delay={200}
+                      color="blue.400"
+                      fontSize="2xl"
+                      fontWeight="bold"
+                    />
+                    <StatHelpText color="gray.500" fontSize="xs">
+                      Waiting for players
+                    </StatHelpText>
+                  </Stat>
+                </CardBody>
+              </Card>
+            </ProgressiveLoader>
 
-          <Card bg={cardBg} border="1px solid" borderColor={borderColor}>
-            <CardBody>
-              <Stat>
-                <StatLabel color="gray.400" fontSize="sm" fontWeight="medium">
-                  Completed
-                </StatLabel>
-                <StatNumber color="purple.400" fontSize="2xl" fontWeight="bold">
-                  {statsLoading ? '...' : completedTournaments}
-                </StatNumber>
-                <StatHelpText color="gray.500" fontSize="xs">
-                  Finished games
-                </StatHelpText>
-              </Stat>
-            </CardBody>
-          </Card>
-        </SimpleGrid>
+            <ProgressiveLoader isLoading={false} delay={300} animation="scale">
+              <Card bg={cardBg} border="1px solid" borderColor={borderColor}>
+                <CardBody>
+                  <Stat>
+                    <StatLabel color="gray.400" fontSize="sm" fontWeight="medium">
+                      Completed
+                    </StatLabel>
+                    <StatLoader
+                      value={completedTournaments}
+                      isLoading={statsLoading}
+                      delay={300}
+                      color="purple.400"
+                      fontSize="2xl"
+                      fontWeight="bold"
+                    />
+                    <StatHelpText color="gray.500" fontSize="xs">
+                      Finished games
+                    </StatHelpText>
+                  </Stat>
+                </CardBody>
+              </Card>
+            </ProgressiveLoader>
+          </SimpleGrid>
+        )}
 
         {/* Personal Statistics */}
         <Card bg={cardBg} border="1px solid" borderColor={borderColor}>
@@ -225,44 +283,102 @@ export const Dashboard = () => {
             </HStack>
           </CardHeader>
           <CardBody pt={0}>
-            {userStatsLoading ? (
-              <Progress size="lg" isIndeterminate />
-            ) : userStatsError ? (
-              <Text color="red.400" textAlign="center">
-                {userStatsError}
-              </Text>
+            {userStatsError ? (
+              <ErrorRetry
+                error={userStatsError}
+                onRetry={() => window.location.reload()} // Simple refresh for user stats
+                variant="inline"
+                title="Failed to Load User Statistics"
+              />
+            ) : userStatsLoading ? (
+              <UserStatsSkeleton count={6} />
             ) : (
               <SimpleGrid columns={{ base: 2, md: 4, lg: 6 }} spacing={6}>
-                <VStack spacing={2}>
-                  <Text color="gray.400" fontSize="sm" fontWeight="medium">Games Played</Text>
-                  <Text color="blue.400" fontSize="2xl" fontWeight="bold">{gamesPlayed}</Text>
-                  <Text color="gray.500" fontSize="xs">Total matches</Text>
-                </VStack>
-                <VStack spacing={2}>
-                  <Text color="gray.400" fontSize="sm" fontWeight="medium">Wins</Text>
-                  <Text color="green.400" fontSize="2xl" fontWeight="bold">{tournamentWins}</Text>
-                  <Text color="gray.500" fontSize="xs">Tournament Victories</Text>
-                </VStack>
-                <VStack spacing={2}>
-                  <Text color="gray.400" fontSize="sm" fontWeight="medium">Losses</Text>
-                  <Text color="red.400" fontSize="2xl" fontWeight="bold">{losses}</Text>
-                  <Text color="gray.500" fontSize="xs">Defeats</Text>
-                </VStack>
-                <VStack spacing={2}>
-                  <Text color="gray.400" fontSize="sm" fontWeight="medium">Win Rate</Text>
-                  <Text color="purple.400" fontSize="2xl" fontWeight="bold">{winRate}%</Text>
-                  <Text color="gray.500" fontSize="xs">Success rate</Text>
-                </VStack>
-                <VStack spacing={2}>
-                  <Text color="gray.400" fontSize="sm" fontWeight="medium">Tokens Won</Text>
-                  <Text color="green.400" fontSize="2xl" fontWeight="bold">{tokensWon}</Text>
-                  <Text color="gray.500" fontSize="xs">EGLD earned</Text>
-                </VStack>
-                <VStack spacing={2}>
-                  <Text color="gray.400" fontSize="sm" fontWeight="medium">Tokens Spent</Text>
-                  <Text color="red.400" fontSize="2xl" fontWeight="bold">{tokensSpent}</Text>
-                  <Text color="gray.500" fontSize="xs">EGLD invested</Text>
-                </VStack>
+                <ProgressiveLoader isLoading={false} delay={0} animation="fade">
+                  <VStack spacing={2}>
+                    <Text color="gray.400" fontSize="sm" fontWeight="medium">Games Played</Text>
+                    <StatLoader
+                      value={gamesPlayed}
+                      isLoading={userStatsLoading}
+                      delay={0}
+                      color="blue.400"
+                      fontSize="2xl"
+                      fontWeight="bold"
+                    />
+                    <Text color="gray.500" fontSize="xs">Total matches</Text>
+                  </VStack>
+                </ProgressiveLoader>
+                <ProgressiveLoader isLoading={false} delay={100} animation="fade">
+                  <VStack spacing={2}>
+                    <Text color="gray.400" fontSize="sm" fontWeight="medium">Wins</Text>
+                    <StatLoader
+                      value={tournamentWins}
+                      isLoading={userStatsLoading}
+                      delay={100}
+                      color="green.400"
+                      fontSize="2xl"
+                      fontWeight="bold"
+                    />
+                    <Text color="gray.500" fontSize="xs">Tournament Victories</Text>
+                  </VStack>
+                </ProgressiveLoader>
+                <ProgressiveLoader isLoading={false} delay={200} animation="fade">
+                  <VStack spacing={2}>
+                    <Text color="gray.400" fontSize="sm" fontWeight="medium">Losses</Text>
+                    <StatLoader
+                      value={losses}
+                      isLoading={userStatsLoading}
+                      delay={200}
+                      color="red.400"
+                      fontSize="2xl"
+                      fontWeight="bold"
+                    />
+                    <Text color="gray.500" fontSize="xs">Defeats</Text>
+                  </VStack>
+                </ProgressiveLoader>
+                <ProgressiveLoader isLoading={false} delay={300} animation="fade">
+                  <VStack spacing={2}>
+                    <Text color="gray.400" fontSize="sm" fontWeight="medium">Win Rate</Text>
+                    <StatLoader
+                      value={winRate}
+                      isLoading={userStatsLoading}
+                      delay={300}
+                      suffix="%"
+                      color="purple.400"
+                      fontSize="2xl"
+                      fontWeight="bold"
+                    />
+                    <Text color="gray.500" fontSize="xs">Success rate</Text>
+                  </VStack>
+                </ProgressiveLoader>
+                <ProgressiveLoader isLoading={false} delay={400} animation="fade">
+                  <VStack spacing={2}>
+                    <Text color="gray.400" fontSize="sm" fontWeight="medium">Tokens Won</Text>
+                    <StatLoader
+                      value={tokensWon}
+                      isLoading={userStatsLoading}
+                      delay={400}
+                      color="green.400"
+                      fontSize="2xl"
+                      fontWeight="bold"
+                    />
+                    <Text color="gray.500" fontSize="xs">EGLD earned</Text>
+                  </VStack>
+                </ProgressiveLoader>
+                <ProgressiveLoader isLoading={false} delay={500} animation="fade">
+                  <VStack spacing={2}>
+                    <Text color="gray.400" fontSize="sm" fontWeight="medium">Tokens Spent</Text>
+                    <StatLoader
+                      value={tokensSpent}
+                      isLoading={userStatsLoading}
+                      delay={500}
+                      color="red.400"
+                      fontSize="2xl"
+                      fontWeight="bold"
+                    />
+                    <Text color="gray.500" fontSize="xs">EGLD invested</Text>
+                  </VStack>
+                </ProgressiveLoader>
               </SimpleGrid>
             )}
           </CardBody>

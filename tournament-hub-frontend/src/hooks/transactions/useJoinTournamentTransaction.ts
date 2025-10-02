@@ -12,7 +12,7 @@ import { tournamentHubContract } from '../../contracts';
 const JOIN_TRANSACTION_INFO = {
     processingMessage: 'Joining tournament... Please confirm in your wallet.',
     errorMessage: 'An error occurred while joining the tournament.',
-    successMessage: 'Successfully joined the tournament!'
+    successMessage: 'Transaction submitted! Waiting for blockchain confirmation...'
 };
 
 function padEven(hex: string) {

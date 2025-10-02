@@ -34,6 +34,8 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { useWallet } from '../contexts/WalletContext';
 import { useCreateTournamentTransaction } from '../hooks/transactions/useCreateTournamentTransaction';
 import { GAME_CONFIGS } from '../services/tournamentService';
+import { PrimaryButton } from '../components/EnhancedButton';
+import { useTransactionButton } from '../hooks/useButtonState';
 
 interface FormData {
     name: string;
@@ -65,8 +67,25 @@ export const CreateTournament: React.FC = () => {
     });
 
     const [errors, setErrors] = useState<FormErrors>({});
-    const [isSubmitting, setIsSubmitting] = useState(false);
     const formRef = useRef<HTMLFormElement>(null);
+
+    // Enhanced button state management
+    const createButtonState = useTransactionButton({
+        successMessage: 'Transaction confirmed! Tournament created successfully!',
+        errorMessage: 'Failed to create tournament. Please try again.',
+        onSuccess: async (result) => {
+            // Navigate to the created tournament
+            if (result && result.tournamentId) {
+                const tournamentId = result.tournamentId;
+                // Ensure tournamentId is a string or number, not an object
+                const idString = typeof tournamentId === 'object' ? JSON.stringify(tournamentId) : String(tournamentId);
+                window.location.href = `/tournaments/${idString}`;
+            } else {
+                // Fallback: redirect to tournaments list
+                window.location.href = '/tournaments';
+            }
+        },
+    });
 
     // Prize Pool Slider Configuration
     const prizePoolSteps = ['0.01', '0.05', '0.1', '0.25', '0.5', '1', '2', '5', '10', '25', '50', '100'];
@@ -171,22 +190,14 @@ export const CreateTournament: React.FC = () => {
             return;
         }
 
-        setIsSubmitting(true);
-
-        try {
-            // Debug logging
-            // Creating tournament...
-
-            const sessionId = await createTournament({
+        await createButtonState.execute(async () => {
+            const result = await createTournament({
                 gameId: parseInt(formData.gameType),
                 maxPlayers: parseInt(formData.maxPlayers),
                 minPlayers: parseInt(formData.minPlayers),
                 entryFee: formData.entryFee,
                 name: formData.name.trim(),
             });
-
-            // Redirect to tournaments page after successful creation
-            window.location.href = '/tournaments';
 
             // Reset form
             setFormData({
@@ -196,11 +207,9 @@ export const CreateTournament: React.FC = () => {
                 minPlayers: '2',
                 entryFee: '0.1',
             });
-        } catch (error) {
-            console.error('Error creating tournament:', error);
-        } finally {
-            setIsSubmitting(false);
-        }
+
+            return result; // Return the full result object
+        });
     };
 
     const handleInputChange = (field: keyof FormData, value: string) => {
@@ -1313,12 +1322,14 @@ export const CreateTournament: React.FC = () => {
                                     </HStack>
                                 </Box>
 
-                                <Button
+                                <PrimaryButton
                                     type="submit"
                                     size="lg"
                                     width="full"
-                                    isLoading={isSubmitting}
-                                    loadingText="Creating Tournament..."
+                                    status={createButtonState.status}
+                                    loadingText="Waiting for confirmation..."
+                                    successText="Tournament Created!"
+                                    errorText="Creation Failed"
                                     isDisabled={!isConnected}
                                     bgGradient="linear(135deg, blue.500, purple.600, pink.500)"
                                     color="white"
@@ -1327,6 +1338,7 @@ export const CreateTournament: React.FC = () => {
                                     py={6}
                                     borderRadius="xl"
                                     boxShadow="0 10px 30px rgba(59, 130, 246, 0.4)"
+                                    enableShimmer={createButtonState.isLoading}
                                     _hover={{
                                         transform: "translateY(-3px)",
                                         boxShadow: "0 15px 40px rgba(59, 130, 246, 0.6)",
@@ -1361,7 +1373,7 @@ export const CreateTournament: React.FC = () => {
                                         }}
                                     />
                                     <Text>Create Tournament</Text>
-                                </Button>
+                                </PrimaryButton>
                             </VStack>
                         </form>
                     </CardBody>
