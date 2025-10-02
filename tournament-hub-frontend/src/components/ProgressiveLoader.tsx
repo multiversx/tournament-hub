@@ -228,9 +228,10 @@ export const StatLoader: React.FC<StatLoaderProps> = ({
                 fontWeight={fontWeight}
                 transform={isAnimating ? 'scale(1.05)' : 'scale(1)'}
                 transition="transform 0.2s ease"
-            >
-                {prefix}{formatValue ? formatValue(displayValue) : displayValue.toLocaleString()}{suffix}
-            </Text>
+                dangerouslySetInnerHTML={{
+                    __html: prefix + (formatValue ? formatValue(displayValue) : displayValue.toLocaleString()) + suffix
+                }}
+            />
         </ProgressiveLoader>
     );
 };
