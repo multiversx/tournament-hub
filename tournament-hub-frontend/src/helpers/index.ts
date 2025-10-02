@@ -1886,6 +1886,17 @@ export async function getTournamentDetailsFromContract(tournamentId: number | bi
                 return null;
             }
 
+            // Check for other error conditions
+            if (!response.ok) {
+                console.error(`getTournamentDetailsFromContract: HTTP error ${response.status} for tournament ${tournamentId}`);
+                return null;
+            }
+
+            if (!data.data || !data.data.data || !data.data.data.returnData) {
+                console.error(`getTournamentDetailsFromContract: Invalid response structure for tournament ${tournamentId}:`, data);
+                return null;
+            }
+
             if (data.data && data.data.data && data.data.data.returnData && data.data.data.returnData.length > 0) {
                 const hex = data.data.data.returnData[0];
                 console.log(`getTournamentDetailsFromContract: Parsing hex for tournament ${tournamentId}:`, hex);
@@ -4283,13 +4294,18 @@ function parsePrizeStatsHex(hex: string) {
         const maxPrizeWon = readBigUint();
         const totalPrizeDistributed = readBigUint();
 
+        // Convert from wei to EGLD with better precision
+        const maxPrizeWonEGLD = Number(maxPrizeWon) / 1e18;
+        const totalPrizeDistributedEGLD = Number(totalPrizeDistributed) / 1e18;
+
         const result = {
-            max_prize_won: Number(maxPrizeWon) / 1e18, // Convert from wei to EGLD
-            total_prize_distributed: Number(totalPrizeDistributed) / 1e18 // Convert from wei to EGLD
+            max_prize_won: Math.round(maxPrizeWonEGLD * 1e18) / 1e18, // Round to avoid floating point precision issues
+            total_prize_distributed: Math.round(totalPrizeDistributedEGLD * 1e18) / 1e18
         };
 
         console.log('parsePrizeStatsHex - Raw BigInt values:', { maxPrizeWon, totalPrizeDistributed });
-        console.log('parsePrizeStatsHex - Converted to EGLD:', result);
+        console.log('parsePrizeStatsHex - Before rounding:', { maxPrizeWonEGLD, totalPrizeDistributedEGLD });
+        console.log('parsePrizeStatsHex - After rounding:', result);
         console.log('parsePrizeStatsHex - Final result:', result);
         return result;
     } catch (error) {

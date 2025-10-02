@@ -20,21 +20,43 @@ import {
 import { Trophy, Users, Calendar, Plus, Gamepad2, Coins, Gem } from 'lucide-react';
 import { PageWrapper } from 'wrappers';
 import { useTournamentStats } from '../../hooks/useTournamentStatsEventBased';
+import { useEnhancedTournamentStats } from '../../hooks/useEnhancedTournamentStats';
 import { UpcomingTournaments } from '../../components/UpcomingTournaments';
 import { useWallet } from '../../contexts/WalletContext';
 import { triggerBlockchainEventPolling, resetBlockchainEventTimestamp } from '../../services/BlockchainEventService';
+import { SkeletonLoader, StatCardSkeleton } from '../../components/SkeletonLoader';
+import { ProgressiveLoader, StatLoader } from '../../components/ProgressiveLoader';
+import { ErrorRetry } from '../../components/ErrorRetry';
 
 export const Home = () => {
   const isMobile = useBreakpointValue({ base: true, md: false });
-  const { totalTournaments, joiningTournaments, readyToStartTournaments, activeTournaments, totalActiveTournaments, completedTournaments, highestAmountWon, totalAmountPlayed, maxPrizeWon, totalPrizeDistributed, loading, error, manualRefresh } = useTournamentStats();
+  // Use enhanced stats hook with caching and better loading states
+  const {
+    totalTournaments,
+    joiningTournaments,
+    readyToStartTournaments,
+    activeTournaments,
+    completedTournaments,
+    maxPrizeWon,
+    totalPrizeDistributed,
+    loading: statsLoading,
+    refreshing: statsRefreshing,
+    error: statsError,
+    lastUpdated,
+    hasCachedData,
+    refreshStats
+  } = useEnhancedTournamentStats();
+
+  // Debug logging
+  console.log('Home component - Prize values:', { maxPrizeWon, totalPrizeDistributed });
   const { isConnected } = useWallet();
 
   // Listen for tournament creation events to refresh stats
   useEffect(() => {
     const handleTournamentCreated = (event: CustomEvent) => {
       console.log('Home page: Tournament created event received, refreshing stats...', event.detail);
-      if (manualRefresh) {
-        manualRefresh();
+      if (refreshStats) {
+        refreshStats();
       }
     };
 
@@ -43,7 +65,7 @@ export const Home = () => {
     return () => {
       window.removeEventListener('tournament_created', handleTournamentCreated as EventListener);
     };
-  }, [manualRefresh]);
+  }, [refreshStats]);
 
   // Add active polling like the Tournaments page to ensure updates
   useEffect(() => {
@@ -81,8 +103,8 @@ export const Home = () => {
 
         if (tournamentEvents.length > 0) {
           console.log('Home page: New tournament events detected, refreshing stats...', tournamentEvents);
-          if (manualRefresh) {
-            manualRefresh();
+          if (refreshStats) {
+            refreshStats();
           }
         }
       } catch (error) {
@@ -97,20 +119,20 @@ export const Home = () => {
       mounted = false;
       clearInterval(interval);
     };
-  }, [manualRefresh]);
+  }, [refreshStats]);
 
   // Refresh stats when page becomes visible (user switches back to tab)
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (!document.hidden && manualRefresh) {
+      if (!document.hidden && refreshStats) {
         console.log('Home page: Page became visible, refreshing stats...');
-        manualRefresh();
+        refreshStats();
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [manualRefresh]);
+  }, [refreshStats]);
 
   const handleTestEvent = () => {
     console.log('Testing event system...');
@@ -351,576 +373,675 @@ export const Home = () => {
                   </HStack>
 
 
-                  <SimpleGrid columns={{ base: 2, md: 3, lg: 4 }} spacing={{ base: 6, md: 6, lg: 8 }} w="full">
-                    <VStack spacing={3}>
-                      <Box
-                        p={3}
-                        w="88px"
-                        h="88px"
-                        display="flex"
-                        alignItems="center"
-                        justifyContent="center"
-                        bgGradient="linear(135deg, yellow.500, orange.600)"
-                        borderRadius="xl"
-                        boxShadow="0 8px 20px rgba(250, 204, 21, 0.3)"
-                        border={error ? "2px solid" : "none"}
-                        borderColor={error ? "orange.400" : "transparent"}
-                        _hover={{
-                          transform: "scale(1.05)",
-                          boxShadow: "0 12px 25px rgba(250, 204, 21, 0.4)"
-                        }}
-                        transition="all 0.3s ease"
-                        position="relative"
-                      >
-                        <Text fontSize="3xl" fontWeight="bold" color="white">
-                          {joiningTournaments}
-                        </Text>
-                      </Box>
-                      <Text fontSize="sm" color="yellow.300" fontWeight="semibold">Joining</Text>
-                    </VStack>
-
-                    <VStack spacing={3}>
-                      <Box
-                        p={3}
-                        w="88px"
-                        h="88px"
-                        display="flex"
-                        alignItems="center"
-                        justifyContent="center"
-                        bgGradient="linear(135deg, blue.500, blue.600)"
-                        borderRadius="xl"
-                        boxShadow="0 8px 20px rgba(59, 130, 246, 0.3)"
-                        border={error ? "2px solid" : "none"}
-                        borderColor={error ? "orange.400" : "transparent"}
-                        _hover={{
-                          transform: "scale(1.05)",
-                          boxShadow: "0 12px 25px rgba(59, 130, 246, 0.4)"
-                        }}
-                        transition="all 0.3s ease"
-                        position="relative"
-                      >
-                        <Text fontSize="3xl" fontWeight="bold" color="white">
-                          {readyToStartTournaments}
-                        </Text>
-                      </Box>
-                      <Text fontSize="sm" color="blue.300" fontWeight="semibold">Ready to Start</Text>
-                    </VStack>
-
-                    <VStack spacing={3}>
-                      <Box
-                        p={3}
-                        w="88px"
-                        h="88px"
-                        display="flex"
-                        alignItems="center"
-                        justifyContent="center"
-                        bgGradient="linear(135deg, green.500, green.600)"
-                        borderRadius="xl"
-                        boxShadow="0 8px 20px rgba(34, 197, 94, 0.3)"
-                        border={error ? "2px solid" : "none"}
-                        borderColor={error ? "orange.400" : "transparent"}
-                        _hover={{
-                          transform: "scale(1.05)",
-                          boxShadow: "0 12px 25px rgba(34, 197, 94, 0.4)"
-                        }}
-                        transition="all 0.3s ease"
-                        position="relative"
-                      >
-                        <Text fontSize="3xl" fontWeight="bold" color="white">
-                          {activeTournaments}
-                        </Text>
-                      </Box>
-                      <Text fontSize="sm" color="green.300" fontWeight="semibold">Playing</Text>
-                    </VStack>
-
-                    <VStack spacing={3}>
-                      <Box
-                        p={3}
-                        w="88px"
-                        h="88px"
-                        display="flex"
-                        alignItems="center"
-                        justifyContent="center"
-                        bgGradient="linear(135deg, purple.500, pink.600)"
-                        borderRadius="xl"
-                        boxShadow="0 8px 20px rgba(147, 51, 234, 0.3)"
-                        border={error ? "2px solid" : "none"}
-                        borderColor={error ? "orange.400" : "transparent"}
-                        _hover={{
-                          transform: "scale(1.05)",
-                          boxShadow: "0 12px 25px rgba(147, 51, 234, 0.4)"
-                        }}
-                        transition="all 0.3s ease"
-                        position="relative"
-                      >
-                        <Text fontSize="3xl" fontWeight="bold" color="white">
-                          {completedTournaments}
-                        </Text>
-                      </Box>
-                      <Text fontSize="sm" color="purple.300" fontWeight="semibold">Completed</Text>
-                    </VStack>
-
-                  </SimpleGrid>
-
-                  {/* Prize Statistics Row - Separate grid for better spacing */}
-                  <SimpleGrid columns={{ base: 2, lg: 2 }} spacing={{ base: 6, lg: 12 }} w="full" mt={6}>
-                    <VStack spacing={3}>
-                      <Box
-                        p={3}
-                        w="88px"
-                        h="88px"
-                        display="flex"
-                        alignItems="center"
-                        justifyContent="center"
-                        bgGradient="linear(135deg, #00D4AA, #00B894)"
-                        borderRadius="xl"
-                        boxShadow="0 8px 20px rgba(0, 212, 170, 0.3)"
-                        border={error ? "2px solid" : "none"}
-                        borderColor={error ? "orange.400" : "transparent"}
-                        _hover={{
-                          transform: "scale(1.05)",
-                          boxShadow: "0 12px 25px rgba(0, 212, 170, 0.4)"
-                        }}
-                        transition="all 0.3s ease"
-                        position="relative"
-                      >
-                        <VStack spacing={1}>
-                          <Text fontSize="3xl" fontWeight="bold" color="white">
-                            {maxPrizeWon.toFixed(3)}
-                          </Text>
-                          <Text fontSize="xs" color="rgba(255,255,255,0.7)" fontWeight="medium">
-                            EGLD
-                          </Text>
-                        </VStack>
-                      </Box>
-                      <Text fontSize="sm" color="#00D4AA" fontWeight="semibold">Max Prize</Text>
-                      {maxPrizeWon === 0 && (
-                        <Text fontSize="xs" color="gray.400" textAlign="center">
-                          No prizes won yet
-                        </Text>
-                      )}
-                    </VStack>
-
-                    <VStack spacing={3}>
-                      <Box
-                        p={3}
-                        w="88px"
-                        h="88px"
-                        display="flex"
-                        alignItems="center"
-                        justifyContent="center"
-                        bgGradient="linear(135deg, #00D4AA, #00A085)"
-                        borderRadius="xl"
-                        boxShadow="0 8px 20px rgba(0, 212, 170, 0.3)"
-                        border={error ? "2px solid" : "none"}
-                        borderColor={error ? "orange.400" : "transparent"}
-                        _hover={{
-                          transform: "scale(1.05)",
-                          boxShadow: "0 12px 25px rgba(0, 212, 170, 0.4)"
-                        }}
-                        transition="all 0.3s ease"
-                        position="relative"
-                      >
-                        <VStack spacing={1}>
-                          <Text fontSize="3xl" fontWeight="bold" color="white">
-                            {totalPrizeDistributed.toFixed(3)}
-                          </Text>
-                          <Text fontSize="xs" color="rgba(255,255,255,0.7)" fontWeight="medium">
-                            EGLD
-                          </Text>
-                        </VStack>
-                      </Box>
-                      <Text fontSize="sm" color="#00D4AA" fontWeight="semibold" textAlign="center">Total Prize Distribution</Text>
-                      {totalPrizeDistributed === 0 && (
-                        <Text fontSize="xs" color="gray.400" textAlign="center">
-                          No prizes distributed yet
-                        </Text>
-                      )}
-                    </VStack>
-                  </SimpleGrid>
-                </VStack>
-              </Box>
-
-              {(error || loading) && (
-                <HStack spacing={3} mt={2} justify="center">
-                  {loading && (
-                    <HStack spacing={2}>
-                      <Spinner size="xs" color="blue.400" />
-                      <Text fontSize="xs" color="blue.400" textAlign="center">
-                        Updating...
-                      </Text>
-                    </HStack>
-                  )}
-                  {error && (
+                  {statsError ? (
+                    <ErrorRetry
+                      error={statsError}
+                      onRetry={refreshStats}
+                      isRetrying={statsRefreshing}
+                      variant="inline"
+                      title="Failed to Load Tournament Statistics"
+                    />
+                  ) : statsLoading && !hasCachedData ? (
+                    <SkeletonLoader variant="stat-card" count={4} />
+                  ) : (
                     <>
-                      <Text fontSize="xs" color="orange.400" textAlign="center">
-                        Stats may be outdated
-                      </Text>
-                      <Button
-                        size="xs"
-                        colorScheme="orange"
-                        variant="ghost"
-                        onClick={manualRefresh}
-                        leftIcon={<Trophy size={14} />}
-                      >
-                        Refresh
-                      </Button>
+                      <SimpleGrid columns={{ base: 2, md: 3, lg: 4 }} spacing={{ base: 6, md: 6, lg: 8 }} w="full">
+                        <ProgressiveLoader isLoading={false} delay={0} animation="scale">
+                          <VStack spacing={3}>
+                            <Box
+                              p={3}
+                              w="88px"
+                              h="88px"
+                              display="flex"
+                              alignItems="center"
+                              justifyContent="center"
+                              bgGradient="linear(135deg, yellow.500, orange.600)"
+                              borderRadius="xl"
+                              boxShadow="0 8px 20px rgba(250, 204, 21, 0.3)"
+                              border={statsError ? "2px solid" : "none"}
+                              borderColor={statsError ? "orange.400" : "transparent"}
+                              _hover={{
+                                transform: "scale(1.05)",
+                                boxShadow: "0 12px 25px rgba(250, 204, 21, 0.4)"
+                              }}
+                              transition="all 0.3s ease"
+                              position="relative"
+                            >
+                              <StatLoader
+                                value={joiningTournaments}
+                                isLoading={statsLoading}
+                                delay={0}
+                                color="white"
+                                fontSize="3xl"
+                                fontWeight="bold"
+                              />
+                            </Box>
+                            <Text fontSize="sm" color="yellow.300" fontWeight="semibold">Joining</Text>
+                          </VStack>
+                        </ProgressiveLoader>
+
+                        <ProgressiveLoader isLoading={false} delay={100} animation="scale">
+                          <VStack spacing={3}>
+                            <Box
+                              p={3}
+                              w="88px"
+                              h="88px"
+                              display="flex"
+                              alignItems="center"
+                              justifyContent="center"
+                              bgGradient="linear(135deg, blue.500, blue.600)"
+                              borderRadius="xl"
+                              boxShadow="0 8px 20px rgba(59, 130, 246, 0.3)"
+                              border={statsError ? "2px solid" : "none"}
+                              borderColor={statsError ? "orange.400" : "transparent"}
+                              _hover={{
+                                transform: "scale(1.05)",
+                                boxShadow: "0 12px 25px rgba(59, 130, 246, 0.4)"
+                              }}
+                              transition="all 0.3s ease"
+                              position="relative"
+                            >
+                              <StatLoader
+                                value={readyToStartTournaments}
+                                isLoading={statsLoading}
+                                delay={100}
+                                color="white"
+                                fontSize="3xl"
+                                fontWeight="bold"
+                              />
+                            </Box>
+                            <Text fontSize="sm" color="blue.300" fontWeight="semibold">Ready to Start</Text>
+                          </VStack>
+                        </ProgressiveLoader>
+
+                        <ProgressiveLoader isLoading={false} delay={200} animation="scale">
+                          <VStack spacing={3}>
+                            <Box
+                              p={3}
+                              w="88px"
+                              h="88px"
+                              display="flex"
+                              alignItems="center"
+                              justifyContent="center"
+                              bgGradient="linear(135deg, green.500, green.600)"
+                              borderRadius="xl"
+                              boxShadow="0 8px 20px rgba(34, 197, 94, 0.3)"
+                              border={statsError ? "2px solid" : "none"}
+                              borderColor={statsError ? "orange.400" : "transparent"}
+                              _hover={{
+                                transform: "scale(1.05)",
+                                boxShadow: "0 12px 25px rgba(34, 197, 94, 0.4)"
+                              }}
+                              transition="all 0.3s ease"
+                              position="relative"
+                            >
+                              <StatLoader
+                                value={activeTournaments}
+                                isLoading={statsLoading}
+                                delay={200}
+                                color="white"
+                                fontSize="3xl"
+                                fontWeight="bold"
+                              />
+                            </Box>
+                            <Text fontSize="sm" color="green.300" fontWeight="semibold">Playing</Text>
+                          </VStack>
+                        </ProgressiveLoader>
+
+                        <ProgressiveLoader isLoading={false} delay={300} animation="scale">
+                          <VStack spacing={3}>
+                            <Box
+                              p={3}
+                              w="88px"
+                              h="88px"
+                              display="flex"
+                              alignItems="center"
+                              justifyContent="center"
+                              bgGradient="linear(135deg, purple.500, pink.600)"
+                              borderRadius="xl"
+                              boxShadow="0 8px 20px rgba(147, 51, 234, 0.3)"
+                              border={statsError ? "2px solid" : "none"}
+                              borderColor={statsError ? "orange.400" : "transparent"}
+                              _hover={{
+                                transform: "scale(1.05)",
+                                boxShadow: "0 12px 25px rgba(147, 51, 234, 0.4)"
+                              }}
+                              transition="all 0.3s ease"
+                              position="relative"
+                            >
+                              <StatLoader
+                                value={completedTournaments}
+                                isLoading={statsLoading}
+                                delay={300}
+                                color="white"
+                                fontSize="3xl"
+                                fontWeight="bold"
+                              />
+                            </Box>
+                            <Text fontSize="sm" color="purple.300" fontWeight="semibold">Completed</Text>
+                          </VStack>
+                        </ProgressiveLoader>
+
+                      </SimpleGrid>
+
+                      {/* Prize Statistics Row - Separate grid for better spacing */}
+                      <SimpleGrid columns={{ base: 2, lg: 2 }} spacing={{ base: 6, lg: 12 }} w="full" mt={6}>
+                        <VStack spacing={3}>
+                          <Box
+                            p={3}
+                            w="88px"
+                            h="88px"
+                            display="flex"
+                            alignItems="center"
+                            justifyContent="center"
+                            bgGradient="linear(135deg, #00D4AA, #00B894)"
+                            borderRadius="xl"
+                            boxShadow="0 8px 20px rgba(0, 212, 170, 0.3)"
+                            border={statsError ? "2px solid" : "none"}
+                            borderColor={statsError ? "orange.400" : "transparent"}
+                            _hover={{
+                              transform: "scale(1.05)",
+                              boxShadow: "0 12px 25px rgba(0, 212, 170, 0.4)"
+                            }}
+                            transition="all 0.3s ease"
+                            position="relative"
+                          >
+                            <VStack spacing={1}>
+                              <Box>
+                                {statsLoading ? (
+                                  <Text
+                                    color="white"
+                                    fontSize="3xl"
+                                    fontWeight="bold"
+                                    opacity={0.6}
+                                    filter="blur(1px)"
+                                  >
+                                    ---
+                                  </Text>
+                                ) : (
+                                  <Text
+                                    color="white"
+                                    fontSize="3xl"
+                                    fontWeight="bold"
+                                    dangerouslySetInnerHTML={{
+                                      __html: (() => {
+                                        const integer = Math.floor(maxPrizeWon);
+                                        const decimal = Math.round((maxPrizeWon - integer) * 100);
+                                        return `${integer}<sup style="font-size: 0.6em; vertical-align: super;">${decimal}</sup>`;
+                                      })()
+                                    }}
+                                  />
+                                )}
+                              </Box>
+                              <Text fontSize="xs" color="rgba(255,255,255,0.7)" fontWeight="medium">
+                                EGLD
+                              </Text>
+                            </VStack>
+                          </Box>
+                          <Text fontSize="sm" color="#00D4AA" fontWeight="semibold">Max Prize</Text>
+                          {maxPrizeWon === 0 && (
+                            <Text fontSize="xs" color="gray.400" textAlign="center">
+                              No prizes won yet
+                            </Text>
+                          )}
+                        </VStack>
+
+                        <VStack spacing={3}>
+                          <Box
+                            p={3}
+                            w="88px"
+                            h="88px"
+                            display="flex"
+                            alignItems="center"
+                            justifyContent="center"
+                            bgGradient="linear(135deg, #00D4AA, #00A085)"
+                            borderRadius="xl"
+                            boxShadow="0 8px 20px rgba(0, 212, 170, 0.3)"
+                            border={statsError ? "2px solid" : "none"}
+                            borderColor={statsError ? "orange.400" : "transparent"}
+                            _hover={{
+                              transform: "scale(1.05)",
+                              boxShadow: "0 12px 25px rgba(0, 212, 170, 0.4)"
+                            }}
+                            transition="all 0.3s ease"
+                            position="relative"
+                          >
+                            <VStack spacing={1}>
+                              <Box>
+                                {statsLoading ? (
+                                  <Text
+                                    color="white"
+                                    fontSize="3xl"
+                                    fontWeight="bold"
+                                    opacity={0.6}
+                                    filter="blur(1px)"
+                                  >
+                                    ---
+                                  </Text>
+                                ) : (
+                                  <Text
+                                    color="white"
+                                    fontSize="3xl"
+                                    fontWeight="bold"
+                                    dangerouslySetInnerHTML={{
+                                      __html: (() => {
+                                        const integer = Math.floor(totalPrizeDistributed);
+                                        const decimal = Math.round((totalPrizeDistributed - integer) * 100);
+                                        return `${integer}<sup style="font-size: 0.6em; vertical-align: super;">${decimal}</sup>`;
+                                      })()
+                                    }}
+                                  />
+                                )}
+                              </Box>
+                              <Text fontSize="xs" color="rgba(255,255,255,0.7)" fontWeight="medium">
+                                EGLD
+                              </Text>
+                            </VStack>
+                          </Box>
+                          <Text fontSize="sm" color="#00D4AA" fontWeight="semibold" textAlign="center">Total Prize Distribution</Text>
+                          {totalPrizeDistributed === 0 && (
+                            <Text fontSize="xs" color="gray.400" textAlign="center">
+                              No prizes distributed yet
+                            </Text>
+                          )}
+                        </VStack>
+                      </SimpleGrid>
                     </>
                   )}
-                </HStack>
-              )}
 
-              {/* Debug button for prize stats */}
-              <HStack justify="center" mt={4}>
-                <Button
-                  size="sm"
-                  colorScheme="blue"
-                  variant="outline"
-                  onClick={manualRefresh}
-                  leftIcon={<Trophy size={14} />}
-                >
-                  Force Refresh Stats
-                </Button>
-              </HStack>
+                  {(statsError || statsRefreshing) && (
+                    <HStack spacing={3} mt={2} justify="center">
+                      {statsRefreshing && (
+                        <HStack spacing={2}>
+                          <Spinner size="xs" color="blue.400" />
+                          <Text fontSize="xs" color="blue.400" textAlign="center">
+                            {hasCachedData ? 'Using cached data, refreshing...' : 'Updating...'}
+                          </Text>
+                        </HStack>
+                      )}
+                      {statsError && (
+                        <>
+                          <Text fontSize="xs" color="orange.400" textAlign="center">
+                            Stats may be outdated
+                          </Text>
+                          <Button
+                            size="xs"
+                            colorScheme="orange"
+                            variant="ghost"
+                            onClick={refreshStats}
+                            leftIcon={<Trophy size={14} />}
+                          >
+                            Refresh
+                          </Button>
+                        </>
+                      )}
+                    </HStack>
+                  )}
 
-              {/* Cool Action Buttons with Enhanced Gradients */}
-              <HStack spacing={4} flexWrap="wrap" justify="center" w="full">
-                <Button
-                  as={RouterLink}
-                  to="/tournaments"
-                  leftIcon={<Trophy size={18} />}
-                  size="lg"
-                  px={8}
-                  py={6}
-                  fontSize="lg"
-                  fontWeight="bold"
-                  bgGradient="linear(135deg, blue.500, purple.600, blue.700)"
-                  color="white"
-                  borderRadius="xl"
-                  boxShadow="0 10px 30px rgba(59, 130, 246, 0.4)"
-                  _hover={{
-                    bgGradient: "linear(135deg, blue.600, purple.700, blue.800)",
-                    transform: 'translateY(-3px)',
-                    boxShadow: '0 15px 40px rgba(59, 130, 246, 0.6)'
-                  }}
-                  _active={{
-                    transform: 'translateY(-1px)',
-                    boxShadow: '0 8px 25px rgba(59, 130, 246, 0.5)'
-                  }}
-                  transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-                  position="relative"
-                  overflow="hidden"
-                >
-                  {/* Animated background effect */}
-                  <Box
-                    position="absolute"
-                    top={0}
-                    left="-100%"
-                    w="100%"
-                    h="100%"
-                    bgGradient="linear(90deg, transparent, rgba(255,255,255,0.2), transparent)"
-                    transition="left 0.5s ease"
-                    _groupHover={{
-                      left: "100%"
-                    }}
-                  />
-                  <Text>View Tournaments</Text>
-                </Button>
+                  {/* Debug button for prize stats */}
+                  <HStack justify="center" mt={4}>
+                    <Button
+                      size="sm"
+                      colorScheme="blue"
+                      variant="outline"
+                      onClick={refreshStats}
+                      leftIcon={<Trophy size={14} />}
+                    >
+                      Force Refresh Stats
+                    </Button>
+                    <Button
+                      size="sm"
+                      colorScheme="red"
+                      variant="outline"
+                      onClick={() => {
+                        localStorage.clear();
+                        window.location.reload();
+                      }}
+                      leftIcon={<Trophy size={14} />}
+                    >
+                      Clear Cache & Reload
+                    </Button>
+                  </HStack>
 
-                <Button
-                  as={RouterLink}
-                  to="/tournaments/create"
-                  leftIcon={<Plus size={18} />}
-                  size="lg"
-                  px={8}
-                  py={6}
-                  fontSize="lg"
-                  fontWeight="bold"
-                  bgGradient="linear(135deg, green.500, emerald.600, green.700)"
-                  color="white"
-                  borderRadius="xl"
-                  boxShadow="0 10px 30px rgba(34, 197, 94, 0.4)"
-                  _hover={{
-                    bgGradient: "linear(135deg, green.600, emerald.700, green.800)",
-                    transform: 'translateY(-3px)',
-                    boxShadow: '0 15px 40px rgba(34, 197, 94, 0.6)'
-                  }}
-                  _active={{
-                    transform: 'translateY(-1px)',
-                    boxShadow: '0 8px 25px rgba(34, 197, 94, 0.5)'
-                  }}
-                  transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-                  position="relative"
-                  overflow="hidden"
-                >
-                  {/* Animated background effect */}
-                  <Box
-                    position="absolute"
-                    top={0}
-                    left="-100%"
-                    w="100%"
-                    h="100%"
-                    bgGradient="linear(90deg, transparent, rgba(255,255,255,0.2), transparent)"
-                    transition="left 0.5s ease"
-                    _groupHover={{
-                      left: "100%"
-                    }}
-                  />
-                  <Text>Create Tournament</Text>
-                </Button>
-              </HStack>
-            </VStack>
-          </Box>
+                  {/* Cool Action Buttons with Enhanced Gradients */}
+                  <HStack spacing={4} flexWrap="wrap" justify="center" w="full">
+                    <Button
+                      as={RouterLink}
+                      to="/tournaments"
+                      leftIcon={<Trophy size={18} />}
+                      size="lg"
+                      px={8}
+                      py={6}
+                      fontSize="lg"
+                      fontWeight="bold"
+                      bgGradient="linear(135deg, blue.500, purple.600, blue.700)"
+                      color="white"
+                      borderRadius="xl"
+                      boxShadow="0 10px 30px rgba(59, 130, 246, 0.4)"
+                      _hover={{
+                        bgGradient: "linear(135deg, blue.600, purple.700, blue.800)",
+                        transform: 'translateY(-3px)',
+                        boxShadow: '0 15px 40px rgba(59, 130, 246, 0.6)'
+                      }}
+                      _active={{
+                        transform: 'translateY(-1px)',
+                        boxShadow: '0 8px 25px rgba(59, 130, 246, 0.5)'
+                      }}
+                      transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                      position="relative"
+                      overflow="hidden"
+                    >
+                      {/* Animated background effect */}
+                      <Box
+                        position="absolute"
+                        top={0}
+                        left="-100%"
+                        w="100%"
+                        h="100%"
+                        bgGradient="linear(90deg, transparent, rgba(255,255,255,0.2), transparent)"
+                        transition="left 0.5s ease"
+                        _groupHover={{
+                          left: "100%"
+                        }}
+                      />
+                      <Text>View Tournaments</Text>
+                    </Button>
 
-
-          {/* Cool Features Grid */}
-          <VStack spacing={6} align="center">
-            <VStack spacing={3} align="center">
-              <Box position="relative">
-                <Heading
-                  size="xl"
-                  textAlign="center"
-                  fontWeight="bold"
-                  bgGradient="linear(135deg, blue.400, purple.500, pink.400)"
-                  bgClip="text"
-                >
-                  Why Choose Tournament Hub?
-                </Heading>
-              </Box>
-              <Text color="gray.400" textAlign="center" maxW="2xl" fontSize="md" fontWeight="medium">
-                Experience the future of competitive gaming on the blockchain
-              </Text>
-            </VStack>
-
-            <SimpleGrid columns={{ base: 1, md: 3 }} spacing={8} justifyItems="center">
-              <Box
-                p={8}
-                bgGradient="linear(135deg, gray.800, gray.900)"
-                borderRadius="2xl"
-                border="2px solid"
-                borderColor="gray.600"
-                position="relative"
-                overflow="hidden"
-                w="full"
-                maxW="sm"
-                _hover={{
-                  borderColor: "blue.400",
-                  transform: "translateY(-5px)",
-                  boxShadow: "0 25px 50px rgba(59, 130, 246, 0.3)"
-                }}
-                transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-              >
-                {/* Animated Background */}
-                <Box
-                  position="absolute"
-                  top={0}
-                  left={0}
-                  right={0}
-                  h="4px"
-                  bgGradient="linear(90deg, blue.500, blue.600, blue.500)"
-                  backgroundSize="200% 100%"
-                  animation="gradient 3s ease infinite"
-                  sx={{
-                    '@keyframes gradient': {
-                      '0%': { backgroundPosition: '0% 50%' },
-                      '50%': { backgroundPosition: '100% 50%' },
-                      '100%': { backgroundPosition: '0% 50%' }
-                    }
-                  }}
-                />
-
-                <VStack spacing={6} align="center">
-                  <Box
-                    p={4}
-                    bgGradient="linear(135deg, blue.500, blue.600)"
-                    borderRadius="2xl"
-                    boxShadow="0 10px 30px rgba(59, 130, 246, 0.4)"
-                    _hover={{
-                      transform: "scale(1.1)",
-                      boxShadow: "0 15px 40px rgba(59, 130, 246, 0.6)"
-                    }}
-                    transition="all 0.3s ease"
-                  >
-                    <Trophy size={28} color="white" />
-                  </Box>
-                  <VStack spacing={4} align="center">
-                    <Heading size="lg" textAlign="center" fontWeight="bold" color="white">
-                      Competitive Gaming
-                    </Heading>
-                    <Text color="gray.300" textAlign="center" lineHeight="1.6" fontSize="md">
-                      Join tournaments with players from around the world and compete for prizes on the blockchain.
-                    </Text>
-                  </VStack>
+                    <Button
+                      as={RouterLink}
+                      to="/tournaments/create"
+                      leftIcon={<Plus size={18} />}
+                      size="lg"
+                      px={8}
+                      py={6}
+                      fontSize="lg"
+                      fontWeight="bold"
+                      bgGradient="linear(135deg, green.500, emerald.600, green.700)"
+                      color="white"
+                      borderRadius="xl"
+                      boxShadow="0 10px 30px rgba(34, 197, 94, 0.4)"
+                      _hover={{
+                        bgGradient: "linear(135deg, green.600, emerald.700, green.800)",
+                        transform: 'translateY(-3px)',
+                        boxShadow: '0 15px 40px rgba(34, 197, 94, 0.6)'
+                      }}
+                      _active={{
+                        transform: 'translateY(-1px)',
+                        boxShadow: '0 8px 25px rgba(34, 197, 94, 0.5)'
+                      }}
+                      transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                      position="relative"
+                      overflow="hidden"
+                    >
+                      {/* Animated background effect */}
+                      <Box
+                        position="absolute"
+                        top={0}
+                        left="-100%"
+                        w="100%"
+                        h="100%"
+                        bgGradient="linear(90deg, transparent, rgba(255,255,255,0.2), transparent)"
+                        transition="left 0.5s ease"
+                        _groupHover={{
+                          left: "100%"
+                        }}
+                      />
+                      <Text>Create Tournament</Text>
+                    </Button>
+                  </HStack>
                 </VStack>
               </Box>
 
-              <Box
-                p={8}
-                bgGradient="linear(135deg, gray.800, gray.900)"
-                borderRadius="2xl"
-                border="2px solid"
-                borderColor="gray.600"
-                position="relative"
-                overflow="hidden"
-                w="full"
-                maxW="sm"
-                _hover={{
-                  borderColor: "green.400",
-                  transform: "translateY(-5px)",
-                  boxShadow: "0 25px 50px rgba(34, 197, 94, 0.3)"
-                }}
-                transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-              >
-                {/* Animated Background */}
-                <Box
-                  position="absolute"
-                  top={0}
-                  left={0}
-                  right={0}
-                  h="4px"
-                  bgGradient="linear(90deg, green.500, green.600, green.500)"
-                  backgroundSize="200% 100%"
-                  animation="gradient 3s ease infinite"
-                  sx={{
-                    '@keyframes gradient': {
-                      '0%': { backgroundPosition: '0% 50%' },
-                      '50%': { backgroundPosition: '100% 50%' },
-                      '100%': { backgroundPosition: '0% 50%' }
-                    }
-                  }}
-                />
 
-                <VStack spacing={6} align="center">
-                  <Box
-                    p={4}
-                    bgGradient="linear(135deg, green.500, green.600)"
-                    borderRadius="2xl"
-                    boxShadow="0 10px 30px rgba(34, 197, 94, 0.4)"
-                    _hover={{
-                      transform: "scale(1.1)",
-                      boxShadow: "0 15px 40px rgba(34, 197, 94, 0.6)"
-                    }}
-                    transition="all 0.3s ease"
-                  >
-                    <Users size={28} color="white" />
-                  </Box>
-                  <VStack spacing={4} align="center">
-                    <Heading size="lg" textAlign="center" fontWeight="bold" color="white">
-                      Community Driven
+              {/* Cool Features Grid */}
+              <VStack spacing={6} align="center">
+                <VStack spacing={3} align="center">
+                  <Box position="relative">
+                    <Heading
+                      size="xl"
+                      textAlign="center"
+                      fontWeight="bold"
+                      bgGradient="linear(135deg, blue.400, purple.500, pink.400)"
+                      bgClip="text"
+                    >
+                      Why Choose Tournament Hub?
                     </Heading>
-                    <Text color="gray.300" textAlign="center" lineHeight="1.6" fontSize="md">
-                      Create and manage your own tournaments or join existing ones. Build your gaming community.
-                    </Text>
-                  </VStack>
+                  </Box>
+                  <Text color="gray.400" textAlign="center" maxW="2xl" fontSize="md" fontWeight="medium">
+                    Experience the future of competitive gaming on the blockchain
+                  </Text>
+                </VStack>
+
+                <SimpleGrid columns={{ base: 1, md: 3 }} spacing={8} justifyItems="center">
+                  <Box
+                    p={8}
+                    bgGradient="linear(135deg, gray.800, gray.900)"
+                    borderRadius="2xl"
+                    border="2px solid"
+                    borderColor="gray.600"
+                    position="relative"
+                    overflow="hidden"
+                    w="full"
+                    maxW="sm"
+                    _hover={{
+                      borderColor: "blue.400",
+                      transform: "translateY(-5px)",
+                      boxShadow: "0 25px 50px rgba(59, 130, 246, 0.3)"
+                    }}
+                    transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                  >
+                    {/* Animated Background */}
+                    <Box
+                      position="absolute"
+                      top={0}
+                      left={0}
+                      right={0}
+                      h="4px"
+                      bgGradient="linear(90deg, blue.500, blue.600, blue.500)"
+                      backgroundSize="200% 100%"
+                      animation="gradient 3s ease infinite"
+                      sx={{
+                        '@keyframes gradient': {
+                          '0%': { backgroundPosition: '0% 50%' },
+                          '50%': { backgroundPosition: '100% 50%' },
+                          '100%': { backgroundPosition: '0% 50%' }
+                        }
+                      }}
+                    />
+
+                    <VStack spacing={6} align="center">
+                      <Box
+                        p={4}
+                        bgGradient="linear(135deg, blue.500, blue.600)"
+                        borderRadius="2xl"
+                        boxShadow="0 10px 30px rgba(59, 130, 246, 0.4)"
+                        _hover={{
+                          transform: "scale(1.1)",
+                          boxShadow: "0 15px 40px rgba(59, 130, 246, 0.6)"
+                        }}
+                        transition="all 0.3s ease"
+                      >
+                        <Trophy size={28} color="white" />
+                      </Box>
+                      <VStack spacing={4} align="center">
+                        <Heading size="lg" textAlign="center" fontWeight="bold" color="white">
+                          Competitive Gaming
+                        </Heading>
+                        <Text color="gray.300" textAlign="center" lineHeight="1.6" fontSize="md">
+                          Join tournaments with players from around the world and compete for prizes on the blockchain.
+                        </Text>
+                      </VStack>
+                    </VStack>
+                  </Box>
+
+                  <Box
+                    p={8}
+                    bgGradient="linear(135deg, gray.800, gray.900)"
+                    borderRadius="2xl"
+                    border="2px solid"
+                    borderColor="gray.600"
+                    position="relative"
+                    overflow="hidden"
+                    w="full"
+                    maxW="sm"
+                    _hover={{
+                      borderColor: "green.400",
+                      transform: "translateY(-5px)",
+                      boxShadow: "0 25px 50px rgba(34, 197, 94, 0.3)"
+                    }}
+                    transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                  >
+                    {/* Animated Background */}
+                    <Box
+                      position="absolute"
+                      top={0}
+                      left={0}
+                      right={0}
+                      h="4px"
+                      bgGradient="linear(90deg, green.500, green.600, green.500)"
+                      backgroundSize="200% 100%"
+                      animation="gradient 3s ease infinite"
+                      sx={{
+                        '@keyframes gradient': {
+                          '0%': { backgroundPosition: '0% 50%' },
+                          '50%': { backgroundPosition: '100% 50%' },
+                          '100%': { backgroundPosition: '0% 50%' }
+                        }
+                      }}
+                    />
+
+                    <VStack spacing={6} align="center">
+                      <Box
+                        p={4}
+                        bgGradient="linear(135deg, green.500, green.600)"
+                        borderRadius="2xl"
+                        boxShadow="0 10px 30px rgba(34, 197, 94, 0.4)"
+                        _hover={{
+                          transform: "scale(1.1)",
+                          boxShadow: "0 15px 40px rgba(34, 197, 94, 0.6)"
+                        }}
+                        transition="all 0.3s ease"
+                      >
+                        <Users size={28} color="white" />
+                      </Box>
+                      <VStack spacing={4} align="center">
+                        <Heading size="lg" textAlign="center" fontWeight="bold" color="white">
+                          Community Driven
+                        </Heading>
+                        <Text color="gray.300" textAlign="center" lineHeight="1.6" fontSize="md">
+                          Create and manage your own tournaments or join existing ones. Build your gaming community.
+                        </Text>
+                      </VStack>
+                    </VStack>
+                  </Box>
+
+                  <Box
+                    p={8}
+                    bgGradient="linear(135deg, gray.800, gray.900)"
+                    borderRadius="2xl"
+                    border="2px solid"
+                    borderColor="gray.600"
+                    position="relative"
+                    overflow="hidden"
+                    w="full"
+                    maxW="sm"
+                    _hover={{
+                      borderColor: "purple.400",
+                      transform: "translateY(-5px)",
+                      boxShadow: "0 25px 50px rgba(147, 51, 234, 0.3)"
+                    }}
+                    transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                  >
+                    {/* Animated Background */}
+                    <Box
+                      position="absolute"
+                      top={0}
+                      left={0}
+                      right={0}
+                      h="4px"
+                      bgGradient="linear(90deg, purple.500, pink.500, purple.500)"
+                      backgroundSize="200% 100%"
+                      animation="gradient 3s ease infinite"
+                      sx={{
+                        '@keyframes gradient': {
+                          '0%': { backgroundPosition: '0% 50%' },
+                          '50%': { backgroundPosition: '100% 50%' },
+                          '100%': { backgroundPosition: '0% 50%' }
+                        }
+                      }}
+                    />
+
+                    <VStack spacing={6} align="center">
+                      <Box
+                        p={4}
+                        bgGradient="linear(135deg, purple.500, pink.600)"
+                        borderRadius="2xl"
+                        boxShadow="0 10px 30px rgba(147, 51, 234, 0.4)"
+                        _hover={{
+                          transform: "scale(1.1)",
+                          boxShadow: "0 15px 40px rgba(147, 51, 234, 0.6)"
+                        }}
+                        transition="all 0.3s ease"
+                      >
+                        <Calendar size={28} color="white" />
+                      </Box>
+                      <VStack spacing={4} align="center">
+                        <Heading size="lg" textAlign="center" fontWeight="bold" color="white">
+                          Flexible Scheduling
+                        </Heading>
+                        <Text color="gray.300" textAlign="center" lineHeight="1.6" fontSize="md">
+                          Play immediately and start tournaments when you're ready.
+                        </Text>
+                      </VStack>
+                    </VStack>
+                  </Box>
+                </SimpleGrid>
+              </VStack>
+
+              {/* Debug: Event System Test */}
+              <Box p={4} border="1px solid" borderColor="gray.600" borderRadius="lg" bg="gray.800">
+                <VStack spacing={3}>
+                  <Text fontSize="sm" color="gray.400">Debug: Event System Test</Text>
+                  <HStack spacing={2} wrap="wrap">
+                    <Button size="sm" onClick={handleTestEvent} colorScheme="purple">
+                      Test Event
+                    </Button>
+                    <Button size="sm" onClick={handleSimulateTournamentCreation} colorScheme="orange">
+                      Simulate Creation
+                    </Button>
+                    <Button size="sm" onClick={handlePollBlockchainEvents} colorScheme="green">
+                      Poll Blockchain
+                    </Button>
+                    <Button size="sm" onClick={handleTestNotifierEndpoint} colorScheme="red">
+                      Test Notifier
+                    </Button>
+                    <Button size="sm" onClick={handleInjectTestEvent} colorScheme="yellow">
+                      Inject Event
+                    </Button>
+                    <Button size="sm" onClick={handleResetTimestamp} colorScheme="gray">
+                      Reset Timestamp
+                    </Button>
+                    <Button size="sm" onClick={handleSimulateBlockchainEvent} colorScheme="teal">
+                      Simulate Blockchain
+                    </Button>
+                    {refreshStats && (
+                      <Button size="sm" onClick={refreshStats} colorScheme="blue">
+                        Manual Refresh
+                      </Button>
+                    )}
+                  </HStack>
+                  <Text fontSize="xs" color="gray.500">
+                    Total: {totalTournaments} | Active: {activeTournaments} | Completed: {completedTournaments}
+                  </Text>
                 </VStack>
               </Box>
 
-              <Box
-                p={8}
-                bgGradient="linear(135deg, gray.800, gray.900)"
-                borderRadius="2xl"
-                border="2px solid"
-                borderColor="gray.600"
-                position="relative"
-                overflow="hidden"
-                w="full"
-                maxW="sm"
-                _hover={{
-                  borderColor: "purple.400",
-                  transform: "translateY(-5px)",
-                  boxShadow: "0 25px 50px rgba(147, 51, 234, 0.3)"
-                }}
-                transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-              >
-                {/* Animated Background */}
-                <Box
-                  position="absolute"
-                  top={0}
-                  left={0}
-                  right={0}
-                  h="4px"
-                  bgGradient="linear(90deg, purple.500, pink.500, purple.500)"
-                  backgroundSize="200% 100%"
-                  animation="gradient 3s ease infinite"
-                  sx={{
-                    '@keyframes gradient': {
-                      '0%': { backgroundPosition: '0% 50%' },
-                      '50%': { backgroundPosition: '100% 50%' },
-                      '100%': { backgroundPosition: '0% 50%' }
-                    }
-                  }}
-                />
-
-                <VStack spacing={6} align="center">
-                  <Box
-                    p={4}
-                    bgGradient="linear(135deg, purple.500, pink.600)"
-                    borderRadius="2xl"
-                    boxShadow="0 10px 30px rgba(147, 51, 234, 0.4)"
-                    _hover={{
-                      transform: "scale(1.1)",
-                      boxShadow: "0 15px 40px rgba(147, 51, 234, 0.6)"
-                    }}
-                    transition="all 0.3s ease"
-                  >
-                    <Calendar size={28} color="white" />
-                  </Box>
-                  <VStack spacing={4} align="center">
-                    <Heading size="lg" textAlign="center" fontWeight="bold" color="white">
-                      Flexible Scheduling
-                    </Heading>
-                    <Text color="gray.300" textAlign="center" lineHeight="1.6" fontSize="md">
-                      Play immediately and start tournaments when you're ready.
-                    </Text>
-                  </VStack>
-                </VStack>
-              </Box>
-            </SimpleGrid>
-          </VStack>
-
-          {/* Debug: Event System Test */}
-          <Box p={4} border="1px solid" borderColor="gray.600" borderRadius="lg" bg="gray.800">
-            <VStack spacing={3}>
-              <Text fontSize="sm" color="gray.400">Debug: Event System Test</Text>
-              <HStack spacing={2} wrap="wrap">
-                <Button size="sm" onClick={handleTestEvent} colorScheme="purple">
-                  Test Event
-                </Button>
-                <Button size="sm" onClick={handleSimulateTournamentCreation} colorScheme="orange">
-                  Simulate Creation
-                </Button>
-                <Button size="sm" onClick={handlePollBlockchainEvents} colorScheme="green">
-                  Poll Blockchain
-                </Button>
-                <Button size="sm" onClick={handleTestNotifierEndpoint} colorScheme="red">
-                  Test Notifier
-                </Button>
-                <Button size="sm" onClick={handleInjectTestEvent} colorScheme="yellow">
-                  Inject Event
-                </Button>
-                <Button size="sm" onClick={handleResetTimestamp} colorScheme="gray">
-                  Reset Timestamp
-                </Button>
-                <Button size="sm" onClick={handleSimulateBlockchainEvent} colorScheme="teal">
-                  Simulate Blockchain
-                </Button>
-                {manualRefresh && (
-                  <Button size="sm" onClick={manualRefresh} colorScheme="blue">
-                    Manual Refresh
-                  </Button>
-                )}
-              </HStack>
-              <Text fontSize="xs" color="gray.500">
-                Total: {totalTournaments} | Active: {totalActiveTournaments} | Completed: {completedTournaments}
-              </Text>
             </VStack>
           </Box>
 
           <Outlet />
         </VStack>
       </Container>
-
-
     </PageWrapper>
   );
 };

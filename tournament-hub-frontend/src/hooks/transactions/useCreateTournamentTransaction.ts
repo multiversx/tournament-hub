@@ -12,7 +12,7 @@ import { egldToWei } from '../../utils/contractUtils';
 const CREATE_TOURNAMENT_TRANSACTION_INFO = {
     processingMessage: 'Creating tournament... Please confirm in your wallet.',
     errorMessage: 'An error occurred while creating the tournament.',
-    successMessage: 'Tournament created successfully!'
+    successMessage: 'Transaction submitted! Waiting for blockchain confirmation...'
 };
 
 export const useCreateTournamentTransaction = () => {
@@ -59,7 +59,7 @@ export const useCreateTournamentTransaction = () => {
 
         // Create the tournament as a single payable smart contract call
         const createTransaction = new Transaction({
-            data: Buffer.from(dataString),
+            data: new Uint8Array(Buffer.from(dataString)),
             receiver: new Address(tournamentHubContract.address),
             gasLimit: BigInt(200000000), // 200M gas for contract interaction
             gasPrice: BigInt(GAS_PRICE),
@@ -197,24 +197,47 @@ export const useCreateTournamentTransaction = () => {
         window.dispatchEvent(new CustomEvent('refreshAccountInfo'));
 
         // Verify the tournament was actually created by checking the contract state
+        let tournamentId = null;
         try {
             const { getActiveTournamentIds } = await import('../../helpers');
+
+            // Wait a bit for the transaction to be processed
+            await new Promise(resolve => setTimeout(resolve, 3000));
+
             const tournamentIds = await getActiveTournamentIds();
 
-            if (tournamentIds.length > 0) {
-                const latestId = tournamentIds[0];
-                // Latest tournament ID found
+            if (tournamentIds && tournamentIds.length > 0) {
+                // Find the highest tournament ID (most recent)
+                const sortedIds = tournamentIds.sort((a, b) => Number(b) - Number(a));
+                tournamentId = sortedIds[0];
+
+                // Verify the tournament exists by trying to fetch it
+                try {
+                    const { getTournamentDetailsFromContract } = await import('../../helpers');
+                    const testDetails = await getTournamentDetailsFromContract(tournamentId);
+                    if (!testDetails && sortedIds.length > 1) {
+                        // Try the next tournament ID if available
+                        tournamentId = sortedIds[1];
+                    }
+                } catch (testError) {
+                    console.error('Error testing tournament details fetch:', testError);
+                }
             } else {
-                // No tournaments found after creation
+                // Use session ID as fallback if no tournaments found
+                tournamentId = createSessionId;
             }
         } catch (error) {
-            // Error verifying tournament creation (non-critical)
+            console.error('Error verifying tournament creation:', error);
         }
 
         // The smart contract automatically adds the creator as a participant
         // No need to call joinTournament separately
-        console.log('=== TOURNAMENT CREATION COMPLETED ===');
-        return { createSessionId };
+        const result = {
+            createSessionId,
+            tournamentId: tournamentId || createSessionId // Fallback to sessionId if tournamentId not found
+        };
+
+        return result;
     };
 
     return { createTournament };

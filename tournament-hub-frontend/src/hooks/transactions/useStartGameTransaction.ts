@@ -11,7 +11,7 @@ import { tournamentHubContract } from '../../contracts';
 const START_GAME_TRANSACTION_INFO = {
     processingMessage: 'Starting game... Please confirm in your wallet.',
     errorMessage: 'An error occurred while starting the game.',
-    successMessage: 'Game started successfully!'
+    successMessage: 'Transaction submitted! Waiting for blockchain confirmation...'
 };
 
 export const useStartGameTransaction = () => {

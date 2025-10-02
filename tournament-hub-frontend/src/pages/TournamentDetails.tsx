@@ -19,7 +19,9 @@ import {
     IconButton,
     Progress,
 } from '@chakra-ui/react';
-import { Users, Award, Calendar, Play, Trophy, CopyIcon, Clock, Coins, RefreshCw } from 'lucide-react';
+import { EnhancedButton, PrimaryButton, SuccessButton, DangerButton } from '../components/EnhancedButton';
+import { useTransactionButton } from '../hooks/useButtonState';
+import { Users, Award, Calendar, Play, Trophy, CopyIcon, Clock, Coins, RefreshCw, Share2 } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     startTournamentSession,
@@ -59,18 +61,63 @@ export const TournamentDetails = () => {
     const { id } = useParams();
     const [tournament, setTournament] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [joining, setJoining] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const toast = useToast();
     const { address: playerAddress } = useGetAccount();
     const navigate = useNavigate();
     const { joinTournament } = useJoinTournamentTransaction();
-    const [startingGame, setStartingGame] = useState(false);
     const [tournamentSession, setTournamentSession] = useState<TournamentSession | null>(null);
     const [lastJoinSeenAt, setLastJoinSeenAt] = useState<number>(0);
 
     // Add start game transaction hook
     const { startGame } = useStartGameTransaction();
+
+    // Enhanced button state management
+    const joinButtonState = useTransactionButton({
+        successMessage: 'Transaction confirmed! Successfully joined the tournament!',
+        errorMessage: 'Failed to join tournament. Please try again.',
+        onSuccess: async () => {
+            // Trigger immediate cache invalidation and refetch
+            try {
+                const { invalidateCacheByEvent, invalidateCacheByKey } = await import('../helpers');
+                const tournamentId = parseInt(id || '0');
+                console.log('DEBUG: Invalidating caches for tournament', tournamentId);
+                invalidateCacheByKey(`tournament_details_${tournamentId}`);
+                invalidateCacheByKey(`basic_${tournamentId}`);
+                invalidateCacheByEvent('tournament_joined');
+                invalidateCacheByEvent('tournament_updated');
+                console.log('DEBUG: Cache invalidated for immediate refresh');
+                await fetchTournamentFresh();
+                console.log('DEBUG: Fresh tournament data fetched');
+            } catch (error) {
+                console.error('handleJoinTournament: Error invalidating cache:', error);
+            }
+        },
+    });
+
+    const startGameButtonState = useTransactionButton({
+        successMessage: 'Transaction confirmed! Game started successfully!',
+        errorMessage: 'Failed to start game. Please try again.',
+        onSuccess: async () => {
+            // Navigate to game session after successful start
+            if (tournament) {
+                try {
+                    const gameSession = await startGameSession(tournament.id, Number(tournament.game_id), [playerAddress!]);
+                    navigate(`/game-session/${gameSession.id}`);
+                } catch (error) {
+                    console.error('Error starting game session:', error);
+                    toast({
+                        title: 'Error',
+                        description: 'Failed to start game session. Please try again.',
+                        status: 'error',
+                        duration: 5000,
+                        isClosable: true,
+                    });
+                }
+            }
+        },
+    });
+
 
     useEffect(() => {
         async function fetchTournament() {
@@ -79,9 +126,69 @@ export const TournamentDetails = () => {
             try {
                 if (!id) throw new Error('No tournament id');
 
-                // Try to get tournament details from contract first
-                let details = await getTournamentDetailsFromContract(BigInt(id));
-                if (!details) throw new Error('Tournament not found');
+                // Check if the requested tournament ID actually exists
+                try {
+                    const { getActiveTournamentIds } = await import('../helpers');
+                    const allTournamentIds = await getActiveTournamentIds();
+
+                    // Check if the requested tournament ID actually exists
+                    const requestedId = BigInt(id);
+                    const idExists = allTournamentIds.some(existingId => existingId === requestedId);
+
+                    if (!idExists && allTournamentIds.length > 0) {
+                        // Redirect to the most recent tournament
+                        const mostRecentId = allTournamentIds[0].toString();
+                        window.location.href = `/tournaments/${mostRecentId}`;
+                        return;
+                    } else if (!idExists && allTournamentIds.length === 0) {
+                        // Redirect to tournaments list if no tournaments exist
+                        window.location.href = '/tournaments';
+                        return;
+                    }
+                } catch (error) {
+                    console.error('Error checking tournament existence:', error);
+                }
+
+                // Try to get tournament details from contract first with retry
+                let details = null;
+                let retryCount = 0;
+                const maxRetries = 3;
+
+                while (!details && retryCount < maxRetries) {
+                    details = await getTournamentDetailsFromContract(BigInt(id));
+
+                    if (!details && retryCount < maxRetries - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    }
+                    retryCount++;
+                }
+
+                if (!details) {
+                    // Fallback: try to get from backend API
+                    try {
+                        const response = await fetch(`${process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000'}/tournament/${id}`);
+                        if (response.ok) {
+                            const backendData = await response.json();
+                            // Convert backend data to expected format
+                            details = {
+                                id: BigInt(id),
+                                game_id: backendData.game_id || 1,
+                                name: backendData.name || `Tournament ${id}`,
+                                creator: backendData.creator || 'Unknown',
+                                participants: backendData.participants || [],
+                                entry_fee: backendData.entry_fee || '0',
+                                status: backendData.status || 0,
+                                max_players: backendData.max_players || 2,
+                                min_players: backendData.min_players || 2,
+                            };
+                        } else {
+                            throw new Error('Tournament not found in backend either');
+                        }
+                    } catch (backendError) {
+                        console.error('Backend fallback failed:', backendError);
+                        throw new Error('Tournament not found');
+                    }
+                }
 
                 const gameConfig = await getGameConfig(details.game_id);
                 const prizePool = await getPrizePoolFromContract(BigInt(id));
@@ -278,56 +385,12 @@ export const TournamentDetails = () => {
             return;
         }
 
-        setJoining(true);
-        try {
+        await joinButtonState.execute(async () => {
             await joinTournament({
                 tournamentId: parseInt(id || '0'),
                 entryFee: tournament.entry_fee.toString()
             });
-
-            // Trigger immediate cache invalidation and refetch
-            try {
-                const { invalidateCacheByEvent, invalidateCacheByKey } = await import('../helpers');
-
-                // Invalidate specific tournament details cache
-                const tournamentId = parseInt(id || '0');
-                console.log('DEBUG: Invalidating caches for tournament', tournamentId);
-                invalidateCacheByKey(`tournament_details_${tournamentId}`);
-                invalidateCacheByKey(`basic_${tournamentId}`);
-
-                // Invalidate general tournament events
-                invalidateCacheByEvent('tournament_joined');
-                invalidateCacheByEvent('tournament_updated');
-
-                console.log('DEBUG: Cache invalidated for immediate refresh');
-
-                // Force refetch tournament details with fresh data
-                console.log('DEBUG: Fetching fresh tournament data...');
-                await fetchTournamentFresh();
-                console.log('DEBUG: Fresh tournament data fetched');
-            } catch (error) {
-                console.error('handleJoinTournament: Error invalidating cache:', error);
-            }
-
-            toast({
-                title: 'Success!',
-                description: 'You have joined the tournament successfully! Please wait to be matched.',
-                status: 'success',
-                duration: 5000,
-                isClosable: true,
-            });
-        } catch (err) {
-            console.error('Error joining tournament:', err);
-            toast({
-                title: 'Error',
-                description: 'Failed to join tournament. Please try again.',
-                status: 'error',
-                duration: 5000,
-                isClosable: true,
-            });
-        } finally {
-            setJoining(false);
-        }
+        });
     };
 
     const handleStartGame = async () => {
@@ -342,38 +405,13 @@ export const TournamentDetails = () => {
             return;
         }
 
-        setStartingGame(true);
-        try {
+        await startGameButtonState.execute(async () => {
             await startGame({
                 tournamentId: parseInt(id || '0'),
                 gameId: Number(tournament.game_id),
                 participants: tournament.participants,
             });
-
-            toast({
-                title: 'Success!',
-                description: 'Game started successfully!',
-                status: 'success',
-                duration: 5000,
-                isClosable: true,
-            });
-
-            // Refetch tournament details to show updated status
-            if (typeof window !== 'undefined') {
-                window.location.reload();
-            }
-        } catch (err) {
-            console.error('Error starting game:', err);
-            toast({
-                title: 'Error',
-                description: 'Failed to start game. Please try again.',
-                status: 'error',
-                duration: 5000,
-                isClosable: true,
-            });
-        } finally {
-            setStartingGame(false);
-        }
+        });
     };
 
     const columns = useBreakpointValue({ base: 1, md: 2 });
@@ -384,6 +422,9 @@ export const TournamentDetails = () => {
                 <VStack spacing={4}>
                     <Spinner size="xl" color="blue.500" />
                     <Text>Loading tournament details...</Text>
+                    <Text fontSize="sm" color="gray.500" textAlign="center">
+                        This may take a few moments as we verify the tournament on the blockchain...
+                    </Text>
                 </VStack>
             </Box>
         );
@@ -444,6 +485,45 @@ export const TournamentDetails = () => {
         return 'Join Tournament';
     };
 
+    const handleShareTournament = async () => {
+        const tournamentUrl = window.location.href;
+        const shareText = `Join my tournament "${tournament.name}" on Tournament Hub! Entry fee: ${tournament.entry_fee_egld} EGLD. ${tournamentUrl}`;
+
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: `Tournament: ${tournament.name}`,
+                    text: shareText,
+                    url: tournamentUrl,
+                });
+            } catch (error) {
+                // User cancelled sharing
+                console.log('Share cancelled');
+            }
+        } else {
+            // Fallback: copy to clipboard
+            try {
+                await navigator.clipboard.writeText(shareText);
+                toast({
+                    title: 'Tournament link copied!',
+                    description: 'Share this link with other players to invite them to join.',
+                    status: 'success',
+                    duration: 3000,
+                    isClosable: true,
+                });
+            } catch (error) {
+                console.error('Failed to copy to clipboard:', error);
+                toast({
+                    title: 'Failed to copy',
+                    description: 'Please copy the URL manually from the address bar.',
+                    status: 'error',
+                    duration: 3000,
+                    isClosable: true,
+                });
+            }
+        }
+    };
+
     return (
         <Box maxW="7xl" mx="auto" py={10} px={4}>
             <VStack spacing={8} align="stretch">
@@ -485,7 +565,7 @@ export const TournamentDetails = () => {
                             </Badge>
                         </VStack>
                         {canStartGame ? (
-                            <Button
+                            <SuccessButton
                                 leftIcon={<Play size={20} />}
                                 size="lg"
                                 bgGradient="linear(135deg, green.500, emerald.600, green.700)"
@@ -503,35 +583,60 @@ export const TournamentDetails = () => {
                                 }}
                                 transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
                                 onClick={handleStartGame}
-                                isLoading={startingGame}
-                                loadingText="Starting Game..."
+                                status={startGameButtonState.status}
+                                loadingText="Waiting for confirmation..."
+                                successText="Game Started!"
+                                errorText="Start Failed"
+                                enableShimmer={startGameButtonState.isLoading}
                             >
                                 Start Game
-                            </Button>
+                            </SuccessButton>
                         ) : (tournament.status === 'ReadyToStart' && isParticipant && isCreator && !hasEnoughPlayers) ? (
-                            <Button
-                                size="lg"
-                                bgGradient="linear(135deg, green.500, emerald.600, green.700)"
-                                color="white"
-                                borderRadius="xl"
-                                boxShadow="0 8px 25px rgba(34, 197, 94, 0.4)"
-                                _hover={{
-                                    bgGradient: "linear(135deg, green.600, emerald.700, green.800)",
-                                    transform: "translateY(-2px)",
-                                    boxShadow: "0 12px 30px rgba(34, 197, 94, 0.6)"
-                                }}
-                                _active={{
-                                    transform: "translateY(0px)",
-                                    boxShadow: "0 6px 20px rgba(34, 197, 94, 0.5)"
-                                }}
-                                transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-                                isDisabled
-                                opacity={0.7}
-                            >
-                                Waiting for opponents...
-                            </Button>
+                            <VStack spacing={3}>
+                                <Button
+                                    size="lg"
+                                    bgGradient="linear(135deg, green.500, emerald.600, green.700)"
+                                    color="white"
+                                    borderRadius="xl"
+                                    boxShadow="0 8px 25px rgba(34, 197, 94, 0.4)"
+                                    _hover={{
+                                        bgGradient: "linear(135deg, green.600, emerald.700, green.800)",
+                                        transform: "translateY(-2px)",
+                                        boxShadow: "0 12px 30px rgba(34, 197, 94, 0.6)"
+                                    }}
+                                    _active={{
+                                        transform: "translateY(0px)",
+                                        boxShadow: "0 6px 20px rgba(34, 197, 94, 0.5)"
+                                    }}
+                                    transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                                    isDisabled
+                                    opacity={0.7}
+                                    leftIcon={<Users size={20} />}
+                                >
+                                    Waiting for opponents... ({tournament.current_players}/{minPlayersRequired})
+                                </Button>
+                                <HStack spacing={3} justify="center">
+                                    <Text fontSize="sm" color="gray.400" textAlign="center">
+                                        💡 Share this tournament to invite players!
+                                    </Text>
+                                    <Button
+                                        size="sm"
+                                        colorScheme="blue"
+                                        variant="outline"
+                                        leftIcon={<Share2 size={14} />}
+                                        onClick={handleShareTournament}
+                                        _hover={{
+                                            bg: "blue.50",
+                                            transform: "translateY(-1px)"
+                                        }}
+                                        transition="all 0.2s"
+                                    >
+                                        Share
+                                    </Button>
+                                </HStack>
+                            </VStack>
                         ) : (
-                            <Button
+                            <PrimaryButton
                                 leftIcon={<Play size={20} />}
                                 size="lg"
                                 bgGradient={isParticipant ? "linear(135deg, purple.500, pink.600, purple.700)" : "linear(135deg, blue.500, cyan.600, blue.700)"}
@@ -549,12 +654,16 @@ export const TournamentDetails = () => {
                                 }}
                                 transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
                                 onClick={handleJoinTournament}
-                                isLoading={joining}
-                                loadingText="Joining..."
+                                status={joinButtonState.status}
+                                loadingText="Waiting for confirmation..."
+                                successText="Joined Successfully!"
+                                errorText="Join Failed"
                                 isDisabled={!canJoin}
+                                enableShimmer={joinButtonState.isLoading}
+                                tooltip={!canJoin ? "Cannot join this tournament" : undefined}
                             >
                                 {getJoinButtonText()}
-                            </Button>
+                            </PrimaryButton>
                         )}
                     </HStack>
                 </Box>
@@ -802,7 +911,7 @@ export const TournamentDetails = () => {
                 {/* Start Game or Waiting message while in Joining status */}
                 {isParticipant && tournament.status === 'Joining' && (
                     hasEnoughPlayers ? (
-                        <Button
+                        <SuccessButton
                             size="md"
                             mt={4}
                             bgGradient="linear(135deg, green.500, emerald.600, green.700)"
@@ -819,16 +928,106 @@ export const TournamentDetails = () => {
                                 boxShadow: "0 6px 20px rgba(34, 197, 94, 0.5)"
                             }}
                             transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-                            isLoading={startingGame}
-                            loadingText="Starting Game..."
                             onClick={handleStartGame}
+                            status={startGameButtonState.status}
+                            loadingText="Waiting for confirmation..."
+                            successText="Game Started!"
+                            errorText="Start Failed"
+                            enableShimmer={startGameButtonState.isLoading}
+                            leftIcon={<Play size={20} />}
                         >
                             Start Game
-                        </Button>
+                        </SuccessButton>
                     ) : (
-                        <Text color="gray.400" textAlign="center" mt={4}>
-                            Waiting for opponents... ({tournament.current_players}/{minPlayersRequired})
-                        </Text>
+                        <Box textAlign="center" mt={6}>
+                            {/* Enhanced waiting message for creators */}
+                            {isCreator ? (
+                                <VStack spacing={4}>
+                                    <Box
+                                        p={6}
+                                        bgGradient="linear(135deg, purple.500, pink.600)"
+                                        borderRadius="xl"
+                                        border="1px solid"
+                                        borderColor="purple.400"
+                                        boxShadow="0 8px 25px rgba(147, 51, 234, 0.3)"
+                                    >
+                                        <VStack spacing={3}>
+                                            <Box
+                                                display="flex"
+                                                alignItems="center"
+                                                justifyContent="center"
+                                                w={12}
+                                                h={12}
+                                                borderRadius="full"
+                                                bg="whiteAlpha.200"
+                                                animation="pulse 2s infinite"
+                                            >
+                                                <Users size={24} color="white" />
+                                            </Box>
+                                            <Text fontSize="lg" fontWeight="bold" color="white">
+                                                Waiting for Players to Join
+                                            </Text>
+                                            <Text fontSize="sm" color="whiteAlpha.800" textAlign="center">
+                                                You need {minPlayersRequired - tournament.current_players} more player{minPlayersRequired - tournament.current_players !== 1 ? 's' : ''} to start the tournament
+                                            </Text>
+                                            <HStack spacing={2} justify="center">
+                                                <Badge colorScheme="purple" variant="solid" px={3} py={1} borderRadius="full">
+                                                    {tournament.current_players}/{minPlayersRequired} Players
+                                                </Badge>
+                                                <Badge colorScheme="blue" variant="outline" px={3} py={1} borderRadius="full" borderColor="whiteAlpha.300" color="whiteAlpha.800">
+                                                    {tournament.entry_fee_egld} EGLD Entry
+                                                </Badge>
+                                            </HStack>
+                                            <Button
+                                                size="sm"
+                                                bg="white"
+                                                color="purple.600"
+                                                variant="solid"
+                                                leftIcon={<Share2 size={16} />}
+                                                onClick={handleShareTournament}
+                                                _hover={{
+                                                    bg: "whiteAlpha.900",
+                                                    transform: "translateY(-1px)",
+                                                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)"
+                                                }}
+                                                _active={{
+                                                    transform: "translateY(0px)"
+                                                }}
+                                                transition="all 0.2s"
+                                                fontWeight="semibold"
+                                                boxShadow="0 2px 8px rgba(0, 0, 0, 0.2)"
+                                            >
+                                                Share Tournament
+                                            </Button>
+                                        </VStack>
+                                    </Box>
+
+                                    {/* Tips for creators */}
+                                    <Box
+                                        p={4}
+                                        bg="gray.800"
+                                        borderRadius="lg"
+                                        border="1px solid"
+                                        borderColor="gray.700"
+                                        maxW="md"
+                                        mx="auto"
+                                    >
+                                        <Text fontSize="sm" color="gray.300" textAlign="center" mb={2}>
+                                            💡 <strong>Tips to attract players:</strong>
+                                        </Text>
+                                        <VStack spacing={1} align="start" fontSize="xs" color="gray.400">
+                                            <Text>• Share the tournament link with friends</Text>
+                                            <Text>• Lower the entry fee if no one joins quickly</Text>
+                                            <Text>• Check the Tournaments page to see if others are looking for games</Text>
+                                        </VStack>
+                                    </Box>
+                                </VStack>
+                            ) : (
+                                <Text color="gray.400" textAlign="center" mt={4}>
+                                    Waiting for opponents... ({tournament.current_players}/{minPlayersRequired})
+                                </Text>
+                            )}
+                        </Box>
                     )
                 )}
             </VStack>
