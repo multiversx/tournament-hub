@@ -86,7 +86,7 @@ export const TournamentDetails = () => {
 
     // Enhanced button state management with blockchain confirmation
     const joinButtonState = useTransactionButtonState({
-        successMessage: 'Transaction confirmed! Successfully joined the tournament!',
+        successMessage: 'Successfully joined the tournament! You are now a participant.',
         errorMessage: 'Failed to join tournament. Please try again.',
         waitForConfirmation: true,
         tournamentId: parseInt(id || '0'),
@@ -131,7 +131,27 @@ export const TournamentDetails = () => {
                     }
 
                     console.log('Navigating to game session:', sessionId);
-                    navigate(`/game/${sessionId}`);
+                    // Additional safety check - user should be logged in at this point
+                    if (playerAddress) {
+                        // Navigate to the correct game route based on game type
+                        const gameType = getGameName(Number(tournament.game_id));
+                        if (gameType === 'Chess') {
+                            navigate(`/game/chess/${tournament.id}`);
+                        } else if (gameType === 'Connect Four') {
+                            navigate(`/game/connectfour/${tournament.id}`);
+                        } else if (gameType === 'Tic Tac Toe') {
+                            navigate(`/game/tictactoe/${tournament.id}`);
+                        } else if (gameType === 'Battleship') {
+                            navigate(`/game/battleship/${tournament.id}`);
+                        } else if (gameType === 'Color Rush') {
+                            navigate(`/game/colorrush/${tournament.id}`);
+                        } else {
+                            navigate(`/game/cryptobubbles/${tournament.id}`);
+                        }
+                    } else {
+                        console.warn('User not logged in when trying to navigate to game session');
+                        showWarning('Login Required', 'Please connect your wallet to access the game session.');
+                    }
                 } catch (error) {
                     console.error('Error starting game session:', error);
                     showTransactionError(
@@ -812,6 +832,15 @@ export const TournamentDetails = () => {
                                     }}
                                     transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
                                     onClick={() => {
+                                        // Check if user is logged in before navigating to game
+                                        if (!playerAddress) {
+                                            showWarning(
+                                                'Login Required',
+                                                'Please connect your wallet to watch or participate in games. Only logged-in users can access game sessions.'
+                                            );
+                                            return;
+                                        }
+
                                         // Navigate to the game session
                                         const gameType = getGameName(Number(tournament.game_id));
                                         if (gameType === 'Chess') {
@@ -820,6 +849,10 @@ export const TournamentDetails = () => {
                                             navigate(`/game/connectfour/${id}`);
                                         } else if (gameType === 'Tic Tac Toe') {
                                             navigate(`/game/tictactoe/${id}`);
+                                        } else if (gameType === 'Battleship') {
+                                            navigate(`/game/battleship/${id}`);
+                                        } else if (gameType === 'Color Rush') {
+                                            navigate(`/game/colorrush/${id}`);
                                         } else {
                                             navigate(`/game/cryptobubbles/${id}`);
                                         }

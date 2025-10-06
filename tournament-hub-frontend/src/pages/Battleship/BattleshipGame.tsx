@@ -151,6 +151,13 @@ const BattleshipGame: React.FC<BattleshipGameProps> = ({ sessionId: propSessionI
                 }),
             });
 
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+                console.error('Ship placement error from backend:', errorData);
+                setError(errorData.error || errorData.detail || `Server error: ${response.status}`);
+                return;
+            }
+
             const data = await response.json();
 
             if (data.error) {
@@ -182,6 +189,13 @@ const BattleshipGame: React.FC<BattleshipGameProps> = ({ sessionId: propSessionI
                     y,
                 }),
             });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+                console.error('Shot firing error from backend:', errorData);
+                setError(errorData.error || errorData.detail || `Server error: ${response.status}`);
+                return;
+            }
 
             const data = await response.json();
 

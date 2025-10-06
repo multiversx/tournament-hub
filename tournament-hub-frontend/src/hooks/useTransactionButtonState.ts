@@ -84,18 +84,18 @@ export const useTransactionButtonState = (options: UseTransactionButtonStateOpti
                         // Show a message that we're waiting for confirmation
                         toast({
                             title: 'Transaction submitted',
-                            description: 'Waiting for blockchain confirmation...',
+                            description: 'Waiting for blockchain confirmation and tournament participation verification...',
                             status: 'info',
-                            duration: 5000,
+                            duration: 8000,
                             isClosable: true,
                         });
 
                         // Wait for blockchain confirmation
                         const confirmation = await waitForTxConfirmation(result, {
                             tournamentId,
-                            maxRetries: 30,
-                            retryDelay: 2000,
-                            timeoutMs: 60000
+                            maxRetries: 45, // Increased retries for tournament operations
+                            retryDelay: 3000, // Increased delay to 3 seconds
+                            timeoutMs: 90000 // Increased timeout to 90 seconds
                         });
 
                         if (confirmation.isConfirmed) {
