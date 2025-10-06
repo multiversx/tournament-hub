@@ -1043,6 +1043,26 @@ async def get_tournament_session(tournamentId: str):
         logger.error(f"Error getting tournament session: {e}")
         return {"session_id": None}
 
+@app.get("/get_session_info")
+@app.get("/tournament-hub/get_session_info")
+async def get_session_info(session_id: str):
+    """Get session information including game type"""
+    try:
+        if session_id not in sessions:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        session = sessions[session_id]
+        return {
+            "session_id": session_id,
+            "game_type": session.get("game_type", "cryptobubbles"),
+            "status": session.get("status", "waiting"),
+            "players": session.get("players", []),
+            "created_at": session.get("created_at")
+        }
+    except Exception as e:
+        logger.error(f"Error getting session info: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/game_state")
 async def get_game_state(session_id: str):
     """Get current game state - handles both chess and CryptoBubbles"""
@@ -1628,13 +1648,20 @@ async def place_battleship_ship(request: BattleshipPlaceShipRequest):
             raise HTTPException(status_code=400, detail=f"Invalid ship type or orientation: {e}")
         
         # Place the ship
+        logger.info(f"Attempting to place ship: player={request.player}, shipType={ship_type}, x={request.x}, y={request.y}, orientation={orientation}")
         success = game.place_ship(request.player, ship_type, request.x, request.y, orientation)
         if not success:
             logger.warning(f"Invalid ship placement: player={request.player}, shipType={request.shipType}, x={request.x}, y={request.y}, orientation={request.orientation}")
             raise HTTPException(status_code=400, detail="Invalid ship placement")
         
         logger.info(f"Ship placed successfully for player {request.player}")
-        return {"status": "ship_placed", "game_state": game.get_game_state(requesting_player=request.player)}
+        try:
+            game_state = game.get_game_state(requesting_player=request.player)
+            logger.info(f"Game state retrieved successfully for player {request.player}")
+            return {"status": "ship_placed", "game_state": game_state}
+        except Exception as e:
+            logger.error(f"Error getting game state after ship placement: {e}")
+            raise HTTPException(status_code=500, detail=f"Error getting game state: {str(e)}")
     except Exception as e:
         logger.error(f"Error placing Battleship ship: {e}")
         raise HTTPException(status_code=500, detail=str(e))
