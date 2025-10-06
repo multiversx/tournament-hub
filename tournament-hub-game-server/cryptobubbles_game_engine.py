@@ -400,17 +400,21 @@ class CryptoBubblesGameEngine:
                     print(f"COLLISION DETECTED! Distance: {distance}, Cell1: {cell1.player} at ({cell1.x}, {cell1.y}) size {cell1.size}, Cell2: {cell2.player} at ({cell2.x}, {cell2.y}) size {cell2.size}")
                     # Determine winner based on size
                     if cell1.size > cell2.size * 1.1:  # 10% size advantage needed
+                        print(f"ELIMINATING {cell2.player} (size {cell2.size}) - {cell1.player} (size {cell1.size}) wins!")
                         cell2.state = CellState.DEAD
                         cell1.size = min(cell1.size + cell2.size * 0.5, self.max_cell_size)
                     elif cell2.size > cell1.size * 1.1:
+                        print(f"ELIMINATING {cell1.player} (size {cell1.size}) - {cell2.player} (size {cell2.size}) wins!")
                         cell1.state = CellState.DEAD
                         cell2.size = min(cell2.size + cell1.size * 0.5, self.max_cell_size)
                     else:
                         # Same size or very close - random winner (or first player wins)
                         if cell1.player < cell2.player:  # Use player address as tiebreaker
+                            print(f"TIEBREAKER: ELIMINATING {cell2.player} - {cell1.player} wins by address order!")
                             cell2.state = CellState.DEAD
                             cell1.size = min(cell1.size + cell2.size * 0.5, self.max_cell_size)
                         else:
+                            print(f"TIEBREAKER: ELIMINATING {cell1.player} - {cell2.player} wins by address order!")
                             cell1.state = CellState.DEAD
                             cell2.size = min(cell2.size + cell1.size * 0.5, self.max_cell_size)
     

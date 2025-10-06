@@ -60,7 +60,7 @@ from notifier_subscriber import start_notifier_subscriber
 from notifier_rabbitmq_subscriber import RabbitNotifierSubscriber
 from database_optimization import db_optimizer
 
-app = FastAPI(title="Tournament Hub Game Server", version="1.0.0")
+app = FastAPI(title="Tournament Hub Game Server", version="0.3.0")
 
 # Add compression middleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -638,29 +638,6 @@ async def get_recent_game_start(tournamentId: str):
 async def get_recent_any_join():
     return {"ts": last_global_join_ts}
 
-@app.post("/notifier/inject-event")
-@app.post("/tournament-hub/notifier/inject-event")
-async def inject_test_event(event_data: dict):
-    """Manually inject a test event for debugging purposes"""
-    try:
-        # Create a test event structure
-        test_event = {
-            "identifier": event_data.get("identifier", "tournamentCreated"),
-            "tournament_id": event_data.get("tournament_id", 999),
-            "ts": int(time.time() * 1000),  # milliseconds
-            "game_id": event_data.get("game_id"),
-            "player": event_data.get("player", "erd1test...")
-        }
-        
-        # Add to recent events
-        with recent_events_lock:
-            recent_notifier_events.append(test_event)
-        
-        logger.info(f"Injected test event: {test_event}")
-        return {"success": True, "event": test_event}
-    except Exception as e:
-        logger.error(f"Error injecting test event: {e}")
-        return {"success": False, "error": str(e)}
 
 @app.get("/health")
 async def health_check():
@@ -871,6 +848,24 @@ async def start_session(request: StartSessionRequest):
                                     if p not in g.players:
                                         g.players.append(p)
                                         g.state.scores[p] = 0
+                    elif game_type == 'battleship':
+                        from battleship_game_engine import get_battleship_game, create_battleship_game
+                        g = get_battleship_game(existing_session_id)
+                        if not g:
+                            logger.info(f"Creating Battleship game for session {existing_session_id} with players: {request.playerAddresses or []}")
+                            create_battleship_game(existing_session_id, request.playerAddresses or [])
+                        else:
+                            logger.info(f"Battleship game already exists for session {existing_session_id}")
+                        # Battleship games are created with fixed players, no need to add more
+                    elif game_type == 'connectfour':
+                        from connectfour_game_engine import get_connectfour_game, create_connectfour_game
+                        g = get_connectfour_game(existing_session_id)
+                        if not g:
+                            logger.info(f"Creating ConnectFour game for session {existing_session_id} with players: {request.playerAddresses or []}")
+                            create_connectfour_game(existing_session_id, request.playerAddresses or [])
+                        else:
+                            logger.info(f"ConnectFour game already exists for session {existing_session_id}")
+                        # ConnectFour games are created with fixed players, no need to add more
                 except Exception as e:
                     logger.warning(f"Failed to ensure engine for existing session: {e}")
                 return {"session_id": existing_session_id, "game_type": game_type}
@@ -1466,6 +1461,45 @@ async def submit_tictactoe_move(request: TicTacToeMoveRequest):
         logger.error(f"Error making Tic Tac Toe move: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/join_tictactoe_session")
+@app.post("/tournament-hub/join_tictactoe_session")
+async def join_tictactoe_session(sessionId: str, player: str):
+    """Join an existing Tic Tac Toe session"""
+    try:
+        game = get_tictactoe_game(sessionId)
+        if not game:
+            # Try to create the game instance if session exists
+            if sessionId in sessions:
+                session = sessions[sessionId]
+                players = session.get('players', [])
+                create_tictactoe_game(sessionId, players)
+                game = get_tictactoe_game(sessionId)
+                
+                if not game:
+                    raise HTTPException(status_code=500, detail="Failed to create Tic Tac Toe game")
+            else:
+                raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Check if player is already assigned
+        if game.state.x_player == player:
+            return {"status": "already_assigned", "role": "X", "game_state": game.get_game_state()}
+        elif game.state.o_player == player:
+            return {"status": "already_assigned", "role": "O", "game_state": game.get_game_state()}
+        
+        # Assign player to available position
+        if game.state.x_player is None:
+            game.state.x_player = player
+            return {"status": "joined", "role": "X", "game_state": game.get_game_state()}
+        elif game.state.o_player is None:
+            game.state.o_player = player
+            return {"status": "joined", "role": "O", "game_state": game.get_game_state()}
+        else:
+            return {"status": "full", "game_state": game.get_game_state()}
+            
+    except Exception as e:
+        logger.error(f"Error joining Tic Tac Toe session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/start_tictactoe_game")
 @app.post("/tournament-hub/start_tictactoe_game")
 async def start_tictactoe_game(sessionId: str):
@@ -1713,6 +1747,37 @@ async def get_game_configs():
         }
     }
 
+# Async function to submit game results without blocking
+async def submit_game_results_async(session_id: str, winner: str):
+    """Submit game results asynchronously to avoid blocking game updates"""
+    try:
+        # Extract tournament_id from session_id
+        if session_id.startswith('session_'):
+            parts = session_id.split('_')
+            if len(parts) >= 3:
+                tournament_id = int(parts[2])
+            else:
+                logger.warning(f"Could not extract tournament_id from session_id: {session_id}")
+                return
+        else:
+            tournament_id = int(session_id)
+        
+        # Create podium list with only the winner
+        podium = [winner]
+        
+        # Sign and submit results
+        signature = sign_results_for_tournament(tournament_id, podium)
+        if signature:
+            tx_hash = submit_results_to_contract_with_signature(tournament_id, podium, signature)
+            if tx_hash:
+                logger.info(f"Successfully submitted results for tournament {tournament_id} with tx_hash: {tx_hash}")
+            else:
+                logger.error(f"Failed to submit results for tournament {tournament_id}")
+        else:
+            logger.error(f"Failed to sign results for tournament {tournament_id}")
+    except Exception as e:
+        logger.error(f"Error processing game results for {session_id}: {e}")
+
 # Game update loop for CryptoBubbles
 def update_cryptobubbles_games():
     """Background task to update all active CryptoBubbles games"""
@@ -1734,38 +1799,11 @@ def update_cryptobubbles_games():
                         # Mark as submitted to prevent repeated processing
                         game.results_submitted = True
                         
-                        # Extract tournament_id from session_id
-                        # Session ID format: either "session_timestamp_tournamentId" or just "tournamentId"
-                        try:
-                            if session_id.startswith('session_'):
-                                # Old format: session_timestamp_tournamentId
-                                parts = session_id.split('_')
-                                if len(parts) >= 3:
-                                    tournament_id = int(parts[2])
-                                else:
-                                    logger.warning(f"Could not extract tournament_id from session_id: {session_id}")
-                                    continue
-                            else:
-                                # New format: just the tournament_id
-                                tournament_id = int(session_id)
-                                
-                            # Create podium list with only the winner (contract expects podium_size = 1)
-                            podium = [game.state.winner]
-                            
-                            # Sign and submit results
-                            signature = sign_results_for_tournament(tournament_id, podium)
-                            if signature:
-                                tx_hash = submit_results_to_contract_with_signature(tournament_id, podium, signature)
-                                if tx_hash:
-                                    logger.info(f"Successfully submitted results for tournament {tournament_id} with tx_hash: {tx_hash}")
-                                else:
-                                    logger.error(f"Failed to submit results for tournament {tournament_id}")
-                            else:
-                                logger.error(f"Failed to sign results for tournament {tournament_id}")
-                        except Exception as e:
-                            logger.error(f"Error processing game results for {session_id}: {e}")
+                        # Submit results asynchronously to avoid blocking game updates
+                        import asyncio
+                        asyncio.create_task(submit_game_results_async(session_id, game.state.winner))
             
-            time.sleep(0.1)  # Update every 100ms for better collision detection
+            time.sleep(0.05)  # Update every 50ms for more responsive collision detection
             
         except Exception as e:
             logger.error(f"Error updating CryptoBubbles games: {e}")
