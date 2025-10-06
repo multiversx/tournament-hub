@@ -21,6 +21,8 @@ import {
 } from '@chakra-ui/react';
 import { EnhancedButton, PrimaryButton, SuccessButton, DangerButton } from '../components/EnhancedButton';
 import { useTransactionButton } from '../hooks/useButtonState';
+import { useTransactionButtonState } from '../hooks/useTransactionButtonState';
+import { useGamingNotifications } from '../hooks/useGamingNotifications';
 import { Users, Award, Calendar, Play, Trophy, CopyIcon, Clock, Coins, RefreshCw, Share2 } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -63,6 +65,16 @@ export const TournamentDetails = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const toast = useToast();
+    const {
+        showTransactionSuccess,
+        showTransactionError,
+        showGameStarted,
+        showTournamentJoined,
+        showWarning,
+        showSuccess,
+        showError,
+        showInfo
+    } = useGamingNotifications();
     const { address: playerAddress } = useGetAccount();
     const navigate = useNavigate();
     const { joinTournament } = useJoinTournamentTransaction();
@@ -72,11 +84,14 @@ export const TournamentDetails = () => {
     // Add start game transaction hook
     const { startGame } = useStartGameTransaction();
 
-    // Enhanced button state management
-    const joinButtonState = useTransactionButton({
+    // Enhanced button state management with blockchain confirmation
+    const joinButtonState = useTransactionButtonState({
         successMessage: 'Transaction confirmed! Successfully joined the tournament!',
         errorMessage: 'Failed to join tournament. Please try again.',
+        waitForConfirmation: true,
+        tournamentId: parseInt(id || '0'),
         onSuccess: async () => {
+            showTournamentJoined(tournament?.name || 'this tournament');
             // Trigger immediate cache invalidation and refetch
             try {
                 const { invalidateCacheByEvent, invalidateCacheByKey } = await import('../helpers');
@@ -95,24 +110,34 @@ export const TournamentDetails = () => {
         },
     });
 
-    const startGameButtonState = useTransactionButton({
+    const startGameButtonState = useTransactionButtonState({
         successMessage: 'Transaction confirmed! Game started successfully!',
         errorMessage: 'Failed to start game. Please try again.',
+        waitForConfirmation: true,
+        tournamentId: parseInt(id || '0'),
         onSuccess: async () => {
+            showGameStarted('Game Started!');
             // Navigate to game session after successful start
             if (tournament) {
                 try {
-                    const gameSession = await startGameSession(tournament.id, Number(tournament.game_id), [playerAddress!]);
-                    navigate(`/game-session/${gameSession.id}`);
+                    console.log('Starting game session for tournament:', tournament.id, 'game type:', tournament.game_id, 'players:', tournament.participants);
+                    const gameSession = await startGameSession(tournament.id.toString(), Number(tournament.game_id), tournament.participants);
+                    console.log('Game session response:', gameSession);
+
+                    // Backend returns session_id, not id
+                    const sessionId = gameSession.session_id || gameSession.id;
+                    if (!sessionId) {
+                        throw new Error('No session ID returned from backend');
+                    }
+
+                    console.log('Navigating to game session:', sessionId);
+                    navigate(`/game/${sessionId}`);
                 } catch (error) {
                     console.error('Error starting game session:', error);
-                    toast({
-                        title: 'Error',
-                        description: 'Failed to start game session. Please try again.',
-                        status: 'error',
-                        duration: 5000,
-                        isClosable: true,
-                    });
+                    showTransactionError(
+                        'Game Session Failed',
+                        `Failed to start game session: ${error instanceof Error ? error.message : 'Unknown error'}`
+                    );
                 }
             }
         },
@@ -330,13 +355,10 @@ export const TournamentDetails = () => {
                         const newOnes = latest.participants.filter((p: string) => !prevSet.has(p));
                         newOnes.forEach((addr: string) => {
                             if (!addr || addr === tournament.creator) return;
-                            toast({
-                                title: 'New player joined',
-                                description: `${addr.slice(0, 8)}...${addr.slice(-6)} joined your tournament`,
-                                status: 'info',
-                                duration: 4000,
-                                isClosable: true,
-                            });
+                            showInfo(
+                                'New Player Joined!',
+                                `${addr.slice(0, 8)}...${addr.slice(-6)} joined your tournament`
+                            );
                         });
                         setTournament({ ...tournament, participants: latest.participants, current_players: latest.participants.length });
                     }
@@ -360,13 +382,7 @@ export const TournamentDetails = () => {
                 if (!mounted) return;
                 if (started && ts > lastNotified) {
                     lastNotified = ts;
-                    toast({
-                        title: 'Game starting',
-                        description: 'The creator started the game. Get ready!',
-                        status: 'success',
-                        duration: 4000,
-                        isClosable: true,
-                    });
+                    showGameStarted('Game Starting!');
                 }
             } catch { /* ignore */ }
         }, 1500);
@@ -375,13 +391,7 @@ export const TournamentDetails = () => {
 
     const handleJoinTournament = async () => {
         if (!playerAddress) {
-            toast({
-                title: 'Wallet not connected',
-                description: 'Please connect your wallet first',
-                status: 'warning',
-                duration: 3000,
-                isClosable: true,
-            });
+            showWarning('Wallet Not Connected', 'Please connect your wallet first');
             return;
         }
 
@@ -395,13 +405,7 @@ export const TournamentDetails = () => {
 
     const handleStartGame = async () => {
         if (!playerAddress) {
-            toast({
-                title: 'Wallet not connected',
-                description: 'Please connect your wallet first',
-                status: 'warning',
-                duration: 3000,
-                isClosable: true,
-            });
+            showWarning('Wallet Not Connected', 'Please connect your wallet first');
             return;
         }
 
@@ -482,7 +486,13 @@ export const TournamentDetails = () => {
         if (isParticipant) {
             return isCreator ? 'You Created This Tournament' : 'Already Joined';
         }
+        if (joinButtonState.isConfirming) return 'Waiting for confirmation...';
         return 'Join Tournament';
+    };
+
+    const getStartButtonText = () => {
+        if (startGameButtonState.isConfirming) return 'Waiting for confirmation...';
+        return 'Start Game';
     };
 
     const handleShareTournament = async () => {
@@ -504,22 +514,10 @@ export const TournamentDetails = () => {
             // Fallback: copy to clipboard
             try {
                 await navigator.clipboard.writeText(shareText);
-                toast({
-                    title: 'Tournament link copied!',
-                    description: 'Share this link with other players to invite them to join.',
-                    status: 'success',
-                    duration: 3000,
-                    isClosable: true,
-                });
+                showSuccess('Link Copied!', 'Tournament link copied to clipboard');
             } catch (error) {
                 console.error('Failed to copy to clipboard:', error);
-                toast({
-                    title: 'Failed to copy',
-                    description: 'Please copy the URL manually from the address bar.',
-                    status: 'error',
-                    duration: 3000,
-                    isClosable: true,
-                });
+                showError('Copy Failed', 'Please copy the URL manually from the address bar');
             }
         }
     };
@@ -587,9 +585,9 @@ export const TournamentDetails = () => {
                                 loadingText="Waiting for confirmation..."
                                 successText="Game Started!"
                                 errorText="Start Failed"
-                                enableShimmer={startGameButtonState.isLoading}
+                                enableShimmer={startGameButtonState.isLoading || startGameButtonState.isConfirming}
                             >
-                                Start Game
+                                {getStartButtonText()}
                             </SuccessButton>
                         ) : (tournament.status === 'ReadyToStart' && isParticipant && isCreator && !hasEnoughPlayers) ? (
                             <VStack spacing={3}>
@@ -659,7 +657,7 @@ export const TournamentDetails = () => {
                                 successText="Joined Successfully!"
                                 errorText="Join Failed"
                                 isDisabled={!canJoin}
-                                enableShimmer={joinButtonState.isLoading}
+                                enableShimmer={joinButtonState.isLoading || joinButtonState.isConfirming}
                                 tooltip={!canJoin ? "Cannot join this tournament" : undefined}
                             >
                                 {getJoinButtonText()}
@@ -681,22 +679,10 @@ export const TournamentDetails = () => {
                                 onClick={async () => {
                                     try {
                                         await fetchTournamentFresh();
-                                        toast({
-                                            title: 'Tournament refreshed',
-                                            description: 'Fetched latest data from blockchain',
-                                            status: 'success',
-                                            duration: 2000,
-                                            isClosable: true,
-                                        });
+                                        showSuccess('Tournament Refreshed', 'Fetched latest data from blockchain');
                                     } catch (error) {
                                         console.error('Error refreshing tournament:', error);
-                                        toast({
-                                            title: 'Refresh failed',
-                                            description: 'Failed to fetch fresh data',
-                                            status: 'error',
-                                            duration: 3000,
-                                            isClosable: true,
-                                        });
+                                        showError('Refresh Failed', 'Failed to fetch fresh data');
                                     }
                                 }}
                                 _hover={{
@@ -883,12 +869,7 @@ export const TournamentDetails = () => {
                                             colorScheme="blue"
                                             onClick={() => {
                                                 navigator.clipboard.writeText(tournament.resultTxHash);
-                                                toast({
-                                                    title: 'Transaction hash copied!',
-                                                    status: 'success',
-                                                    duration: 2000,
-                                                    isClosable: true,
-                                                });
+                                                showSuccess('Hash Copied!', 'Transaction hash copied to clipboard');
                                             }}
                                             _hover={{ bg: 'blue.700', color: 'white' }}
                                             _focus={{ bg: 'blue.700', color: 'white' }}
@@ -933,10 +914,10 @@ export const TournamentDetails = () => {
                             loadingText="Waiting for confirmation..."
                             successText="Game Started!"
                             errorText="Start Failed"
-                            enableShimmer={startGameButtonState.isLoading}
+                            enableShimmer={startGameButtonState.isLoading || startGameButtonState.isConfirming}
                             leftIcon={<Play size={20} />}
                         >
-                            Start Game
+                            {getStartButtonText()}
                         </SuccessButton>
                     ) : (
                         <Box textAlign="center" mt={6}>

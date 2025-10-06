@@ -2,6 +2,7 @@ import { RouteNamesEnum } from 'localConstants';
 import { Dashboard, Disclaimer, Home, Unlock, Tournaments, TournamentDetails, CreateTournament, GameSession, ColorRushDemoPage } from 'pages';
 import BattleshipGame from 'pages/Battleship/BattleshipGame';
 import BattleshipTest from 'pages/Battleship/BattleshipTest';
+import { NotificationDemo } from 'components/NotificationDemo';
 import { RouteType } from 'types';
 
 interface RouteWithTitleType extends RouteType {
@@ -87,6 +88,11 @@ export const routes: RouteWithTitleType[] = [
     path: '/demo/battleship',
     title: 'Battleship Test',
     component: BattleshipTest
+  },
+  {
+    path: '/demo/notifications',
+    title: 'Notification Demo',
+    component: NotificationDemo
   },
   {
     path: RouteNamesEnum.disclaimer,

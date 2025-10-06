@@ -25,7 +25,7 @@ const shimmer = keyframes`
   100% { background-position: calc(200px + 100%) 0; }
 `;
 
-export type ButtonStatus = 'idle' | 'loading' | 'success' | 'error' | 'disabled';
+export type ButtonStatus = 'idle' | 'loading' | 'confirming' | 'success' | 'error' | 'disabled';
 
 export interface EnhancedButtonProps extends Omit<ChakraButtonProps, 'isLoading' | 'loadingText'> {
     status?: ButtonStatus;
@@ -56,6 +56,7 @@ export const EnhancedButton: React.FC<EnhancedButtonProps> = ({
 }) => {
     const isDisabledState = isDisabled || status === 'disabled';
     const isLoading = status === 'loading';
+    const isConfirming = status === 'confirming';
     const isSuccess = status === 'success';
     const isError = status === 'error';
 
@@ -63,7 +64,7 @@ export const EnhancedButton: React.FC<EnhancedButtonProps> = ({
     const getColorScheme = () => {
         if (isError) return 'red';
         if (isSuccess) return 'green';
-        if (isLoading) return 'blue';
+        if (isLoading || isConfirming) return 'blue';
         return props.colorScheme || 'blue';
     };
 
@@ -71,13 +72,14 @@ export const EnhancedButton: React.FC<EnhancedButtonProps> = ({
     const getBgGradient = () => {
         if (isError) return 'linear(135deg, red.500, red.600, red.700)';
         if (isSuccess) return 'linear(135deg, green.500, green.600, green.700)';
-        if (isLoading) return 'linear(135deg, blue.500, blue.600, blue.700)';
+        if (isLoading || isConfirming) return 'linear(135deg, blue.500, blue.600, blue.700)';
         return props.bgGradient;
     };
 
     // Get display text
     const getDisplayText = () => {
         if (isLoading) return loadingText;
+        if (isConfirming) return 'Waiting for confirmation...';
         if (isSuccess && successText) return successText;
         if (isError && errorText) return errorText;
         return children;
@@ -87,7 +89,7 @@ export const EnhancedButton: React.FC<EnhancedButtonProps> = ({
     const getStatusIcon = () => {
         if (!showStatusIcon) return null;
 
-        if (isLoading) return <Loader size={16} />;
+        if (isLoading || isConfirming) return <Loader size={16} />;
         if (isSuccess) return <CheckCircle size={16} />;
         if (isError) return <AlertCircle size={16} />;
         return null;
@@ -111,7 +113,7 @@ export const EnhancedButton: React.FC<EnhancedButtonProps> = ({
             colorScheme={getColorScheme()}
             bgGradient={getBgGradient()}
             isDisabled={isDisabledState}
-            onClick={isLoading ? undefined : onClick}
+            onClick={isLoading || isConfirming ? undefined : onClick}
             position="relative"
             overflow="hidden"
             _disabled={{
@@ -136,7 +138,7 @@ export const EnhancedButton: React.FC<EnhancedButtonProps> = ({
             {...pulseStyles}
         >
             {/* Shimmer effect overlay */}
-            {enableShimmer && isLoading && (
+            {enableShimmer && (isLoading || isConfirming) && (
                 <Box
                     position="absolute"
                     top="0"

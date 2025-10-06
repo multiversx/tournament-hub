@@ -44,6 +44,21 @@ export const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ sessionId, playerA
     const toast = useToast();
     const navigate = useNavigate();
 
+    const joinGame = async () => {
+        try {
+            const res = await fetch(`${BACKEND_BASE_URL}/join_tictactoe_session?sessionId=${sessionId}&player=${playerAddress}`, {
+                method: 'POST'
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setGameState(data.game_state);
+                console.log(`Joined Tic Tac Toe game as ${data.role}`);
+            }
+        } catch (e) {
+            console.error('Error joining Tic Tac Toe game:', e);
+        }
+    };
+
     const fetchGameState = useCallback(async () => {
         // Don't fetch if sessionId is null or invalid
         if (!sessionId || sessionId === 'null' || sessionId.trim() === '') {
@@ -67,6 +82,11 @@ export const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ sessionId, playerA
             const isPlayerO = data.o_player === playerAddress;
             const isParticipant = isPlayerX || isPlayerO;
             setIsMyTurn(isParticipant && (isXTurn === isPlayerX));
+
+            // If player is not assigned to any side, try to join
+            if (!isPlayerX && !isPlayerO) {
+                await joinGame();
+            }
 
         } catch (error) {
             console.error('Error fetching game state:', error);

@@ -1,5 +1,5 @@
-import { Outlet, Link as RouterLink } from 'react-router-dom';
-import { useEffect } from 'react';
+import { Outlet, Link as RouterLink, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import {
   Box,
   Heading,
@@ -23,13 +23,17 @@ import { useTournamentStats } from '../../hooks/useTournamentStatsEventBased';
 import { useEnhancedTournamentStats } from '../../hooks/useEnhancedTournamentStats';
 import { UpcomingTournaments } from '../../components/UpcomingTournaments';
 import { useWallet } from '../../contexts/WalletContext';
-import { triggerBlockchainEventPolling, resetBlockchainEventTimestamp } from '../../services/BlockchainEventService';
 import { SkeletonLoader, StatCardSkeleton } from '../../components/SkeletonLoader';
 import { ProgressiveLoader, StatLoader } from '../../components/ProgressiveLoader';
 import { ErrorRetry } from '../../components/ErrorRetry';
+import { WalletConnectionModal } from '../../components/WalletConnectionModal';
 
 export const Home = () => {
   const isMobile = useBreakpointValue({ base: true, md: false });
+  const navigate = useNavigate();
+  const { isConnected } = useWallet();
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+
   // Use enhanced stats hook with caching and better loading states
   const {
     totalTournaments,
@@ -47,9 +51,22 @@ export const Home = () => {
     refreshStats
   } = useEnhancedTournamentStats();
 
-  // Debug logging
-  console.log('Home component - Prize values:', { maxPrizeWon, totalPrizeDistributed });
-  const { isConnected } = useWallet();
+
+  // Handle create tournament button click
+  const handleCreateTournament = () => {
+    if (isConnected) {
+      navigate('/tournaments/create');
+    } else {
+      setIsWalletModalOpen(true);
+    }
+  };
+
+  // Handle wallet connection
+  const handleWalletConnect = () => {
+    // Close the modal first, then navigate to the unlock page to connect wallet
+    setIsWalletModalOpen(false);
+    navigate('/unlock');
+  };
 
   // Listen for tournament creation events to refresh stats
   useEffect(() => {
@@ -134,116 +151,6 @@ export const Home = () => {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [refreshStats]);
 
-  const handleTestEvent = () => {
-    console.log('Testing event system...');
-    window.dispatchEvent(new CustomEvent('tournament_created', {
-      detail: {
-        event: 'tournament_created',
-        timestamp: Date.now(),
-        source: 'manual_test'
-      }
-    }));
-  };
-
-  const handleSimulateTournamentCreation = () => {
-    console.log('Simulating tournament creation event...');
-    // Simulate the exact same event that should be dispatched during tournament creation
-    window.dispatchEvent(new CustomEvent('tournament_created', {
-      detail: {
-        event: 'tournament_created',
-        timestamp: Date.now(),
-        source: 'tournament_creation_immediate',
-        sessionId: 'test-session-123'
-      }
-    }));
-  };
-
-  const handlePollBlockchainEvents = () => {
-    console.log('Manually polling blockchain events...');
-    triggerBlockchainEventPolling();
-  };
-
-  const handleResetTimestamp = () => {
-    console.log('Resetting blockchain event timestamp...');
-    resetBlockchainEventTimestamp();
-  };
-
-  const handleTestNotifierEndpoint = async () => {
-    console.log('Testing notifier endpoint...');
-    try {
-      const response = await fetch('/api/notifier/recent');
-      console.log('Notifier response status:', response.status);
-      console.log('Notifier response headers:', response.headers);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Notifier data:', data);
-      } else {
-        console.error('Notifier endpoint error:', response.status, response.statusText);
-      }
-    } catch (error) {
-      console.error('Notifier endpoint test failed:', error);
-    }
-  };
-
-  const handleInjectTestEvent = async () => {
-    console.log('Injecting test event to backend...');
-    try {
-      const url = '/api/notifier/inject-event';
-      console.log('POST request to:', url);
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          identifier: 'tournamentCreated',
-          tournament_id: 35, // Use a realistic tournament ID
-          game_id: 1,
-          player: 'erd1test...'
-        })
-      });
-
-      console.log('Inject response status:', response.status, response.statusText);
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Test event injected:', data);
-        // Now poll for the event
-        setTimeout(() => {
-          console.log('Polling for injected event...');
-          triggerBlockchainEventPolling();
-        }, 1000);
-      } else {
-        console.error('Failed to inject test event:', response.status, response.statusText);
-        const errorText = await response.text();
-        console.error('Error response:', errorText);
-      }
-    } catch (error) {
-      console.error('Error injecting test event:', error);
-    }
-  };
-
-  const handleSimulateBlockchainEvent = () => {
-    console.log('Simulating blockchain event from notifier...');
-    // Simulate the exact event structure that should come from the backend notifier
-    const mockEvent = {
-      identifier: 'tournamentCreated',
-      tournament_id: 999,
-      ts: Date.now(),
-      game_id: 1,
-      player: 'erd1test...'
-    };
-
-    // Dispatch the event as if it came from the blockchain event service
-    window.dispatchEvent(new CustomEvent('tournament_created', {
-      detail: {
-        event: 'tournament_created',
-        blockchainEvent: mockEvent,
-        timestamp: Date.now(),
-        source: 'blockchain_event_service'
-      }
-    }));
-  };
 
   return (
     <PageWrapper>
@@ -658,30 +565,6 @@ export const Home = () => {
                     </HStack>
                   )}
 
-                  {/* Debug button for prize stats */}
-                  <HStack justify="center" mt={4}>
-                    <Button
-                      size="sm"
-                      colorScheme="blue"
-                      variant="outline"
-                      onClick={refreshStats}
-                      leftIcon={<Trophy size={14} />}
-                    >
-                      Force Refresh Stats
-                    </Button>
-                    <Button
-                      size="sm"
-                      colorScheme="red"
-                      variant="outline"
-                      onClick={() => {
-                        localStorage.clear();
-                        window.location.reload();
-                      }}
-                      leftIcon={<Trophy size={14} />}
-                    >
-                      Clear Cache & Reload
-                    </Button>
-                  </HStack>
 
                   {/* Cool Action Buttons with Enhanced Gradients */}
                   <HStack spacing={4} flexWrap="wrap" justify="center" w="full">
@@ -728,8 +611,7 @@ export const Home = () => {
                     </Button>
 
                     <Button
-                      as={RouterLink}
-                      to="/tournaments/create"
+                      onClick={handleCreateTournament}
                       leftIcon={<Plus size={18} />}
                       size="lg"
                       px={8}
@@ -978,43 +860,6 @@ export const Home = () => {
                 </SimpleGrid>
               </VStack>
 
-              {/* Debug: Event System Test */}
-              <Box p={4} border="1px solid" borderColor="gray.600" borderRadius="lg" bg="gray.800">
-                <VStack spacing={3}>
-                  <Text fontSize="sm" color="gray.400">Debug: Event System Test</Text>
-                  <HStack spacing={2} wrap="wrap">
-                    <Button size="sm" onClick={handleTestEvent} colorScheme="purple">
-                      Test Event
-                    </Button>
-                    <Button size="sm" onClick={handleSimulateTournamentCreation} colorScheme="orange">
-                      Simulate Creation
-                    </Button>
-                    <Button size="sm" onClick={handlePollBlockchainEvents} colorScheme="green">
-                      Poll Blockchain
-                    </Button>
-                    <Button size="sm" onClick={handleTestNotifierEndpoint} colorScheme="red">
-                      Test Notifier
-                    </Button>
-                    <Button size="sm" onClick={handleInjectTestEvent} colorScheme="yellow">
-                      Inject Event
-                    </Button>
-                    <Button size="sm" onClick={handleResetTimestamp} colorScheme="gray">
-                      Reset Timestamp
-                    </Button>
-                    <Button size="sm" onClick={handleSimulateBlockchainEvent} colorScheme="teal">
-                      Simulate Blockchain
-                    </Button>
-                    {refreshStats && (
-                      <Button size="sm" onClick={refreshStats} colorScheme="blue">
-                        Manual Refresh
-                      </Button>
-                    )}
-                  </HStack>
-                  <Text fontSize="xs" color="gray.500">
-                    Total: {totalTournaments} | Active: {activeTournaments} | Completed: {completedTournaments}
-                  </Text>
-                </VStack>
-              </Box>
 
             </VStack>
           </Box>
@@ -1022,6 +867,13 @@ export const Home = () => {
           <Outlet />
         </VStack>
       </Container>
+
+      {/* Wallet Connection Modal */}
+      <WalletConnectionModal
+        isOpen={isWalletModalOpen}
+        onClose={() => setIsWalletModalOpen(false)}
+        onConnect={handleWalletConnect}
+      />
     </PageWrapper>
   );
 };

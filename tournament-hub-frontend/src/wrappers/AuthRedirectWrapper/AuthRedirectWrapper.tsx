@@ -12,7 +12,7 @@ export const AuthRedirectWrapper = ({ children }: PropsWithChildren) => {
   const protectedRoutes = [
     '/dashboard',
     '/tournaments/create',
-    '/game-session'
+    '/game/'
   ];
 
   const requireAuth = protectedRoutes.some(route => pathname.startsWith(route));

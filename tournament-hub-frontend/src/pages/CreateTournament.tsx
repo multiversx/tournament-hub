@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
     Box,
     Button,
@@ -36,6 +36,8 @@ import { useCreateTournamentTransaction } from '../hooks/transactions/useCreateT
 import { GAME_CONFIGS } from '../services/tournamentService';
 import { PrimaryButton } from '../components/EnhancedButton';
 import { useTransactionButton } from '../hooks/useButtonState';
+import { useTransactionButtonState } from '../hooks/useTransactionButtonState';
+import { getNumberOfRegisteredGames, getRegisteredGameConfig } from '../helpers';
 
 interface FormData {
     name: string;
@@ -68,11 +70,13 @@ export const CreateTournament: React.FC = () => {
 
     const [errors, setErrors] = useState<FormErrors>({});
     const formRef = useRef<HTMLFormElement>(null);
+    const [debugInfo, setDebugInfo] = useState<{ numGames: number, gameConfigs: any[] }>({ numGames: 0, gameConfigs: [] });
 
-    // Enhanced button state management
-    const createButtonState = useTransactionButton({
+    // Enhanced button state management with blockchain confirmation
+    const createButtonState = useTransactionButtonState({
         successMessage: 'Transaction confirmed! Tournament created successfully!',
         errorMessage: 'Failed to create tournament. Please try again.',
+        waitForConfirmation: true,
         onSuccess: async (result) => {
             // Navigate to the created tournament
             if (result && result.tournamentId) {
@@ -86,6 +90,29 @@ export const CreateTournament: React.FC = () => {
             }
         },
     });
+
+    // Debug: Check registered games
+    useEffect(() => {
+        const checkRegisteredGames = async () => {
+            try {
+                const numGames = await getNumberOfRegisteredGames();
+                console.log('Number of registered games:', numGames);
+
+                const gameConfigs = [];
+                for (let i = 1; i <= numGames; i++) {
+                    const config = await getRegisteredGameConfig(i);
+                    gameConfigs.push({ index: i, config });
+                }
+
+                setDebugInfo({ numGames, gameConfigs });
+                console.log('Registered game configs:', gameConfigs);
+            } catch (error) {
+                console.error('Error checking registered games:', error);
+            }
+        };
+
+        checkRegisteredGames();
+    }, []);
 
     // Prize Pool Slider Configuration
     const prizePoolSteps = ['0.01', '0.05', '0.1', '0.25', '0.5', '1', '2', '5', '10', '25', '50', '100'];
@@ -420,6 +447,28 @@ export const CreateTournament: React.FC = () => {
                     </VStack>
                 </Box>
 
+                {/* Debug Info - Remove this after fixing the issue */}
+                {debugInfo.numGames > 0 && (
+                    <Box p={4} bg="yellow.100" borderRadius="md" border="1px solid" borderColor="yellow.300">
+                        <Text fontSize="sm" fontWeight="bold" color="yellow.800" mb={2}>
+                            Debug Info: Registered Games
+                        </Text>
+                        <Text fontSize="sm" color="yellow.700">
+                            Number of registered games: {debugInfo.numGames}
+                        </Text>
+                        <Text fontSize="sm" color="yellow.700">
+                            Available game indices: {Array.from({ length: debugInfo.numGames }, (_, i) => i + 1).join(', ')}
+                        </Text>
+                        <Text fontSize="sm" color="yellow.700">
+                            You're trying to create game ID: {formData.gameType} (Battleship)
+                        </Text>
+                        {parseInt(formData.gameType) > debugInfo.numGames && (
+                            <Text fontSize="sm" color="red.600" fontWeight="bold">
+                                ⚠️ ERROR: Game ID {formData.gameType} is not registered! Only games 1-{debugInfo.numGames} are available.
+                            </Text>
+                        )}
+                    </Box>
+                )}
 
                 {/* Cool Main Form Card */}
                 <Card
@@ -1338,7 +1387,7 @@ export const CreateTournament: React.FC = () => {
                                     py={6}
                                     borderRadius="xl"
                                     boxShadow="0 10px 30px rgba(59, 130, 246, 0.4)"
-                                    enableShimmer={createButtonState.isLoading}
+                                    enableShimmer={createButtonState.isLoading || createButtonState.isConfirming}
                                     _hover={{
                                         transform: "translateY(-3px)",
                                         boxShadow: "0 15px 40px rgba(59, 130, 246, 0.6)",
