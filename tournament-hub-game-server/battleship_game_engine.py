@@ -87,8 +87,7 @@ class BattleshipGameEngine:
         self.state = GameState(
             phase=GamePhase.SETUP,
             player1=players[0] if len(players) > 0 else None,
-            player2=players[1] if len(players) > 1 else None,
-            move_history=[]
+            player2=players[1] if len(players) > 1 else None
         )
         
         # Game settings
