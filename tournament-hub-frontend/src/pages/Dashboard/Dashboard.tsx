@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Container,
@@ -44,11 +44,15 @@ import { RouteNamesEnum } from 'localConstants';
 import { SkeletonLoader, StatCardSkeleton, UserStatsSkeleton } from '../../components/SkeletonLoader';
 import { ProgressiveLoader, StatLoader } from '../../components/ProgressiveLoader';
 import { ErrorRetry, DataLoadError } from '../../components/ErrorRetry';
+import { WalletConnectionModal } from '../../components/WalletConnectionModal';
+import { useWallet } from '../../contexts/WalletContext';
 
 export const Dashboard = () => {
   const { address, account } = useGetAccountInfo();
   const isLoggedIn = useGetIsLoggedIn();
   const navigate = useNavigate();
+  const { isConnected } = useWallet();
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   // Use enhanced stats hook with caching and better loading states
   const {
     totalTournaments,
@@ -94,6 +98,22 @@ export const Dashboard = () => {
     } catch (error) {
       console.error('Test API error:', error);
     }
+  };
+
+  // Handle create tournament button click
+  const handleCreateTournament = () => {
+    if (isConnected) {
+      navigate('/tournaments/create');
+    } else {
+      setIsWalletModalOpen(true);
+    }
+  };
+
+  // Handle wallet connection
+  const handleWalletConnect = () => {
+    // Close the modal first, then navigate to the unlock page to connect wallet
+    setIsWalletModalOpen(false);
+    navigate('/unlock');
   };
 
   if (!isLoggedIn) {
@@ -472,7 +492,7 @@ export const Dashboard = () => {
                   variant="outline"
                   justifyContent="start"
                   _hover={{ bg: "green.600", color: "white" }}
-                  onClick={() => navigate('/tournaments/create')}
+                  onClick={handleCreateTournament}
                 >
                   Create Tournament
                 </Button>
@@ -653,6 +673,13 @@ export const Dashboard = () => {
           </CardBody>
         </Card>
       </VStack>
+
+      {/* Wallet Connection Modal */}
+      <WalletConnectionModal
+        isOpen={isWalletModalOpen}
+        onClose={() => setIsWalletModalOpen(false)}
+        onConnect={handleWalletConnect}
+      />
     </Container>
   );
 };

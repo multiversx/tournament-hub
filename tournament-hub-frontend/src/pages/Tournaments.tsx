@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useDeferredValue } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Box,
     Heading,
@@ -39,6 +40,8 @@ import { Users, Award, Calendar, Plus, Search, Filter, ChevronDown, ChevronUp, T
 import { getActiveTournamentIds, getTournamentDetailsFromContract, getTournamentDetailsFromContractFresh, getGameConfig, getPrizePoolFromContract, getTournamentsFromBlockchain, findTournamentsByTesting, getSubmitResultsTransactionHash, clearApiCaches, getRecentNotifierEvents, getAnyJoinTs, isTournamentCompletedByEvents, parseTournamentHex, forceRefreshTournaments, forceRefreshAllTournaments, TournamentDetails } from '../helpers';
 import { getContractAddress, getNetwork } from '../config/contract';
 import { useGetAccount } from 'lib';
+import { WalletConnectionModal } from '../components/WalletConnectionModal';
+import { useWallet } from '../contexts/WalletContext';
 
 // Using helper to clear caches instead of accessing internals
 
@@ -499,10 +502,29 @@ export const Tournaments = () => {
     const [activeTab, setActiveTab] = useState(0);
     const { isOpen, onOpen, onClose } = useDisclosure();
     const { address: userAddress } = useGetAccount();
+    const navigate = useNavigate();
+    const { isConnected } = useWallet();
+    const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
 
     const toast = useToast();
     const bgColor = useColorModeValue('gray.800', 'gray.900');
     const borderColor = useColorModeValue('gray.700', 'gray.600');
+
+    // Handle create tournament button click
+    const handleCreateTournament = () => {
+        if (isConnected) {
+            navigate('/tournaments/create');
+        } else {
+            setIsWalletModalOpen(true);
+        }
+    };
+
+    // Handle wallet connection
+    const handleWalletConnect = () => {
+        // Close the modal first, then navigate to the unlock page to connect wallet
+        setIsWalletModalOpen(false);
+        navigate('/unlock');
+    };
 
     // Optimized tournament data loading with better caching
     const loadBasicTournamentData = useCallback(async (id: bigint) => {
@@ -1852,7 +1874,7 @@ export const Tournaments = () => {
                                 Refresh
                             </Button>
                             <Button
-                                onClick={() => window.location.href = '/tournaments/create'}
+                                onClick={handleCreateTournament}
                                 size="md"
                                 bgGradient="linear(135deg, green.500, emerald.600, green.700)"
                                 color="white"
@@ -2221,6 +2243,13 @@ export const Tournaments = () => {
                     </ModalBody>
                 </ModalContent>
             </Modal>
+
+            {/* Wallet Connection Modal */}
+            <WalletConnectionModal
+                isOpen={isWalletModalOpen}
+                onClose={() => setIsWalletModalOpen(false)}
+                onConnect={handleWalletConnect}
+            />
         </Box>
     );
 };

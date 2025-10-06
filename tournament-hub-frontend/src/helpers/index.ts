@@ -489,41 +489,6 @@ export function nuclearClearAndReload(): void {
     }, 2000);
 }
 
-// Debug function to inspect all caches
-export function debugAllCaches(): void {
-    console.log('=== DEBUG: Inspecting all caches ===');
-
-    // Check apiCache
-    console.log('apiCache size:', apiCache.size);
-    console.log('apiCache entries:', Array.from(apiCache.keys()));
-
-    // Check localStorage
-    try {
-        const persistentCache = localStorage.getItem('tournament_persistent_cache');
-        if (persistentCache) {
-            const parsed = JSON.parse(persistentCache);
-            console.log('localStorage tournament_persistent_cache:', parsed);
-            console.log('localStorage tournament count:', Object.keys(parsed.data || {}).length);
-        } else {
-            console.log('No tournament_persistent_cache in localStorage');
-        }
-
-        // Check all localStorage keys
-        console.log('All localStorage keys:', Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)));
-    } catch (e) {
-        console.log('Error reading localStorage:', e);
-    }
-
-    // Check sessionStorage
-    try {
-        console.log('sessionStorage length:', sessionStorage.length);
-        console.log('All sessionStorage keys:', Array.from({ length: sessionStorage.length }, (_, i) => sessionStorage.key(i)));
-    } catch (e) {
-        console.log('Error reading sessionStorage:', e);
-    }
-
-    console.log('=== DEBUG: Cache inspection complete ===');
-}
 
 // Function to force clear React component state (call this from UI)
 export function forceClearComponentState(): void {
@@ -655,94 +620,6 @@ export async function forceRefreshAllTournaments(): Promise<any[]> {
     return tournaments;
 }
 
-// Debug function to check contract state directly
-export async function debugContractState(): Promise<void> {
-    console.log('=== DEBUG CONTRACT STATE ===');
-    try {
-        // Check if contract is accessible
-        console.log('Contract address:', getContractAddress());
-        console.log('API URL:', getApiUrl());
-
-        // Check number of tournaments
-        const numberOfTournamentsResponse = await fetchWithTimeout(`${getApiUrl()}/vm-values/query`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                scAddress: getContractAddress(),
-                funcName: 'getNumberOfTournaments',
-                args: [],
-            }),
-        });
-
-        const numberOfTournamentsData = await numberOfTournamentsResponse.json();
-        console.log('Number of tournaments response:', numberOfTournamentsData);
-
-        // Check active tournament IDs
-        const activeIdsResponse = await fetchWithTimeout(`${getApiUrl()}/vm-values/query`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                scAddress: getContractAddress(),
-                funcName: 'getActiveTournamentIds',
-                args: [],
-            }),
-        });
-
-        const activeIdsData = await activeIdsResponse.json();
-        console.log('Active tournament IDs response:', activeIdsData);
-
-        // Try to get the latest tournament (assuming it's the highest ID)
-        const tournamentIds = await getActiveTournamentIds();
-        console.log('Parsed tournament IDs:', tournamentIds);
-
-        if (tournamentIds.length > 0) {
-            const latestId = tournamentIds[0];
-            console.log('Trying to get latest tournament:', latestId);
-
-            const latestTournament = await getTournamentDetailsFromContract(latestId);
-            console.log('Latest tournament details:', latestTournament);
-        }
-
-        // Try to get all tournaments individually
-        console.log('=== CHECKING ALL TOURNAMENTS INDIVIDUALLY ===');
-        for (let i = 1; i <= 10; i++) { // Check first 10 tournaments
-            try {
-                const tournament = await getTournamentDetailsFromContract(BigInt(i));
-                if (tournament) {
-                    console.log(`Tournament ${i}:`, {
-                        id: i,
-                        status: tournament.status,
-                        name: tournament.name,
-                        game_id: tournament.game_id,
-                        participants: tournament.participants?.length || 0
-                    });
-                } else {
-                    console.log(`Tournament ${i}: Not found`);
-                }
-            } catch (error) {
-                console.log(`Tournament ${i}: Error -`, error instanceof Error ? error.message : String(error));
-            }
-        }
-
-        // Check if there are any recent transactions to this contract
-        console.log('=== CHECKING RECENT TRANSACTIONS ===');
-        try {
-            const transactionsResponse = await fetch(`${getApiUrl()}/transactions?receiver=${getContractAddress()}&size=10`);
-            const transactionsData = await transactionsResponse.json();
-            console.log('Recent transactions to contract:', transactionsData);
-        } catch (error) {
-            console.log('Error fetching recent transactions:', error);
-        }
-
-    } catch (error) {
-        console.error('Debug error:', error);
-    }
-    console.log('=== END DEBUG ===');
-}
 
 // Enhanced cache management functions
 export function invalidateCacheByEvent(event: string) {
@@ -1153,39 +1030,6 @@ async function parseBulkTournamentBasicInfo(hexData: string): Promise<any[]> {
     }
 }
 
-// Debug function to test prize stats directly
-export async function debugPrizeStats(): Promise<void> {
-    console.log('=== DEBUG PRIZE STATS ===');
-    try {
-        const response = await fetch(`${getApiUrl()}/vm-values/query`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                scAddress: getContractAddress(),
-                funcName: 'getPrizeStats',
-                args: [],
-            }),
-        });
-
-        console.log('Debug response status:', response.status);
-        const data = await response.json();
-        console.log('Debug response data:', data);
-
-        if (data?.data?.data?.returnData && data.data.data.returnData.length > 0) {
-            const hex = data.data.data.returnData[0];
-            console.log('Debug raw hex:', hex);
-            const result = parsePrizeStatsHex(hex);
-            console.log('Debug parsed result:', result);
-        } else {
-            console.log('Debug: No return data found');
-        }
-    } catch (error) {
-        console.error('Debug error:', error);
-    }
-    console.log('=== END DEBUG ===');
-}
 
 // Enhanced fetch function with compression support
 async function fetchWithCompression(url: string, options: RequestInit = {}): Promise<Response> {
@@ -2354,59 +2198,66 @@ function parseGameConfigHex(hex: string) {
     }
 }
 
-// Debug functions (kept for development but with reduced logging)
-export async function debugTournamentDiscovery() {
-    const activeIds = await getActiveTournamentIds();
-    const eventTournaments = await getTournamentsFromBlockchain();
-    const testingIds = await findTournamentsByTesting();
 
-    return {
-        activeIds: activeIds.length,
-        eventTournaments: eventTournaments.length,
-        testingIds: testingIds.length
-    };
+export interface TransactionStatus {
+    status: 'pending' | 'success' | 'failed' | 'not_found';
+    txHash?: string;
+    error?: string;
 }
 
-export async function debugSpecificTournament(tournamentId: number) {
-    const details = await getTournamentDetailsFromContract(tournamentId);
-    const prizePool = await getPrizePoolFromContract(tournamentId);
-    const gameConfig = details ? await getGameConfig(details.game_id) : null;
-
-    return {
-        tournamentId,
-        details,
-        prizePool: prizePool.toString(),
-        gameConfig
-    };
-}
-
-export async function debugTournamentCount() {
-    const activeIds = await getActiveTournamentIds();
-    return activeIds.length;
-}
-
-export async function debugActiveTournamentIds() {
-    return await getActiveTournamentIds();
-}
-
-export async function debugContractResponse() {
+export async function getTransactionStatus(sessionId: string, apiAddress: string): Promise<TransactionStatus | null> {
     try {
-        // First, check if the contract exists
-        const contractAddress = getContractAddress();
+        // First, try to get the transaction hash from the session
+        // This would require the MultiversX SDK to provide a way to get the transaction hash from session ID
+        // For now, we'll implement a basic approach that checks recent transactions
 
-        const contractInfoResponse = await fetch(`${getApiUrl()}/accounts/${contractAddress}`);
-        const contractInfo = await contractInfoResponse.json();
-
-        if (contractInfo.error) {
-            return { error: 'Contract not found or not accessible', contractInfo };
+        // Get recent transactions for the user to find the one that matches our session
+        const response = await fetch(`${apiAddress}/transactions?size=50`);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch transactions: ${response.statusText}`);
         }
 
-        // Get all events from the contract to see what's available
-        const allEventsResponse = await fetch(`${getApiUrl()}/events?address=${contractAddress}&from=0&size=10&order=desc`);
-        const allEventsData = await allEventsResponse.json();
+        const data = await response.json();
+        const transactions = data.data || [];
 
-        // Check registered games count
-        const gamesResponse = await fetch(`${getApiUrl()}/vm-values/query`, {
+        // Look for transactions that might match our session
+        // This is a simplified approach - in a real implementation, you'd want to track
+        // the session ID to transaction hash mapping
+        for (const tx of transactions) {
+            if (tx.status === 'success' || tx.status === 'failed') {
+                // Check if this transaction is recent enough to be our transaction
+                const txTime = new Date(tx.timestamp * 1000);
+                const now = new Date();
+                const timeDiff = now.getTime() - txTime.getTime();
+
+                // If transaction is within the last 5 minutes, consider it
+                if (timeDiff < 5 * 60 * 1000) {
+                    return {
+                        status: tx.status,
+                        txHash: tx.txHash
+                    };
+                }
+            }
+        }
+
+        return {
+            status: 'pending',
+            error: 'Transaction not found in recent transactions'
+        };
+
+    } catch (error) {
+        console.error('Error checking transaction status:', error);
+        return {
+            status: 'not_found',
+            error: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+export async function getNumberOfRegisteredGames(): Promise<number> {
+    try {
+        const contractAddress = getContractAddress();
+        const response = await fetch(`${getApiUrl()}/vm-values/query`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -2418,28 +2269,30 @@ export async function debugContractResponse() {
             }),
         });
 
-        const gamesData = await gamesResponse.json();
+        if (!response.ok) {
+            throw new Error(`Failed to fetch number of games: ${response.statusText}`);
+        }
 
-        // Try to get the first game config to see if any games are registered
-        const gameConfigResponse = await fetch(`${getApiUrl()}/vm-values/query`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                scAddress: contractAddress,
-                funcName: 'getGameConfig',
-                args: ['0000000000000001'], // Game index 1
-            }),
-        });
+        const data = await response.json();
 
-        const gameConfigData = await gameConfigResponse.json();
+        if (data.data && data.data.returnData && data.data.returnData.length > 0) {
+            // Parse the hex response
+            const hexValue = data.data.returnData[0];
+            return parseInt(hexValue, 16);
+        }
 
-        // Note: There's no getNumberOfGames endpoint in the contract
-        // We'll check if games are registered by trying to get game config for index 1
-        console.log('Checking if any games are registered...');
+        return 0;
+    } catch (error) {
+        console.error('Error getting number of registered games:', error);
+        return 0;
+    }
+}
 
-        // Now try the function call
+export async function getRegisteredGameConfig(gameIndex: number): Promise<any> {
+    try {
+        const contractAddress = getContractAddress();
+        const gameIndexHex = BigInt(gameIndex).toString(16).padStart(8, '0');
+
         const response = await fetch(`${getApiUrl()}/vm-values/query`, {
             method: 'POST',
             headers: {
@@ -2447,1474 +2300,26 @@ export async function debugContractResponse() {
             },
             body: JSON.stringify({
                 scAddress: contractAddress,
-                funcName: 'getNumberOfTournaments',
-                args: [],
+                funcName: 'getGameConfig',
+                args: [gameIndexHex],
             }),
         });
 
+        if (!response.ok) {
+            throw new Error(`Failed to fetch game config: ${response.statusText}`);
+        }
+
         const data = await response.json();
-        return {
-            contractInfo,
-            allEvents: allEventsData,
-            gamesResponse: gamesData,
-            gameConfigResponse: gameConfigData,
-            functionResponse: data
-        };
+        return data;
     } catch (error) {
-        console.error('Debug contract response error:', error);
-        return { error: error instanceof Error ? error.message : 'Unknown error' };
+        console.error(`Error getting game config for index ${gameIndex}:`, error);
+        return null;
     }
 }
 
-export async function debugPrizePool(tournamentId: number) {
-    const prizePool = await getPrizePoolFromContract(tournamentId);
-    return {
-        tournamentId,
-        prizePool: prizePool.toString(),
-        prizePoolEgld: (Number(prizePool) / 1e18).toFixed(4)
-    };
-}
 
-export async function debugEntryFees() {
-    const fee = await getTournamentFeeFromContract();
-    return {
-        fee: fee.toString(),
-        feeEgld: (Number(fee) / 1e18).toFixed(4)
-    };
-}
 
-export function debugEgldToWei(egldAmount: string) {
-    const wei = BigInt(Math.floor(parseFloat(egldAmount) * 1e18));
-    return {
-        egld: egldAmount,
-        wei: wei.toString(),
-        weiHex: wei.toString(16)
-    };
-}
 
-// Debug function to test contract connectivity
-export async function debugContractConnectivity() {
-    console.log('Testing contract connectivity...');
-
-    try {
-        const contractAddress = getContractAddress();
-        console.log('Contract address:', contractAddress);
-
-        // Test basic contract query
-        const response = await fetchWithTimeout(`${getApiUrl()}/vm-values/query`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                scAddress: contractAddress,
-                funcName: 'getNumberOfTournaments',
-                args: [],
-            }),
-        }, 10000, 1);
-
-        console.log('Contract response status:', response.status);
-
-        if (response.ok) {
-            const data = await response.json();
-            console.log('Contract response data:', data);
-            return { success: true, data };
-        } else {
-            console.error('Contract query failed:', response.status, response.statusText);
-            return { success: false, error: `HTTP ${response.status}` };
-        }
-    } catch (error) {
-        console.error('Contract connectivity test failed:', error);
-        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-}
-
-// Debug function to test parsing with raw hex data
-export async function debugParseTournamentHex(hexData: string, tournamentId: number) {
-    console.log('debugParseTournamentHex: Testing with hex data:', hexData);
-    console.log('debugParseTournamentHex: Hex length:', hexData.length);
-
-    const result = await parseTournamentHex(hexData, tournamentId);
-    console.log('debugParseTournamentHex: Parsed result:', result);
-    console.log('debugParseTournamentHex: Participants count:', result?.participants?.length);
-    console.log('debugParseTournamentHex: Participants:', result?.participants);
-
-    return result;
-}
-
-// Make debug function available globally for console testing
-if (typeof window !== 'undefined') {
-    (window as any).debugContractConnectivity = debugContractConnectivity;
-    (window as any).getUserStatsFromContract = getUserStatsFromContract;
-    (window as any).getTournamentStatsFromContract = getTournamentStatsFromContract;
-    (window as any).clearApiCaches = clearApiCaches;
-    (window as any).getTournamentDetailsFromContract = getTournamentDetailsFromContract;
-    (window as any).getTournamentBasicInfoFromContract = getTournamentBasicInfoFromContract;
-    (window as any).parseTournamentHex = parseTournamentHex;
-    (window as any).isTournamentCompletedByEvents = isTournamentCompletedByEvents;
-    (window as any).debugParseTournamentHex = debugParseTournamentHex;
-
-    // Test with known hex data from contract
-    (window as any).testWithKnownHex = async () => {
-        const knownHex = "000000000000000100000000015dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000005dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000020000000200000008016345785d8a000000000000000151800000000954657374204c6173740000000068c0b5b0";
-        console.log('Testing with known hex data from tournament 13:');
-        console.log('Hex length:', knownHex.length);
-
-        // Also test tournament 12 hex data
-        const knownHex12 = "000000000000000100000000015dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000005dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000020000000200000008016345785d8a000000000000000151800000000d54657374204372656174696f6e0000000068c0b3ac";
-        console.log('Also testing tournament 12 hex data:');
-        console.log('Tournament 12 hex length:', knownHex12.length);
-
-        // Manual parsing to debug step by step - let's try the correct Tournament struct order
-        let offset = 0;
-        const rawHex = knownHex;
-
-        function readU32() {
-            const hex = rawHex.substring(offset, offset + 8);
-            offset += 8;
-            return parseInt(hex, 16);
-        }
-
-        function readU64() {
-            const hex = rawHex.substring(offset, offset + 16);
-            offset += 16;
-            return BigInt('0x' + hex);
-        }
-
-        function readU8() {
-            const hex = rawHex.substring(offset, offset + 2);
-            offset += 2;
-            return parseInt(hex, 16);
-        }
-
-        function readHex(len: number) {
-            const hex = rawHex.substring(offset, offset + len);
-            offset += len;
-            return hex;
-        }
-
-        function hexToBech32(hex: string) {
-            try {
-                const bytes = Buffer.from(hex, 'hex');
-                return 'erd' + bytes.toString('base64').replace(/[+/=]/g, (m) => ({ '+': '-', '/': '_', '=': '' }[m]!));
-            } catch {
-                return 'Invalid address';
-            }
-        }
-
-        // Parse step by step following Tournament struct order:
-        // 1. game_id: u64, 2. status: TournamentStatus, 3. participants: ManagedVec, 4. final_podium: ManagedVec, 5. creator: ManagedAddress, etc.
-
-        console.log('Step 1: game_id (u64)');
-        const game_id = readU64();
-        console.log('game_id:', game_id);
-
-        console.log('Step 2: status (enum)');
-        const status = readU8();
-        console.log('status:', status);
-
-        console.log('Step 3: participants (ManagedVec) - length first');
-        const participantsLen = readU32();
-        console.log('participants length:', participantsLen);
-
-        console.log('Step 4: participants addresses');
-        const participants = [];
-        for (let i = 0; i < participantsLen; i++) {
-            const addrHex = readHex(64);
-            const addr = hexToBech32(addrHex);
-            participants.push(addr);
-            console.log(`Participant ${i + 1}:`, addr);
-        }
-
-        console.log('Step 5: final_podium (ManagedVec) - length first');
-        const finalPodiumLen = readU32();
-        console.log('final_podium length:', finalPodiumLen);
-
-        console.log('Step 6: final_podium addresses');
-        const finalPodium = [];
-        for (let i = 0; i < finalPodiumLen; i++) {
-            const addrHex = readHex(64);
-            const addr = hexToBech32(addrHex);
-            finalPodium.push(addr);
-            console.log(`Final podium ${i + 1}:`, addr);
-        }
-
-        console.log('Step 7: creator (ManagedAddress)');
-        const creatorHex = readHex(64);
-        const creator = hexToBech32(creatorHex);
-        console.log('creator:', creator);
-
-        console.log('Final participants array:', participants);
-        console.log('Participants count:', participants.length);
-
-        console.log('Testing tournament 13 parsing:');
-        const result13 = await debugParseTournamentHex(knownHex, 13);
-
-        console.log('Testing tournament 12 parsing:');
-        const result12 = await debugParseTournamentHex(knownHex12, 12);
-
-        return { tournament13: result13, tournament12: result12 };
-    };
-
-    // Test function to debug tournament contract calls
-    (window as any).testTournamentContractCall = async (tournamentId = 13) => {
-        console.log(`Testing direct contract call for tournament ${tournamentId}...`);
-
-        try {
-            const response = await fetch(`${getApiUrl()}/vm-values/query`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    scAddress: getContractAddress(),
-                    funcName: 'getTournament',
-                    args: [Number(tournamentId).toString(16).padStart(16, '0')],
-                    caller: getContractAddress(),
-                    gasLimit: 50000000
-                }),
-            });
-
-            const data = await response.json();
-            console.log('Raw contract response:', data);
-
-            if (data.data && data.data.data && data.data.data.returnData && data.data.data.returnData.length > 0) {
-                const hex = data.data.data.returnData[0];
-                console.log('Raw hex data from contract:', hex);
-                console.log('Hex length:', hex.length);
-
-                // Compare with known hex
-                const knownHex = "000000000000000100000000015dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000005dd983f0426b2c0acf8c011096d81c8ab2cb5af14b56b3df1af29e7a65b16aee000000020000000200000008016345785d8a000000000000000151800000000954657374204c6173740000000068c0b5b0";
-                console.log('Known hex data:', knownHex);
-                console.log('Hex data matches:', hex === knownHex);
-
-                // Test parsing
-                const parsed = await debugParseTournamentHex(hex, tournamentId);
-                console.log('Parsed result:', parsed);
-                return parsed;
-            }
-        } catch (error) {
-            console.error('Error testing contract call:', error);
-        }
-    };
-
-    // Add a simple test function
-    (window as any).testDashboard = async () => {
-        console.log('Testing Dashboard functionality...');
-
-        // Test 1: Contract connectivity
-        console.log('1. Testing contract connectivity...');
-        const contractTest = await debugContractConnectivity();
-        console.log('Contract test result:', contractTest);
-
-        // Test 2: User stats (if wallet is connected)
-        const address = (window as any).multiversx?.getAccount?.()?.address;
-        if (address) {
-            console.log('2. Testing user stats for address:', address);
-            const userStats = await getUserStatsFromContract(address);
-            console.log('User stats result:', userStats);
-        } else {
-            console.log('2. No wallet connected, skipping user stats test');
-        }
-
-        // Test 3: Tournament stats
-        console.log('3. Testing tournament stats...');
-        const tournamentStats = await getTournamentStatsFromContract();
-        console.log('Tournament stats result:', tournamentStats);
-
-        console.log('Dashboard test completed!');
-    };
-
-    // Add a tournament data test function
-    (window as any).testTournamentData = async (tournamentId = 1) => {
-        console.log(`Testing tournament data for ID: ${tournamentId}`);
-
-        try {
-            // Test 1: Get tournament details
-            console.log('1. Testing getTournamentDetailsFromContract...');
-            const details = await getTournamentDetailsFromContract(tournamentId);
-            console.log('Tournament details:', details);
-
-            // Test 2: Get active tournament IDs
-            console.log('2. Testing getActiveTournamentIds...');
-            const activeIds = await getActiveTournamentIds();
-            console.log('Active tournament IDs:', activeIds);
-
-            // Test 3: Get tournaments from blockchain events
-            console.log('3. Testing getTournamentsFromBlockchain...');
-            const eventTournaments = await getTournamentsFromBlockchain();
-            console.log('Event tournaments:', eventTournaments);
-
-            return {
-                details,
-                activeIds,
-                eventTournaments
-            };
-        } catch (error) {
-            console.error('Tournament data test failed:', error);
-            return { error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    };
-
-    // Add a simple contract test function
-    (window as any).testContract = async () => {
-        console.log('Testing contract connectivity...');
-        const contractAddress = getContractAddress();
-        const apiUrl = getApiUrl();
-
-        console.log('Contract address:', contractAddress);
-        console.log('API URL:', apiUrl);
-
-        try {
-            // First check if the contract exists
-            console.log('1. Checking if contract exists...');
-            const accountResponse = await fetch(`${apiUrl}/accounts/${contractAddress}`);
-            const accountData = await accountResponse.json();
-            console.log('Account data:', accountData);
-
-            if (accountData.error) {
-                console.error('Contract does not exist:', accountData.error);
-                return { success: false, error: 'Contract not found', accountData };
-            }
-
-            // Test basic contract query
-            console.log('2. Testing getNumberOfTournaments...');
-            const response1 = await fetch(`${apiUrl}/vm-values/query`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    scAddress: contractAddress,
-                    funcName: 'getNumberOfTournaments',
-                    args: [],
-                }),
-            });
-
-            console.log('getNumberOfTournaments status:', response1.status);
-            const data1 = await response1.json();
-            console.log('getNumberOfTournaments data:', data1);
-
-            // Test getActiveTournamentIds
-            console.log('3. Testing getActiveTournamentIds...');
-            const response2 = await fetch(`${apiUrl}/vm-values/query`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    scAddress: contractAddress,
-                    funcName: 'getActiveTournamentIds',
-                    args: [],
-                }),
-            });
-
-            console.log('getActiveTournamentIds status:', response2.status);
-            const data2 = await response2.json();
-            console.log('getActiveTournamentIds data:', data2);
-
-            // Test getTournament for ID 1
-            console.log('4. Testing getTournament for ID 1...');
-            const response3 = await fetch(`${apiUrl}/vm-values/query`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    scAddress: contractAddress,
-                    funcName: 'getTournament',
-                    args: ['0000000000000001'],
-                }),
-            });
-
-            console.log('getTournament status:', response3.status);
-            const data3 = await response3.json();
-            console.log('getTournament data:', data3);
-
-            return {
-                success: true,
-                accountData,
-                numberOfTournaments: data1,
-                activeTournamentIds: data2,
-                tournament1: data3
-            };
-        } catch (error) {
-            console.error('Contract test failed:', error);
-            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    };
-
-    // Add a function to test the exact contract calls
-    (window as any).testExactContractCalls = async () => {
-        console.log('Testing exact contract calls...');
-
-        try {
-            const contractAddress = getContractAddress();
-            const apiUrl = getApiUrl();
-
-            console.log('Contract address:', contractAddress);
-            console.log('API URL:', apiUrl);
-
-            // Test 1: getNumberOfTournaments
-            console.log('\n1. Testing getNumberOfTournaments...');
-            const response1 = await fetch(`${apiUrl}/vm-values/query`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    scAddress: contractAddress,
-                    funcName: 'getNumberOfTournaments',
-                    args: [],
-                }),
-            });
-            const data1 = await response1.json();
-            console.log('getNumberOfTournaments response:', data1);
-
-            // Test 2: getActiveTournamentIds
-            console.log('\n2. Testing getActiveTournamentIds...');
-            const response2 = await fetch(`${apiUrl}/vm-values/query`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    scAddress: contractAddress,
-                    funcName: 'getActiveTournamentIds',
-                    args: [],
-                }),
-            });
-            const data2 = await response2.json();
-            console.log('getActiveTournamentIds response:', data2);
-
-            // Parse the tournament IDs
-            let tournamentIds = [];
-            if (data2.data && data2.data.data && data2.data.data.returnData && data2.data.data.returnData.length > 0) {
-                const base64Data = data2.data.data.returnData[0];
-                const decoded = atob(base64Data);
-                for (let i = 0; i < decoded.length; i += 8) {
-                    if (i + 8 <= decoded.length) {
-                        const chunk = decoded.slice(i, i + 8);
-                        const hexString = Array.from(chunk).map(char => char.charCodeAt(0).toString(16).padStart(2, '0')).join('');
-                        const id = parseInt(hexString, 16);
-                        tournamentIds.push(id);
-                    }
-                }
-                console.log('Parsed tournament IDs:', tournamentIds);
-            }
-
-            // Test 3: getTournament for first ID
-            if (tournamentIds.length > 0) {
-                console.log(`\n3. Testing getTournament for ID ${tournamentIds[0]}...`);
-                const response3 = await fetch(`${apiUrl}/vm-values/query`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        scAddress: contractAddress,
-                        funcName: 'getTournament',
-                        args: [Number(tournamentIds[0]).toString(16).padStart(16, '0')],
-                    }),
-                });
-                const data3 = await response3.json();
-                console.log('getTournament response:', data3);
-
-                // Note: getTournamentBasicInfo doesn't exist in deployed contract
-                console.log(`\n4. Skipping getTournamentBasicInfo (not available in deployed contract)...`);
-            }
-
-            return {
-                numberOfTournaments: data1,
-                activeTournamentIds: data2,
-                tournamentIds: tournamentIds
-            };
-        } catch (error) {
-            console.error('Exact contract calls test failed:', error);
-            return { error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    };
-
-    // Add a function to check contract state
-    (window as any).checkContractState = async () => {
-        console.log('Checking contract state...');
-
-        try {
-            const contractAddress = getContractAddress();
-            const apiUrl = getApiUrl();
-
-            // Check number of tournaments
-            console.log('1. Checking number of tournaments...');
-            const response1 = await fetch(`${apiUrl}/vm-values/query`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    scAddress: contractAddress,
-                    funcName: 'getNumberOfTournaments',
-                    args: [],
-                }),
-            });
-            const data1 = await response1.json();
-            console.log('Number of tournaments:', data1);
-
-            // Check active tournament IDs
-            console.log('2. Checking active tournament IDs...');
-            const response2 = await fetch(`${apiUrl}/vm-values/query`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    scAddress: contractAddress,
-                    funcName: 'getActiveTournamentIds',
-                    args: [],
-                }),
-            });
-            const data2 = await response2.json();
-            console.log('Active tournament IDs:', data2);
-
-            // Check if there are any tournaments at all
-            if (data2.data && data2.data.data && data2.data.data.returnData && data2.data.data.returnData.length > 0) {
-                const base64Data = data2.data.data.returnData[0];
-                const decoded = atob(base64Data);
-                const tournamentIds = [];
-                for (let i = 0; i < decoded.length; i += 8) {
-                    if (i + 8 <= decoded.length) {
-                        const chunk = decoded.slice(i, i + 8);
-                        const hexString = Array.from(chunk).map(char => char.charCodeAt(0).toString(16).padStart(2, '0')).join('');
-                        const id = parseInt(hexString, 16);
-                        tournamentIds.push(id);
-                    }
-                }
-                console.log('Parsed tournament IDs:', tournamentIds);
-
-                // Try to get the first tournament if any exist
-                if (tournamentIds.length > 0) {
-                    console.log('3. Trying to get first tournament...');
-                    const response3 = await fetch(`${apiUrl}/vm-values/query`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            scAddress: contractAddress,
-                            funcName: 'getTournament',
-                            args: [Number(tournamentIds[0]).toString(16).padStart(16, '0')],
-                        }),
-                    });
-                    const data3 = await response3.json();
-                    console.log('First tournament data:', data3);
-                }
-            }
-
-            return { numberOfTournaments: data1, activeTournamentIds: data2 };
-        } catch (error) {
-            console.error('Contract state check failed:', error);
-            return { error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    };
-
-    // Add a function to test tournament data parsing
-    (window as any).testTournamentParsing = async (tournamentId = 1) => {
-        console.log(`Testing tournament parsing for ID: ${tournamentId}`);
-
-        try {
-            // Test getTournamentDetailsFromContract
-            console.log('1. Testing getTournamentDetailsFromContract...');
-            const details = await getTournamentDetailsFromContract(tournamentId);
-            console.log('Raw details:', details);
-
-            // Note: getTournamentBasicInfoFromContract doesn't exist in deployed contract
-            console.log('2. Skipping getTournamentBasicInfoFromContract (not available in deployed contract)...');
-
-            // Test direct API call
-            console.log('3. Testing direct API call...');
-            const response = await fetch(`${getApiUrl()}/vm-values/query`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    scAddress: getContractAddress(),
-                    funcName: 'getTournament',
-                    args: [Number(tournamentId).toString(16).padStart(16, '0')], // Send as base64-encoded string
-                }),
-            });
-
-            const rawData = await response.json();
-            console.log('Raw API response:', rawData);
-
-            if (rawData.data && rawData.data.data && rawData.data.data.returnData && rawData.data.data.returnData.length > 0) {
-                const hex = rawData.data.data.returnData[0];
-                console.log('Raw hex data:', hex);
-
-                // Test parsing the hex
-                console.log('4. Testing hex parsing...');
-                const parsed = await parseTournamentHex(hex, tournamentId);
-                console.log('Parsed data:', parsed);
-            }
-
-            return {
-                details,
-                rawApiResponse: rawData
-            };
-        } catch (error) {
-            console.error('Tournament parsing test failed:', error);
-            return { error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    };
-
-    // Add a function to debug tournament participants parsing
-    (window as any).debugTournamentParticipants = async (tournamentId: number) => {
-        console.log(`=== DEBUGGING TOURNAMENT ${tournamentId} PARTICIPANTS ===`);
-
-        try {
-            // Get raw contract response
-            const response = await fetch(`${getApiUrl()}/vm-values/query`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    scAddress: getContractAddress(),
-                    funcName: 'getTournament',
-                    args: [tournamentId.toString(16).padStart(16, '0')],
-                    caller: getContractAddress(),
-                }),
-            });
-
-            const data = await response.json();
-            console.log('Raw contract response:', data);
-
-            if (data.data && data.data.data && data.data.data.returnData && data.data.data.returnData.length > 0) {
-                const hex = data.data.data.returnData[0];
-                console.log('Raw hex data:', hex);
-                console.log('Hex length:', hex.length);
-
-                // Parse the hex
-                const parsed = await parseTournamentHex(hex, tournamentId);
-                console.log('Parsed tournament:', parsed);
-                console.log('Participants:', parsed?.participants);
-                console.log('Participants length:', parsed?.participants?.length);
-
-                return {
-                    rawResponse: data,
-                    hex: hex,
-                    parsed: parsed,
-                    participants: parsed?.participants
-                };
-            } else {
-                console.log('No return data from contract');
-                return { error: 'No return data' };
-            }
-        } catch (error) {
-            console.error('Error debugging tournament participants:', error);
-            return { error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    };
-
-    // Add a function to check what getActiveTournamentIds returns
-    (window as any).checkActiveTournamentIds = async () => {
-        console.log('Checking what getActiveTournamentIds returns...');
-
-        try {
-            const contractAddress = getContractAddress();
-            const apiUrl = getApiUrl();
-
-            console.log('Contract address:', contractAddress);
-            console.log('API URL:', apiUrl);
-
-            // Test getActiveTournamentIds
-            const response = await fetch(`${apiUrl}/vm-values/query`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    scAddress: contractAddress,
-                    funcName: 'getActiveTournamentIds',
-                    args: [],
-                }),
-            });
-
-            console.log('Response status:', response.status);
-            const responseText = await response.text();
-            console.log('Raw response text:', responseText);
-
-            let responseData;
-            try {
-                responseData = JSON.parse(responseText);
-                console.log('Parsed response data:', responseData);
-
-                // Parse the tournament IDs
-                if (responseData.data && responseData.data.data && responseData.data.data.returnData && responseData.data.data.returnData.length > 0) {
-                    const base64Data = responseData.data.data.returnData[0];
-                    console.log('Base64 data:', base64Data);
-
-                    const decoded = atob(base64Data);
-                    console.log('Decoded data length:', decoded.length);
-                    console.log('Decoded data (first 100 chars):', decoded.substring(0, 100));
-
-                    const tournamentIds = [];
-                    for (let i = 0; i < decoded.length; i += 8) {
-                        if (i + 8 <= decoded.length) {
-                            const chunk = decoded.slice(i, i + 8);
-                            const hexString = Array.from(chunk).map(char => char.charCodeAt(0).toString(16).padStart(2, '0')).join('');
-                            const id = parseInt(hexString, 16);
-                            tournamentIds.push(id);
-                        }
-                    }
-                    console.log('Parsed tournament IDs:', tournamentIds);
-                    console.log('Number of tournament IDs:', tournamentIds.length);
-                } else {
-                    console.log('No return data found');
-                }
-            } catch (parseError) {
-                console.error('Failed to parse response as JSON:', parseError);
-            }
-
-            return {
-                status: response.status,
-                responseText,
-                responseData
-            };
-        } catch (error) {
-            console.error('Check active tournament IDs failed:', error);
-            return { error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    };
-
-    // Add a function to test the contract directly
-    (window as any).testContractDirectly = async () => {
-        console.log('Testing contract directly...');
-
-        try {
-            const contractAddress = getContractAddress();
-            const apiUrl = getApiUrl();
-
-            console.log('Contract address:', contractAddress);
-            console.log('API URL:', apiUrl);
-
-            // Test getNumberOfTournaments
-            console.log('\n1. Testing getNumberOfTournaments...');
-            const response1 = await fetch(`${apiUrl}/vm-values/query`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    scAddress: contractAddress,
-                    funcName: 'getNumberOfTournaments',
-                    args: [],
-                }),
-            });
-
-            const data1 = await response1.json();
-            console.log('getNumberOfTournaments response:', data1);
-            console.log('Response status:', response1.status);
-
-            // Test getActiveTournamentIds
-            console.log('\n2. Testing getActiveTournamentIds...');
-            const response2 = await fetch(`${apiUrl}/vm-values/query`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    scAddress: contractAddress,
-                    funcName: 'getActiveTournamentIds',
-                    args: [],
-                }),
-            });
-
-            const data2 = await response2.json();
-            console.log('getActiveTournamentIds response:', data2);
-            console.log('Response status:', response2.status);
-
-            // Test getTournament for ID 1
-            console.log('\n3. Testing getTournament for ID 1...');
-            const response3 = await fetch(`${apiUrl}/vm-values/query`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    scAddress: contractAddress,
-                    funcName: 'getTournament',
-                    args: ['0000000000000001'],
-                }),
-            });
-
-            const data3 = await response3.json();
-            console.log('getTournament response:', data3);
-            console.log('Response status:', response3.status);
-
-            return {
-                numberOfTournaments: data1,
-                activeTournamentIds: data2,
-                tournament1: data3
-            };
-        } catch (error) {
-            console.error('Direct contract test failed:', error);
-            return { error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    };
-
-    // Add a function to test Tournament with actual ID from contract
-    (window as any).testTournamentWithRealId = async () => {
-        console.log('Testing Tournament with real ID from contract...');
-
-        try {
-            const contractAddress = getContractAddress();
-            const apiUrl = getApiUrl();
-
-            console.log('Contract address:', contractAddress);
-            console.log('API URL:', apiUrl);
-
-            // First, get the actual tournament IDs from the contract
-            console.log('\n--- Step 1: Getting actual tournament IDs ---');
-            const activeIds = await getActiveTournamentIds();
-            console.log('Active tournament IDs from contract:', activeIds);
-
-            if (!activeIds || activeIds.length === 0) {
-                console.log('❌ No active tournaments found');
-                return { error: 'No active tournaments' };
-            }
-
-            const tournamentId = Number(activeIds[0]);
-            console.log(`Using tournament ID: ${tournamentId}`);
-
-            // Test different argument formats with the real tournament ID
-            const testCases = [
-                { name: `Number ${tournamentId}`, args: [tournamentId] },
-                { name: `String "${tournamentId}"`, args: [tournamentId.toString()] },
-                { name: `BigInt ${tournamentId}n`, args: [BigInt(tournamentId)] },
-            ];
-
-            for (const testCase of testCases) {
-                console.log(`\n--- Testing ${testCase.name} ---`);
-
-                try {
-                    const response = await fetch(`${apiUrl}/vm-values/query`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            scAddress: contractAddress,
-                            funcName: 'getTournament',
-                            args: testCase.args,
-                        }),
-                    });
-
-                    console.log(`Response status: ${response.status}`);
-
-                    if (response.status === 200) {
-                        const responseText = await response.text();
-                        const responseData = JSON.parse(responseText);
-                        console.log('✅ SUCCESS! Response:', responseData);
-
-                        if (responseData.data && responseData.data.data && responseData.data.data.returnData) {
-                            console.log('Return data found:', responseData.data.data.returnData);
-                            if (responseData.data.data.returnData.length > 0) {
-                                const hex = responseData.data.data.returnData[0];
-                                console.log('Hex data:', hex);
-
-                                try {
-                                    const parsed = await parseTournamentHex(hex, tournamentId);
-                                    console.log('✅ Parsed tournament data:', parsed);
-                                    return { success: true, method: testCase.name, data: parsed };
-                                } catch (parseError) {
-                                    console.error('Error parsing tournament hex:', parseError);
-                                }
-                            }
-                        }
-                        return { success: true, method: testCase.name, response: responseData };
-                    } else {
-                        const responseText = await response.text();
-                        console.log(`❌ Failed: ${responseText}`);
-                    }
-                } catch (error) {
-                    console.error(`❌ Error with ${testCase.name}:`, error);
-                }
-            }
-
-            return { error: 'All test cases failed' };
-        } catch (error) {
-            console.error('Test Tournament with real ID failed:', error);
-            return { error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    };
-
-    // Add a function to test different API endpoints
-    (window as any).testDifferentEndpoints = async () => {
-        console.log('Testing different API endpoints...');
-
-        try {
-            const contractAddress = getContractAddress();
-            const apiUrl = getApiUrl();
-
-            console.log('Contract address:', contractAddress);
-            console.log('API URL:', apiUrl);
-
-            // Test different API endpoints
-            const testCases = [
-                {
-                    name: 'vm-values/query',
-                    endpoint: '/vm-values/query',
-                    body: {
-                        scAddress: contractAddress,
-                        funcName: 'getTournament',
-                        args: ['0000000000000001'],
-                        caller: contractAddress,
-                        gasLimit: 50000000
-                    }
-                },
-                {
-                    name: 'vm-values/hex',
-                    endpoint: '/vm-values/hex',
-                    body: {
-                        scAddress: contractAddress,
-                        funcName: 'getTournament',
-                        args: ['0000000000000001'],
-                        caller: contractAddress,
-                        gasLimit: 50000000
-                    }
-                },
-                {
-                    name: 'query',
-                    endpoint: '/query',
-                    body: {
-                        scAddress: contractAddress,
-                        funcName: 'getTournament',
-                        args: ['0000000000000001'],
-                        caller: contractAddress,
-                        gasLimit: 50000000
-                    }
-                },
-                {
-                    name: 'vm-values/query with different format',
-                    endpoint: '/vm-values/query',
-                    body: {
-                        scAddress: contractAddress,
-                        funcName: 'getTournament',
-                        args: ['0000000000000001'],
-                        caller: contractAddress,
-                        gasLimit: 50000000,
-                        value: '0'
-                    }
-                }
-            ];
-
-            for (const testCase of testCases) {
-                console.log(`\n--- Testing ${testCase.name} ---`);
-
-                try {
-                    const response = await fetch(`${apiUrl}${testCase.endpoint}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        },
-                        body: JSON.stringify(testCase.body),
-                    });
-
-                    console.log(`Response status: ${response.status}`);
-                    console.log(`Response headers:`, Object.fromEntries(response.headers.entries()));
-
-                    const responseText = await response.text();
-                    console.log(`Response text: ${responseText}`);
-
-                    if (response.status === 200) {
-                        try {
-                            const responseData = JSON.parse(responseText);
-                            console.log('✅ SUCCESS! Parsed response:', responseData);
-
-                            if (responseData.data && responseData.data.data && responseData.data.data.returnData) {
-                                console.log('Return data found:', responseData.data.data.returnData);
-                                if (responseData.data.data.returnData.length > 0) {
-                                    const hex = responseData.data.data.returnData[0];
-                                    console.log('Hex data:', hex);
-
-                                    try {
-                                        const parsed = await parseTournamentHex(hex);
-                                        console.log('✅ Parsed tournament data:', parsed);
-                                        return { success: true, method: testCase.name, data: parsed };
-                                    } catch (parseError) {
-                                        console.error('Error parsing tournament hex:', parseError);
-                                    }
-                                }
-                            }
-                            return { success: true, method: testCase.name, response: responseData };
-                        } catch (parseError) {
-                            console.log('Response is not JSON:', responseText);
-                        }
-                    } else {
-                        console.log(`❌ Failed: ${responseText}`);
-                    }
-                } catch (error) {
-                    console.error(`❌ Error with ${testCase.name}:`, error);
-                }
-            }
-
-            return { error: 'All test cases failed' };
-        } catch (error) {
-            console.error('Test different endpoints failed:', error);
-            return { error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    };
-
-    // Add a function to test the exact API call format that works
-    (window as any).testWorkingApiCall = async () => {
-        console.log('Testing API call format that should work...');
-
-        try {
-            const contractAddress = getContractAddress();
-            const apiUrl = getApiUrl();
-
-            console.log('Contract address:', contractAddress);
-            console.log('API URL:', apiUrl);
-
-            // Test the exact format that the command line uses
-            const testCases = [
-                {
-                    name: 'Command line format',
-                    body: {
-                        scAddress: contractAddress,
-                        funcName: 'getTournament',
-                        args: ['0000000000000001']
-                    }
-                },
-                {
-                    name: 'With explicit caller',
-                    body: {
-                        scAddress: contractAddress,
-                        funcName: 'getTournament',
-                        args: ['0000000000000001'],
-                        caller: contractAddress
-                    }
-                },
-                {
-                    name: 'With gas limit and caller',
-                    body: {
-                        scAddress: contractAddress,
-                        funcName: 'getTournament',
-                        args: ['0000000000000001'],
-                        caller: contractAddress,
-                        gasLimit: 50000000
-                    }
-                }
-            ];
-
-            for (const testCase of testCases) {
-                console.log(`\n--- Testing ${testCase.name} ---`);
-
-                try {
-                    const response = await fetch(`${apiUrl}/vm-values/query`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        },
-                        body: JSON.stringify(testCase.body),
-                    });
-
-                    console.log(`Response status: ${response.status}`);
-                    console.log(`Response headers:`, Object.fromEntries(response.headers.entries()));
-
-                    const responseText = await response.text();
-                    console.log(`Response text: ${responseText}`);
-
-                    if (response.status === 200) {
-                        try {
-                            const responseData = JSON.parse(responseText);
-                            console.log('✅ SUCCESS! Parsed response:', responseData);
-
-                            if (responseData.data && responseData.data.data && responseData.data.data.returnData) {
-                                console.log('Return data found:', responseData.data.data.returnData);
-                                if (responseData.data.data.returnData.length > 0) {
-                                    const hex = responseData.data.data.returnData[0];
-                                    console.log('Hex data:', hex);
-
-                                    try {
-                                        const parsed = await parseTournamentHex(hex);
-                                        console.log('✅ Parsed tournament data:', parsed);
-                                        return { success: true, method: testCase.name, data: parsed };
-                                    } catch (parseError) {
-                                        console.error('Error parsing tournament hex:', parseError);
-                                    }
-                                }
-                            }
-                            return { success: true, method: testCase.name, response: responseData };
-                        } catch (parseError) {
-                            console.log('Response is not JSON:', responseText);
-                        }
-                    } else {
-                        console.log(`❌ Failed: ${responseText}`);
-                    }
-                } catch (error) {
-                    console.error(`❌ Error with ${testCase.name}:`, error);
-                }
-            }
-
-            return { error: 'All test cases failed' };
-        } catch (error) {
-            console.error('Test working API call failed:', error);
-            return { error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    };
-
-    // Add a function to test the exact API call format
-    (window as any).testExactApiCall = async () => {
-        console.log('Testing exact API call format...');
-
-        try {
-            const contractAddress = getContractAddress();
-            const apiUrl = getApiUrl();
-
-            console.log('Contract address:', contractAddress);
-            console.log('API URL:', apiUrl);
-
-            // Test the exact format that should work
-            const testCases = [
-                {
-                    name: 'Minimal request',
-                    body: {
-                        scAddress: contractAddress,
-                        funcName: 'getTournament',
-                        args: ['0000000000000001']
-                    }
-                },
-                {
-                    name: 'With explicit types',
-                    body: {
-                        scAddress: contractAddress,
-                        funcName: 'getTournament',
-                        args: ['0000000000000001'],
-                        caller: contractAddress
-                    }
-                },
-                {
-                    name: 'With gas limit',
-                    body: {
-                        scAddress: contractAddress,
-                        funcName: 'getTournament',
-                        args: ['0000000000000001'],
-                        gasLimit: 50000000
-                    }
-                },
-                {
-                    name: 'Different endpoint',
-                    endpoint: '/vm-values/hex',
-                    body: {
-                        scAddress: contractAddress,
-                        funcName: 'getTournament',
-                        args: ['0000000000000001']
-                    }
-                }
-            ];
-
-            for (const testCase of testCases) {
-                console.log(`\n--- Testing ${testCase.name} ---`);
-
-                try {
-                    const endpoint = testCase.endpoint || '/vm-values/query';
-                    const response = await fetch(`${apiUrl}${endpoint}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        },
-                        body: JSON.stringify(testCase.body),
-                    });
-
-                    console.log(`Response status: ${response.status}`);
-                    console.log(`Response headers:`, Object.fromEntries(response.headers.entries()));
-
-                    const responseText = await response.text();
-                    console.log(`Response text: ${responseText}`);
-
-                    if (response.status === 200) {
-                        try {
-                            const responseData = JSON.parse(responseText);
-                            console.log('✅ SUCCESS! Parsed response:', responseData);
-
-                            if (responseData.data && responseData.data.data && responseData.data.data.returnData) {
-                                console.log('Return data found:', responseData.data.data.returnData);
-                                if (responseData.data.data.returnData.length > 0) {
-                                    const hex = responseData.data.data.returnData[0];
-                                    console.log('Hex data:', hex);
-
-                                    try {
-                                        const parsed = await parseTournamentHex(hex);
-                                        console.log('✅ Parsed tournament data:', parsed);
-                                        return { success: true, method: testCase.name, data: parsed };
-                                    } catch (parseError) {
-                                        console.error('Error parsing tournament hex:', parseError);
-                                    }
-                                }
-                            }
-                            return { success: true, method: testCase.name, response: responseData };
-                        } catch (parseError) {
-                            console.log('Response is not JSON:', responseText);
-                        }
-                    } else {
-                        console.log(`❌ Failed: ${responseText}`);
-                    }
-                } catch (error) {
-                    console.error(`❌ Error with ${testCase.name}:`, error);
-                }
-            }
-
-            return { error: 'All test cases failed' };
-        } catch (error) {
-            console.error('Test exact API call failed:', error);
-            return { error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    };
-
-    // Add a function to debug the storage directly
-    (window as any).debugStorage = async () => {
-        console.log('Debugging contract storage...');
-
-        try {
-            const contractAddress = getContractAddress();
-            const apiUrl = getApiUrl();
-
-            console.log('Contract address:', contractAddress);
-            console.log('API URL:', apiUrl);
-
-            // Test 1: Get the raw storage for active_tournaments
-            console.log('\n--- Step 1: Getting raw storage ---');
-            try {
-                const response = await fetch(`${apiUrl}/accounts/${contractAddress}/keys/active_tournaments`);
-                console.log('Storage keys status:', response.status);
-                if (response.status === 200) {
-                    const data = await response.json();
-                    console.log('✅ Storage keys:', data);
-                } else {
-                    console.log('❌ Storage keys failed:', await response.text());
-                }
-            } catch (error) {
-                console.error('❌ Storage keys error:', error);
-            }
-
-            // Test 2: Try to get tournament with index 0 (if storage is 0-based)
-            console.log('\n--- Step 2: Testing index 0 ---');
-            try {
-                const response = await fetch(`${apiUrl}/vm-values/query`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        scAddress: contractAddress,
-                        funcName: 'getTournament',
-                        args: [0],
-                    }),
-                });
-
-                console.log('Index 0 status:', response.status);
-                if (response.status === 200) {
-                    const data = await response.json();
-                    console.log('✅ Index 0 works:', data);
-                } else {
-                    const error = await response.text();
-                    console.log('❌ Index 0 failed:', error);
-                }
-            } catch (error) {
-                console.error('❌ Index 0 error:', error);
-            }
-
-            // Test 3: Try to get tournament with index 2 (if there might be a gap)
-            console.log('\n--- Step 3: Testing index 2 ---');
-            try {
-                const response = await fetch(`${apiUrl}/vm-values/query`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        scAddress: contractAddress,
-                        funcName: 'getTournament',
-                        args: [2],
-                    }),
-                });
-
-                console.log('Index 2 status:', response.status);
-                if (response.status === 200) {
-                    const data = await response.json();
-                    console.log('✅ Index 2 works:', data);
-                } else {
-                    const error = await response.text();
-                    console.log('❌ Index 2 failed:', error);
-                }
-            } catch (error) {
-                console.error('❌ Index 2 error:', error);
-            }
-
-        } catch (error) {
-            console.error('Debug storage failed:', error);
-        }
-    };
-
-    // Add a function to test basic contract functionality
-    (window as any).testContractBasic = async () => {
-        console.log('Testing basic contract functionality...');
-
-        try {
-            const contractAddress = getContractAddress();
-            const apiUrl = getApiUrl();
-
-            console.log('Contract address:', contractAddress);
-            console.log('API URL:', apiUrl);
-
-            // Test 1: getNumberOfTournaments (should work)
-            console.log('\n--- Testing getNumberOfTournaments ---');
-            try {
-                const response1 = await fetch(`${apiUrl}/vm-values/query`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        scAddress: contractAddress,
-                        funcName: 'getNumberOfTournaments',
-                        args: [],
-                    }),
-                });
-
-                console.log('getNumberOfTournaments status:', response1.status);
-                if (response1.status === 200) {
-                    const data1 = await response1.json();
-                    console.log('✅ getNumberOfTournaments works:', data1);
-                } else {
-                    const error1 = await response1.text();
-                    console.log('❌ getNumberOfTournaments failed:', error1);
-                }
-            } catch (error) {
-                console.error('❌ getNumberOfTournaments error:', error);
-            }
-
-            // Test 2: getActiveTournamentIds (should work)
-            console.log('\n--- Testing getActiveTournamentIds ---');
-            try {
-                const response2 = await fetch(`${apiUrl}/vm-values/query`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        scAddress: contractAddress,
-                        funcName: 'getActiveTournamentIds',
-                        args: [],
-                    }),
-                });
-
-                console.log('getActiveTournamentIds status:', response2.status);
-                if (response2.status === 200) {
-                    const data2 = await response2.json();
-                    console.log('✅ getActiveTournamentIds works:', data2);
-                } else {
-                    const error2 = await response2.text();
-                    console.log('❌ getActiveTournamentIds failed:', error2);
-                }
-            } catch (error) {
-                console.error('❌ getActiveTournamentIds error:', error);
-            }
-
-            // Test 3: Check if contract exists
-            console.log('\n--- Testing contract existence ---');
-            try {
-                const response3 = await fetch(`${apiUrl}/accounts/${contractAddress}`);
-                console.log('Contract info status:', response3.status);
-                if (response3.status === 200) {
-                    const data3 = await response3.json();
-                    console.log('✅ Contract exists:', data3);
-                } else {
-                    console.log('❌ Contract not found or error');
-                }
-            } catch (error) {
-                console.error('❌ Contract existence check error:', error);
-            }
-
-        } catch (error) {
-            console.error('Basic contract test failed:', error);
-        }
-    };
-
-    // Add a function to debug the exact error
-    (window as any).debugContractError = async (tournamentId = 1) => {
-        console.log(`Debugging contract error for tournament ${tournamentId}...`);
-
-        try {
-            const contractAddress = getContractAddress();
-            const apiUrl = getApiUrl();
-
-            console.log('Contract address:', contractAddress);
-            console.log('API URL:', apiUrl);
-
-            // Test the exact call that's failing
-            const response = await fetch(`${apiUrl}/vm-values/query`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    scAddress: contractAddress,
-                    funcName: 'getTournament',
-                    args: [Number(tournamentId).toString(16).padStart(16, '0')], // Send as base64-encoded string
-                }),
-            });
-
-            console.log('Response status:', response.status);
-            console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-
-            const responseText = await response.text();
-            console.log('Raw response text:', responseText);
-
-            let responseData;
-            try {
-                responseData = JSON.parse(responseText);
-                console.log('Parsed response data:', responseData);
-            } catch (parseError) {
-                console.error('Failed to parse response as JSON:', parseError);
-                console.log('Response is not valid JSON');
-            }
-
-            // Also test if the contract exists
-            console.log('\nTesting if contract exists...');
-            const accountResponse = await fetch(`${apiUrl}/accounts/${contractAddress}`);
-            const accountData = await accountResponse.json();
-            console.log('Account data:', accountData);
-
-            return {
-                status: response.status,
-                responseText,
-                responseData,
-                accountData
-            };
-        } catch (error) {
-            console.error('Debug contract error failed:', error);
-            return { error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-    };
-
-    // Add deployment instructions function
-    (window as any).showDeploymentInstructions = () => {
-        console.log(`
-🚀 TOURNAMENT HUB - CONTRACT DEPLOYMENT INSTRUCTIONS
-====================================================
-
-The current contract address is a placeholder. You need to deploy the contract first.
-
-STEP 1: Build the Smart Contract
---------------------------------
-cd tournament-hub-sc
-sc-meta all build
-
-STEP 2: Deploy to Devnet
-------------------------
-mxpy contract deploy --bytecode=output/tournament_hub.wasm --recall-nonce --gas-limit=60000000 --send --outfile=deploy.json
-
-STEP 3: Update Contract Address
--------------------------------
-After deployment, update the contract address in:
-src/config/contract.ts
-
-Replace the ADDRESS field with your deployed contract address.
-
-STEP 4: Test the Contract
--------------------------
-Run: testContract() to verify the contract is working.
-
-CURRENT CONTRACT ADDRESS: ${getContractAddress()}
-API URL: ${getApiUrl()}
-
-If you see "Contract not found" errors, the contract needs to be deployed.
-        `);
-
-        return {
-            currentAddress: getContractAddress(),
-            apiUrl: getApiUrl(),
-            needsDeployment: true
-        };
-    };
-}
 
 // User statistics functions
 export async function getUserStatsFromContract(userAddress: string) {
@@ -4167,7 +2572,6 @@ function parseTournamentStatsHex(hex: string) {
         return null;
     }
 }
-
 function parseUserStatsHex(hex: string) {
     console.log('parseUserStatsHex - Input hex:', hex);
     console.log('parseUserStatsHex - Hex length:', hex.length);
@@ -4315,7 +2719,6 @@ function parsePrizeStatsHex(hex: string) {
     }
 }
 
-
 // Get tournament basic info using the new bulk endpoint
 export async function getTournamentBasicInfoFromContract(tournamentId: bigint): Promise<any> {
     const cacheKey = `tournament_basic_info_${tournamentId}`;
@@ -4373,7 +2776,6 @@ export async function getTournamentBasicInfoFromContract(tournamentId: bigint): 
         }
     });
 }
-
 // Parse tournament basic info from hex data (tuple format)
 async function parseTournamentBasicInfoHex(hex: string) {
     let offset = 0;
@@ -4521,14 +2923,13 @@ export async function testWithKnownHex() {
     console.log('Participants count:', participants.length);
 
     console.log('Testing tournament 13 parsing:');
-    const result13 = await debugParseTournamentHex(knownHex, 13);
+    const result13 = await parseTournamentHex(knownHex, 13);
 
     console.log('Testing tournament 12 parsing:');
-    const result12 = await debugParseTournamentHex(knownHex12, 12);
+    const result12 = await parseTournamentHex(knownHex12, 12);
 
     return { tournament13: result13, tournament12: result12 };
 }
-
 export async function testTournamentContractCall(tournamentId = 13) {
     console.log(`Testing direct contract call for tournament ${tournamentId}...`);
 
@@ -4561,7 +2962,7 @@ export async function testTournamentContractCall(tournamentId = 13) {
             console.log('Hex data matches:', hex === knownHex);
 
             // Test parsing
-            const parsed = await debugParseTournamentHex(hex, tournamentId);
+            const parsed = await parseTournamentHex(hex, tournamentId);
             console.log('Parsed result:', parsed);
             return parsed;
         }
@@ -4570,3 +2971,1161 @@ export async function testTournamentContractCall(tournamentId = 13) {
     }
 }
 
+// Add a simple contract test function
+(window as any).testContract = async () => {
+    console.log('Testing contract connectivity...');
+    const contractAddress = getContractAddress();
+    const apiUrl = getApiUrl();
+
+    console.log('Contract address:', contractAddress);
+    console.log('API URL:', apiUrl);
+
+    try {
+        // First check if the contract exists
+        console.log('1. Checking if contract exists...');
+        const accountResponse = await fetch(`${apiUrl}/accounts/${contractAddress}`);
+        const accountData = await accountResponse.json();
+        console.log('Account data:', accountData);
+
+        if (accountData.error) {
+            console.error('Contract does not exist:', accountData.error);
+            return { success: false, error: 'Contract not found', accountData };
+        }
+
+        // Test basic contract query
+        console.log('2. Testing getNumberOfTournaments...');
+        const response1 = await fetch(`${apiUrl}/vm-values/query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                scAddress: contractAddress,
+                funcName: 'getNumberOfTournaments',
+                args: [],
+            }),
+        });
+
+        console.log('getNumberOfTournaments status:', response1.status);
+        const data1 = await response1.json();
+        console.log('getNumberOfTournaments data:', data1);
+
+        // Test getActiveTournamentIds
+        console.log('3. Testing getActiveTournamentIds...');
+        const response2 = await fetch(`${apiUrl}/vm-values/query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                scAddress: contractAddress,
+                funcName: 'getActiveTournamentIds',
+                args: [],
+            }),
+        });
+
+        console.log('getActiveTournamentIds status:', response2.status);
+        const data2 = await response2.json();
+        console.log('getActiveTournamentIds data:', data2);
+
+        // Test getTournament for ID 1
+        console.log('4. Testing getTournament for ID 1...');
+        const response3 = await fetch(`${apiUrl}/vm-values/query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                scAddress: contractAddress,
+                funcName: 'getTournament',
+                args: ['0000000000000001'],
+            }),
+        });
+
+        console.log('getTournament status:', response3.status);
+        const data3 = await response3.json();
+        console.log('getTournament data:', data3);
+
+        return {
+            success: true,
+            accountData,
+            numberOfTournaments: data1,
+            activeTournamentIds: data2,
+            tournament1: data3
+        };
+    } catch (error) {
+        console.error('Contract test failed:', error);
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+};
+
+// Add a function to test the exact contract calls
+(window as any).testExactContractCalls = async () => {
+    console.log('Testing exact contract calls...');
+
+    try {
+        const contractAddress = getContractAddress();
+        const apiUrl = getApiUrl();
+
+        console.log('Contract address:', contractAddress);
+        console.log('API URL:', apiUrl);
+
+        // Test 1: getNumberOfTournaments
+        console.log('\n1. Testing getNumberOfTournaments...');
+        const response1 = await fetch(`${apiUrl}/vm-values/query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                scAddress: contractAddress,
+                funcName: 'getNumberOfTournaments',
+                args: [],
+            }),
+        });
+        const data1 = await response1.json();
+        console.log('getNumberOfTournaments response:', data1);
+
+        // Test 2: getActiveTournamentIds
+        console.log('\n2. Testing getActiveTournamentIds...');
+        const response2 = await fetch(`${apiUrl}/vm-values/query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                scAddress: contractAddress,
+                funcName: 'getActiveTournamentIds',
+                args: [],
+            }),
+        });
+        const data2 = await response2.json();
+        console.log('getActiveTournamentIds response:', data2);
+
+        // Parse the tournament IDs
+        let tournamentIds = [];
+        if (data2.data && data2.data.data && data2.data.data.returnData && data2.data.data.returnData.length > 0) {
+            const base64Data = data2.data.data.returnData[0];
+            const decoded = atob(base64Data);
+            for (let i = 0; i < decoded.length; i += 8) {
+                if (i + 8 <= decoded.length) {
+                    const chunk = decoded.slice(i, i + 8);
+                    const hexString = Array.from(chunk).map(char => char.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+                    const id = parseInt(hexString, 16);
+                    tournamentIds.push(id);
+                }
+            }
+            console.log('Parsed tournament IDs:', tournamentIds);
+        }
+
+        // Test 3: getTournament for first ID
+        if (tournamentIds.length > 0) {
+            console.log(`\n3. Testing getTournament for ID ${tournamentIds[0]}...`);
+            const response3 = await fetch(`${apiUrl}/vm-values/query`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    scAddress: contractAddress,
+                    funcName: 'getTournament',
+                    args: [Number(tournamentIds[0]).toString(16).padStart(16, '0')],
+                }),
+            });
+            const data3 = await response3.json();
+            console.log('getTournament response:', data3);
+
+            // Note: getTournamentBasicInfo doesn't exist in deployed contract
+            console.log(`\n4. Skipping getTournamentBasicInfo (not available in deployed contract)...`);
+        }
+
+        return {
+            numberOfTournaments: data1,
+            activeTournamentIds: data2,
+            tournamentIds: tournamentIds
+        };
+    } catch (error) {
+        console.error('Exact contract calls test failed:', error);
+        return { error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+};
+
+// Add a function to check contract state
+(window as any).checkContractState = async () => {
+    console.log('Checking contract state...');
+
+    try {
+        const contractAddress = getContractAddress();
+        const apiUrl = getApiUrl();
+
+        // Check number of tournaments
+        console.log('1. Checking number of tournaments...');
+        const response1 = await fetch(`${apiUrl}/vm-values/query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                scAddress: contractAddress,
+                funcName: 'getNumberOfTournaments',
+                args: [],
+            }),
+        });
+        const data1 = await response1.json();
+        console.log('Number of tournaments:', data1);
+
+        // Check active tournament IDs
+        console.log('2. Checking active tournament IDs...');
+        const response2 = await fetch(`${apiUrl}/vm-values/query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                scAddress: contractAddress,
+                funcName: 'getActiveTournamentIds',
+                args: [],
+            }),
+        });
+        const data2 = await response2.json();
+        console.log('Active tournament IDs:', data2);
+
+        // Check if there are any tournaments at all
+        if (data2.data && data2.data.data && data2.data.data.returnData && data2.data.data.returnData.length > 0) {
+            const base64Data = data2.data.data.returnData[0];
+            const decoded = atob(base64Data);
+            const tournamentIds = [];
+            for (let i = 0; i < decoded.length; i += 8) {
+                if (i + 8 <= decoded.length) {
+                    const chunk = decoded.slice(i, i + 8);
+                    const hexString = Array.from(chunk).map(char => char.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+                    const id = parseInt(hexString, 16);
+                    tournamentIds.push(id);
+                }
+            }
+            console.log('Parsed tournament IDs:', tournamentIds);
+
+            // Try to get the first tournament if any exist
+            if (tournamentIds.length > 0) {
+                console.log('3. Trying to get first tournament...');
+                const response3 = await fetch(`${apiUrl}/vm-values/query`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        scAddress: contractAddress,
+                        funcName: 'getTournament',
+                        args: [Number(tournamentIds[0]).toString(16).padStart(16, '0')],
+                    }),
+                });
+                const data3 = await response3.json();
+                console.log('First tournament data:', data3);
+            }
+        }
+
+        return { numberOfTournaments: data1, activeTournamentIds: data2 };
+    } catch (error) {
+        console.error('Contract state check failed:', error);
+        return { error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+};
+
+// Add a function to test tournament data parsing
+(window as any).testTournamentParsing = async (tournamentId = 1) => {
+    console.log(`Testing tournament parsing for ID: ${tournamentId}`);
+
+    try {
+        // Test getTournamentDetailsFromContract
+        console.log('1. Testing getTournamentDetailsFromContract...');
+        const details = await getTournamentDetailsFromContract(tournamentId);
+        console.log('Raw details:', details);
+
+        // Note: getTournamentBasicInfoFromContract doesn't exist in deployed contract
+        console.log('2. Skipping getTournamentBasicInfoFromContract (not available in deployed contract)...');
+
+        // Test direct API call
+        console.log('3. Testing direct API call...');
+        const response = await fetch(`${getApiUrl()}/vm-values/query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                scAddress: getContractAddress(),
+                funcName: 'getTournament',
+                args: [Number(tournamentId).toString(16).padStart(16, '0')], // Send as base64-encoded string
+            }),
+        });
+
+        const rawData = await response.json();
+        console.log('Raw API response:', rawData);
+
+        if (rawData.data && rawData.data.data && rawData.data.data.returnData && rawData.data.data.returnData.length > 0) {
+            const hex = rawData.data.data.returnData[0];
+            console.log('Raw hex data:', hex);
+
+            // Test parsing the hex
+            console.log('4. Testing hex parsing...');
+            const parsed = await parseTournamentHex(hex, tournamentId);
+            console.log('Parsed data:', parsed);
+        }
+
+        return {
+            details,
+            rawApiResponse: rawData
+        };
+    } catch (error) {
+        console.error('Tournament parsing test failed:', error);
+        return { error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+};
+
+// Add a function to debug tournament participants parsing
+(window as any).debugTournamentParticipants = async (tournamentId: number) => {
+    console.log(`=== DEBUGGING TOURNAMENT ${tournamentId} PARTICIPANTS ===`);
+
+    try {
+        // Get raw contract response
+        const response = await fetch(`${getApiUrl()}/vm-values/query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                scAddress: getContractAddress(),
+                funcName: 'getTournament',
+                args: [tournamentId.toString(16).padStart(16, '0')],
+                caller: getContractAddress(),
+            }),
+        });
+
+        const data = await response.json();
+        console.log('Raw contract response:', data);
+
+        if (data.data && data.data.data && data.data.data.returnData && data.data.data.returnData.length > 0) {
+            const hex = data.data.data.returnData[0];
+            console.log('Raw hex data:', hex);
+            console.log('Hex length:', hex.length);
+
+            // Parse the hex
+            const parsed = await parseTournamentHex(hex, tournamentId);
+            console.log('Parsed tournament:', parsed);
+            console.log('Participants:', parsed?.participants);
+            console.log('Participants length:', parsed?.participants?.length);
+
+            return {
+                rawResponse: data,
+                hex: hex,
+                parsed: parsed,
+                participants: parsed?.participants
+            };
+        } else {
+            console.log('No return data from contract');
+            return { error: 'No return data' };
+        }
+    } catch (error) {
+        console.error('Error debugging tournament participants:', error);
+        return { error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+};
+
+// Add a function to check what getActiveTournamentIds returns
+(window as any).checkActiveTournamentIds = async () => {
+    console.log('Checking what getActiveTournamentIds returns...');
+
+    try {
+        const contractAddress = getContractAddress();
+        const apiUrl = getApiUrl();
+
+        console.log('Contract address:', contractAddress);
+        console.log('API URL:', apiUrl);
+
+        // Test getActiveTournamentIds
+        const response = await fetch(`${apiUrl}/vm-values/query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                scAddress: contractAddress,
+                funcName: 'getActiveTournamentIds',
+                args: [],
+            }),
+        });
+
+        console.log('Response status:', response.status);
+        const responseText = await response.text();
+        console.log('Raw response text:', responseText);
+
+        let responseData;
+        try {
+            responseData = JSON.parse(responseText);
+            console.log('Parsed response data:', responseData);
+
+            // Parse the tournament IDs
+            if (responseData.data && responseData.data.data && responseData.data.data.returnData && responseData.data.data.returnData.length > 0) {
+                const base64Data = responseData.data.data.returnData[0];
+                console.log('Base64 data:', base64Data);
+
+                const decoded = atob(base64Data);
+                console.log('Decoded data length:', decoded.length);
+                console.log('Decoded data (first 100 chars):', decoded.substring(0, 100));
+
+                const tournamentIds = [];
+                for (let i = 0; i < decoded.length; i += 8) {
+                    if (i + 8 <= decoded.length) {
+                        const chunk = decoded.slice(i, i + 8);
+                        const hexString = Array.from(chunk).map(char => char.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+                        const id = parseInt(hexString, 16);
+                        tournamentIds.push(id);
+                    }
+                }
+                console.log('Parsed tournament IDs:', tournamentIds);
+                console.log('Number of tournament IDs:', tournamentIds.length);
+            } else {
+                console.log('No return data found');
+            }
+        } catch (parseError) {
+            console.error('Failed to parse response as JSON:', parseError);
+        }
+
+        return {
+            status: response.status,
+            responseText,
+            responseData
+        };
+    } catch (error) {
+        console.error('Check active tournament IDs failed:', error);
+        return { error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+};
+
+// Add a function to test the contract directly
+(window as any).testContractDirectly = async () => {
+    console.log('Testing contract directly...');
+
+    try {
+        const contractAddress = getContractAddress();
+        const apiUrl = getApiUrl();
+
+        console.log('Contract address:', contractAddress);
+        console.log('API URL:', apiUrl);
+
+        // Test getNumberOfTournaments
+        console.log('\n1. Testing getNumberOfTournaments...');
+        const response1 = await fetch(`${apiUrl}/vm-values/query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                scAddress: contractAddress,
+                funcName: 'getNumberOfTournaments',
+                args: [],
+            }),
+        });
+
+        const data1 = await response1.json();
+        console.log('getNumberOfTournaments response:', data1);
+        console.log('Response status:', response1.status);
+
+        // Test getActiveTournamentIds
+        console.log('\n2. Testing getActiveTournamentIds...');
+        const response2 = await fetch(`${apiUrl}/vm-values/query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                scAddress: contractAddress,
+                funcName: 'getActiveTournamentIds',
+                args: [],
+            }),
+        });
+
+        const data2 = await response2.json();
+        console.log('getActiveTournamentIds response:', data2);
+        console.log('Response status:', response2.status);
+
+        // Test getTournament for ID 1
+        console.log('\n3. Testing getTournament for ID 1...');
+        const response3 = await fetch(`${apiUrl}/vm-values/query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                scAddress: contractAddress,
+                funcName: 'getTournament',
+                args: ['0000000000000001'],
+            }),
+        });
+
+        const data3 = await response3.json();
+        console.log('getTournament response:', data3);
+        console.log('Response status:', response3.status);
+
+        return {
+            numberOfTournaments: data1,
+            activeTournamentIds: data2,
+            tournament1: data3
+        };
+    } catch (error) {
+        console.error('Direct contract test failed:', error);
+        return { error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+};
+
+// Add a function to test Tournament with actual ID from contract
+(window as any).testTournamentWithRealId = async () => {
+    console.log('Testing Tournament with real ID from contract...');
+
+    try {
+        const contractAddress = getContractAddress();
+        const apiUrl = getApiUrl();
+
+        console.log('Contract address:', contractAddress);
+        console.log('API URL:', apiUrl);
+
+        // First, get the actual tournament IDs from the contract
+        console.log('\n--- Step 1: Getting actual tournament IDs ---');
+        const activeIds = await getActiveTournamentIds();
+        console.log('Active tournament IDs from contract:', activeIds);
+
+        if (!activeIds || activeIds.length === 0) {
+            console.log('❌ No active tournaments found');
+            return { error: 'No active tournaments' };
+        }
+
+        const tournamentId = Number(activeIds[0]);
+        console.log(`Using tournament ID: ${tournamentId}`);
+
+        // Test different argument formats with the real tournament ID
+        const testCases = [
+            { name: `Number ${tournamentId}`, args: [tournamentId] },
+            { name: `String "${tournamentId}"`, args: [tournamentId.toString()] },
+            { name: `BigInt ${tournamentId}n`, args: [BigInt(tournamentId)] },
+        ];
+
+        for (const testCase of testCases) {
+            console.log(`\n--- Testing ${testCase.name} ---`);
+
+            try {
+                const response = await fetch(`${apiUrl}/vm-values/query`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        scAddress: contractAddress,
+                        funcName: 'getTournament',
+                        args: testCase.args,
+                    }),
+                });
+
+                console.log(`Response status: ${response.status}`);
+
+                if (response.status === 200) {
+                    const responseText = await response.text();
+                    const responseData = JSON.parse(responseText);
+                    console.log('✅ SUCCESS! Response:', responseData);
+
+                    if (responseData.data && responseData.data.data && responseData.data.data.returnData) {
+                        console.log('Return data found:', responseData.data.data.returnData);
+                        if (responseData.data.data.returnData.length > 0) {
+                            const hex = responseData.data.data.returnData[0];
+                            console.log('Hex data:', hex);
+
+                            try {
+                                const parsed = await parseTournamentHex(hex, tournamentId);
+                                console.log('✅ Parsed tournament data:', parsed);
+                                return { success: true, method: testCase.name, data: parsed };
+                            } catch (parseError) {
+                                console.error('Error parsing tournament hex:', parseError);
+                            }
+                        }
+                    }
+                    return { success: true, method: testCase.name, response: responseData };
+                } else {
+                    const responseText = await response.text();
+                    console.log(`❌ Failed: ${responseText}`);
+                }
+            } catch (error) {
+                console.error(`❌ Error with ${testCase.name}:`, error);
+            }
+        }
+
+        return { error: 'All test cases failed' };
+    } catch (error) {
+        console.error('Test Tournament with real ID failed:', error);
+        return { error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+};
+
+// Add a function to test different API endpoints
+(window as any).testDifferentEndpoints = async () => {
+    console.log('Testing different API endpoints...');
+
+    try {
+        const contractAddress = getContractAddress();
+        const apiUrl = getApiUrl();
+
+        console.log('Contract address:', contractAddress);
+        console.log('API URL:', apiUrl);
+
+        // Test different API endpoints
+        const testCases = [
+            {
+                name: 'vm-values/query',
+                endpoint: '/vm-values/query',
+                body: {
+                    scAddress: contractAddress,
+                    funcName: 'getTournament',
+                    args: ['0000000000000001'],
+                    caller: contractAddress,
+                    gasLimit: 50000000
+                }
+            },
+            {
+                name: 'vm-values/hex',
+                endpoint: '/vm-values/hex',
+                body: {
+                    scAddress: contractAddress,
+                    funcName: 'getTournament',
+                    args: ['0000000000000001'],
+                    caller: contractAddress,
+                    gasLimit: 50000000
+                }
+            },
+            {
+                name: 'query',
+                endpoint: '/query',
+                body: {
+                    scAddress: contractAddress,
+                    funcName: 'getTournament',
+                    args: ['0000000000000001'],
+                    caller: contractAddress,
+                    gasLimit: 50000000
+                }
+            },
+            {
+                name: 'vm-values/query with different format',
+                endpoint: '/vm-values/query',
+                body: {
+                    scAddress: contractAddress,
+                    funcName: 'getTournament',
+                    args: ['0000000000000001'],
+                    caller: contractAddress,
+                    gasLimit: 50000000,
+                    value: '0'
+                }
+            }
+        ];
+
+        for (const testCase of testCases) {
+            console.log(`\n--- Testing ${testCase.name} ---`);
+
+            try {
+                const response = await fetch(`${apiUrl}${testCase.endpoint}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(testCase.body),
+                });
+
+                console.log(`Response status: ${response.status}`);
+                console.log(`Response headers:`, Object.fromEntries(response.headers.entries()));
+
+                const responseText = await response.text();
+                console.log(`Response text: ${responseText}`);
+
+                if (response.status === 200) {
+                    try {
+                        const responseData = JSON.parse(responseText);
+                        console.log('✅ SUCCESS! Parsed response:', responseData);
+
+                        if (responseData.data && responseData.data.data && responseData.data.data.returnData) {
+                            console.log('Return data found:', responseData.data.data.returnData);
+                            if (responseData.data.data.returnData.length > 0) {
+                                const hex = responseData.data.data.returnData[0];
+                                console.log('Hex data:', hex);
+
+                                try {
+                                    const parsed = await parseTournamentHex(hex);
+                                    console.log('✅ Parsed tournament data:', parsed);
+                                    return { success: true, method: testCase.name, data: parsed };
+                                } catch (parseError) {
+                                    console.error('Error parsing tournament hex:', parseError);
+                                }
+                            }
+                        }
+                        return { success: true, method: testCase.name, response: responseData };
+                    } catch (parseError) {
+                        console.log('Response is not JSON:', responseText);
+                    }
+                } else {
+                    console.log(`❌ Failed: ${responseText}`);
+                }
+            } catch (error) {
+                console.error(`❌ Error with ${testCase.name}:`, error);
+            }
+        }
+
+        return { error: 'All test cases failed' };
+    } catch (error) {
+        console.error('Test different endpoints failed:', error);
+        return { error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+};
+
+// Add a function to test the exact API call format that works
+(window as any).testWorkingApiCall = async () => {
+    console.log('Testing API call format that should work...');
+
+    try {
+        const contractAddress = getContractAddress();
+        const apiUrl = getApiUrl();
+
+        console.log('Contract address:', contractAddress);
+        console.log('API URL:', apiUrl);
+
+        // Test the exact format that the command line uses
+        const testCases = [
+            {
+                name: 'Command line format',
+                body: {
+                    scAddress: contractAddress,
+                    funcName: 'getTournament',
+                    args: ['0000000000000001']
+                }
+            },
+            {
+                name: 'With explicit caller',
+                body: {
+                    scAddress: contractAddress,
+                    funcName: 'getTournament',
+                    args: ['0000000000000001'],
+                    caller: contractAddress
+                }
+            },
+            {
+                name: 'With gas limit and caller',
+                body: {
+                    scAddress: contractAddress,
+                    funcName: 'getTournament',
+                    args: ['0000000000000001'],
+                    caller: contractAddress,
+                    gasLimit: 50000000
+                }
+            }
+        ];
+
+        for (const testCase of testCases) {
+            console.log(`\n--- Testing ${testCase.name} ---`);
+
+            try {
+                const response = await fetch(`${apiUrl}/vm-values/query`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(testCase.body),
+                });
+
+                console.log(`Response status: ${response.status}`);
+                console.log(`Response headers:`, Object.fromEntries(response.headers.entries()));
+
+                const responseText = await response.text();
+                console.log(`Response text: ${responseText}`);
+
+                if (response.status === 200) {
+                    try {
+                        const responseData = JSON.parse(responseText);
+                        console.log('✅ SUCCESS! Parsed response:', responseData);
+
+                        if (responseData.data && responseData.data.data && responseData.data.data.returnData) {
+                            console.log('Return data found:', responseData.data.data.returnData);
+                            if (responseData.data.data.returnData.length > 0) {
+                                const hex = responseData.data.data.returnData[0];
+                                console.log('Hex data:', hex);
+
+                                try {
+                                    const parsed = await parseTournamentHex(hex);
+                                    console.log('✅ Parsed tournament data:', parsed);
+                                    return { success: true, method: testCase.name, data: parsed };
+                                } catch (parseError) {
+                                    console.error('Error parsing tournament hex:', parseError);
+                                }
+                            }
+                        }
+                        return { success: true, method: testCase.name, response: responseData };
+                    } catch (parseError) {
+                        console.log('Response is not JSON:', responseText);
+                    }
+                } else {
+                    console.log(`❌ Failed: ${responseText}`);
+                }
+            } catch (error) {
+                console.error(`❌ Error with ${testCase.name}:`, error);
+            }
+        }
+
+        return { error: 'All test cases failed' };
+    } catch (error) {
+        console.error('Test working API call failed:', error);
+        return { error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+};
+
+// Add a function to test the exact API call format
+(window as any).testExactApiCall = async () => {
+    console.log('Testing exact API call format...');
+
+    try {
+        const contractAddress = getContractAddress();
+        const apiUrl = getApiUrl();
+
+        console.log('Contract address:', contractAddress);
+        console.log('API URL:', apiUrl);
+
+        // Test the exact format that should work
+        const testCases = [
+            {
+                name: 'Minimal request',
+                body: {
+                    scAddress: contractAddress,
+                    funcName: 'getTournament',
+                    args: ['0000000000000001']
+                }
+            },
+            {
+                name: 'With explicit types',
+                body: {
+                    scAddress: contractAddress,
+                    funcName: 'getTournament',
+                    args: ['0000000000000001'],
+                    caller: contractAddress
+                }
+            },
+            {
+                name: 'With gas limit',
+                body: {
+                    scAddress: contractAddress,
+                    funcName: 'getTournament',
+                    args: ['0000000000000001'],
+                    gasLimit: 50000000
+                }
+            },
+            {
+                name: 'Different endpoint',
+                endpoint: '/vm-values/hex',
+                body: {
+                    scAddress: contractAddress,
+                    funcName: 'getTournament',
+                    args: ['0000000000000001']
+                }
+            }
+        ];
+
+        for (const testCase of testCases) {
+            console.log(`\n--- Testing ${testCase.name} ---`);
+
+            try {
+                const endpoint = testCase.endpoint || '/vm-values/query';
+                const response = await fetch(`${apiUrl}${endpoint}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(testCase.body),
+                });
+
+                console.log(`Response status: ${response.status}`);
+                console.log(`Response headers:`, Object.fromEntries(response.headers.entries()));
+
+                const responseText = await response.text();
+                console.log(`Response text: ${responseText}`);
+
+                if (response.status === 200) {
+                    try {
+                        const responseData = JSON.parse(responseText);
+                        console.log('✅ SUCCESS! Parsed response:', responseData);
+
+                        if (responseData.data && responseData.data.data && responseData.data.data.returnData) {
+                            console.log('Return data found:', responseData.data.data.returnData);
+                            if (responseData.data.data.returnData.length > 0) {
+                                const hex = responseData.data.data.returnData[0];
+                                console.log('Hex data:', hex);
+
+                                try {
+                                    const parsed = await parseTournamentHex(hex);
+                                    console.log('✅ Parsed tournament data:', parsed);
+                                    return { success: true, method: testCase.name, data: parsed };
+                                } catch (parseError) {
+                                    console.error('Error parsing tournament hex:', parseError);
+                                }
+                            }
+                        }
+                        return { success: true, method: testCase.name, response: responseData };
+                    } catch (parseError) {
+                        console.log('Response is not JSON:', responseText);
+                    }
+                } else {
+                    console.log(`❌ Failed: ${responseText}`);
+                }
+            } catch (error) {
+                console.error(`❌ Error with ${testCase.name}:`, error);
+            }
+        }
+
+        return { error: 'All test cases failed' };
+    } catch (error) {
+        console.error('Test exact API call failed:', error);
+        return { error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+};
+
+// Add a function to debug the storage directly
+(window as any).debugStorage = async () => {
+    console.log('Debugging contract storage...');
+
+    try {
+        const contractAddress = getContractAddress();
+        const apiUrl = getApiUrl();
+
+        console.log('Contract address:', contractAddress);
+        console.log('API URL:', apiUrl);
+
+        // Test 1: Get the raw storage for active_tournaments
+        console.log('\n--- Step 1: Getting raw storage ---');
+        try {
+            const response = await fetch(`${apiUrl}/accounts/${contractAddress}/keys/active_tournaments`);
+            console.log('Storage keys status:', response.status);
+            if (response.status === 200) {
+                const data = await response.json();
+                console.log('✅ Storage keys:', data);
+            } else {
+                console.log('❌ Storage keys failed:', await response.text());
+            }
+        } catch (error) {
+            console.error('❌ Storage keys error:', error);
+        }
+
+        // Test 2: Try to get tournament with index 0 (if storage is 0-based)
+        console.log('\n--- Step 2: Testing index 0 ---');
+        try {
+            const response = await fetch(`${apiUrl}/vm-values/query`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    scAddress: contractAddress,
+                    funcName: 'getTournament',
+                    args: [0],
+                }),
+            });
+
+            console.log('Index 0 status:', response.status);
+            if (response.status === 200) {
+                const data = await response.json();
+                console.log('✅ Index 0 works:', data);
+            } else {
+                const error = await response.text();
+                console.log('❌ Index 0 failed:', error);
+            }
+        } catch (error) {
+            console.error('❌ Index 0 error:', error);
+        }
+
+        // Test 3: Try to get tournament with index 2 (if there might be a gap)
+        console.log('\n--- Step 3: Testing index 2 ---');
+        try {
+            const response = await fetch(`${apiUrl}/vm-values/query`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    scAddress: contractAddress,
+                    funcName: 'getTournament',
+                    args: [2],
+                }),
+            });
+
+            console.log('Index 2 status:', response.status);
+            if (response.status === 200) {
+                const data = await response.json();
+                console.log('✅ Index 2 works:', data);
+            } else {
+                const error = await response.text();
+                console.log('❌ Index 2 failed:', error);
+            }
+        } catch (error) {
+            console.error('❌ Index 2 error:', error);
+        }
+
+    } catch (error) {
+        console.error('Debug storage failed:', error);
+    }
+};
+
+// Add a function to test basic contract functionality
+(window as any).testContractBasic = async () => {
+    console.log('Testing basic contract functionality...');
+
+    try {
+        const contractAddress = getContractAddress();
+        const apiUrl = getApiUrl();
+
+        console.log('Contract address:', contractAddress);
+        console.log('API URL:', apiUrl);
+
+        // Test 1: getNumberOfTournaments (should work)
+        console.log('\n--- Testing getNumberOfTournaments ---');
+        try {
+            const response1 = await fetch(`${apiUrl}/vm-values/query`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    scAddress: contractAddress,
+                    funcName: 'getNumberOfTournaments',
+                    args: [],
+                }),
+            });
+
+            console.log('getNumberOfTournaments status:', response1.status);
+            if (response1.status === 200) {
+                const data1 = await response1.json();
+                console.log('✅ getNumberOfTournaments works:', data1);
+            } else {
+                const error1 = await response1.text();
+                console.log('❌ getNumberOfTournaments failed:', error1);
+            }
+        } catch (error) {
+            console.error('❌ getNumberOfTournaments error:', error);
+        }
+
+        // Test 2: getActiveTournamentIds (should work)
+        console.log('\n--- Testing getActiveTournamentIds ---');
+        try {
+            const response2 = await fetch(`${apiUrl}/vm-values/query`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    scAddress: contractAddress,
+                    funcName: 'getActiveTournamentIds',
+                    args: [],
+                }),
+            });
+
+            console.log('getActiveTournamentIds status:', response2.status);
+            if (response2.status === 200) {
+                const data2 = await response2.json();
+                console.log('✅ getActiveTournamentIds works:', data2);
+            } else {
+                const error2 = await response2.text();
+                console.log('❌ getActiveTournamentIds failed:', error2);
+            }
+        } catch (error) {
+            console.error('❌ getActiveTournamentIds error:', error);
+        }
+
+        // Test 3: Check if contract exists
+        console.log('\n--- Testing contract existence ---');
+        try {
+            const response3 = await fetch(`${apiUrl}/accounts/${contractAddress}`);
+            console.log('Contract info status:', response3.status);
+            if (response3.status === 200) {
+                const data3 = await response3.json();
+                console.log('✅ Contract exists:', data3);
+            } else {
+                console.log('❌ Contract not found or error');
+            }
+        } catch (error) {
+            console.error('❌ Contract existence check error:', error);
+        }
+
+    } catch (error) {
+        console.error('Basic contract test failed:', error);
+    }
+};
+
+// Add a function to debug the exact error
+(window as any).debugContractError = async (tournamentId = 1) => {
+    console.log(`Debugging contract error for tournament ${tournamentId}...`);
+
+    try {
+        const contractAddress = getContractAddress();
+        const apiUrl = getApiUrl();
+
+        console.log('Contract address:', contractAddress);
+        console.log('API URL:', apiUrl);
+
+        // Test the exact call that's failing
+        const response = await fetch(`${apiUrl}/vm-values/query`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                scAddress: contractAddress,
+                funcName: 'getTournament',
+                args: [Number(tournamentId).toString(16).padStart(16, '0')], // Send as base64-encoded string
+            }),
+        });
+
+        console.log('Response status:', response.status);
+        console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+        const responseText = await response.text();
+        console.log('Raw response text:', responseText);
+
+        let responseData;
+        try {
+            responseData = JSON.parse(responseText);
+            console.log('Parsed response data:', responseData);
+        } catch (parseError) {
+            console.error('Failed to parse response as JSON:', parseError);
+            console.log('Response is not valid JSON');
+        }
+
+        // Also test if the contract exists
+        console.log('\nTesting if contract exists...');
+        const accountResponse = await fetch(`${apiUrl}/accounts/${contractAddress}`);
+        const accountData = await accountResponse.json();
+        console.log('Account data:', accountData);
+
+        return {
+            status: response.status,
+            responseText,
+            responseData,
+            accountData
+        };
+    } catch (error) {
+        console.error('Debug contract error failed:', error);
+        return { error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+};
+
+// Add deployment instructions function
+(window as any).showDeploymentInstructions = () => {
+    console.log(`
+🚀 TOURNAMENT HUB - CONTRACT DEPLOYMENT INSTRUCTIONS
+====================================================
+
+The current contract address is a placeholder. You need to deploy the contract first.
+
+STEP 1: Build the Smart Contract
+--------------------------------
+cd tournament-hub-sc
+sc-meta all build
+
+STEP 2: Deploy to Devnet
+------------------------
+mxpy contract deploy --bytecode=output/tournament_hub.wasm --recall-nonce --gas-limit=60000000 --send --outfile=deploy.json
+
+STEP 3: Update Contract Address
+-------------------------------
+After deployment, update the contract address in:
+src/config/contract.ts
+
+Replace the ADDRESS field with your deployed contract address.
+
+STEP 4: Test the Contract
+-------------------------
+Run: testContract() to verify the contract is working.
+
+CURRENT CONTRACT ADDRESS: ${getContractAddress()}
+API URL: ${getApiUrl()}
+
+If you see "Contract not found" errors, the contract needs to be deployed.
+        `);
+
+    return {
+        currentAddress: getContractAddress(),
+        apiUrl: getApiUrl(),
+        needsDeployment: true
+    };
+};

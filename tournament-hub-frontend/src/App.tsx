@@ -4,6 +4,7 @@ import { routes } from 'routes';
 import { AxiosInterceptors, BatchTransactionsContextProvider } from 'wrappers';
 import { Layout } from './components';
 import { WalletProvider } from './contexts/WalletContext';
+import { GamingNotificationManager } from './components/GamingNotification';
 
 export const App = () => {
   return (
@@ -12,6 +13,7 @@ export const App = () => {
         <BatchTransactionsContextProvider>
           <WalletProvider>
             <Layout>
+              <GamingNotificationManager />
               <Routes>
                 {routes.map((route) => (
                   <Route
