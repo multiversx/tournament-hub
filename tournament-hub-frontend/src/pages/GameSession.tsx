@@ -184,6 +184,18 @@ export const GameSession: React.FC = () => {
         // Try to determine game type from session
         const determineGameType = async () => {
             try {
+                // First try to get session info from the backend
+                const sessionResponse = await fetch(`${BACKEND_BASE_URL}/get_session_info?session_id=${actualSessionId}`);
+                if (sessionResponse.ok) {
+                    const sessionData = await sessionResponse.json();
+                    if (sessionData.game_type) {
+                        console.log('Got game type from session info:', sessionData.game_type);
+                        setGameType(sessionData.game_type);
+                        return;
+                    }
+                }
+
+                // Fallback: try to determine game type from game state
                 const response = await fetch(`${BACKEND_BASE_URL}/game_state?session_id=${actualSessionId}`);
                 if (response.ok) {
                     const data = await response.json();
@@ -208,6 +220,11 @@ export const GameSession: React.FC = () => {
                     else if (data.lives !== undefined && data.wave !== undefined) {
                         console.log('Detected game type: dodgedash');
                         setGameType('dodgedash');
+                    }
+                    // Check for battleship (has player1, player2, and game_phase)
+                    else if (data.player1 && data.player2 && data.game_phase !== undefined) {
+                        console.log('Detected game type: battleship');
+                        setGameType('battleship');
                     }
                     // Default to cryptobubbles
                     else {

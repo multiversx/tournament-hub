@@ -75,9 +75,9 @@ export const routes: RouteWithTitleType[] = [
     component: GameSession
   },
   {
-    path: '/game/battleship/:sessionId',
+    path: '/game/battleship/:tournamentId',
     title: 'Battleship Game',
-    component: BattleshipGame
+    component: GameSession
   },
   {
     path: '/demo/colorrush',

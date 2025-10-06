@@ -127,7 +127,7 @@ export const ChessGamePro: React.FC<Props> = ({ sessionId, playerAddress }) => {
         }
     }
 
-    useEffect(() => { fetchState(); const id = setInterval(fetchState, 2000); return () => clearInterval(id); }, []);
+    useEffect(() => { fetchState(); const id = setInterval(fetchState, 1000); return () => clearInterval(id); }, []);
 
     const fen = useMemo(() => state ? boardToFen(state.board || {}, state.current_turn) : undefined, [state]);
     const feed = useMemo(() => (state?.emojis || []).slice(-20), [state?.emojis]);
