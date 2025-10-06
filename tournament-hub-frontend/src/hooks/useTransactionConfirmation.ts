@@ -24,9 +24,9 @@ export const useTransactionConfirmation = () => {
         options: TransactionConfirmationOptions = {}
     ): Promise<TransactionConfirmationResult> => {
         const {
-            maxRetries = 30, // 30 retries with 2s delay = 1 minute max
-            retryDelay = 2000, // 2 seconds between retries
-            timeoutMs = 60000, // 1 minute timeout
+            maxRetries = 45, // 45 retries with 3s delay = 2.25 minutes max
+            retryDelay = 3000, // 3 seconds between retries
+            timeoutMs = 90000, // 1.5 minutes timeout
             tournamentId
         } = options;
 
@@ -46,40 +46,48 @@ export const useTransactionConfirmation = () => {
                 }
 
                 try {
-                    // For tournament operations, we can check if the tournament state has changed
-                    if (tournamentId) {
+                    // For tournament operations, we need to verify the user is actually in the participants list
+                    if (tournamentId && address) {
                         const { getTournamentDetailsFromContract } = await import('../helpers');
-                        const tournament = await getTournamentDetailsFromContract(tournamentId);
+                        const tournament = await getTournamentDetailsFromContract(BigInt(tournamentId));
 
-                        if (tournament) {
-                            // Check if the tournament has been updated (e.g., new participant added)
-                            // This is a simple way to detect if our transaction was successful
-                            return {
-                                isConfirmed: true,
-                                txHash: 'confirmed' // We don't have the actual tx hash here
-                            };
+                        if (tournament && Array.isArray(tournament.participants)) {
+                            // Only confirm if the user is actually in the participants list
+                            const isParticipant = tournament.participants.includes(address);
+                            if (isParticipant) {
+                                console.log('Tournament join confirmed: user is now in participants list');
+                                return {
+                                    isConfirmed: true,
+                                    txHash: 'confirmed' // We don't have the actual tx hash here
+                                };
+                            } else {
+                                console.log('Tournament join not yet confirmed: user not in participants list');
+                            }
                         }
                     }
 
-                    // For other transactions, we can check recent transactions
-                    const response = await fetch(`${network.apiAddress}/transactions?sender=${address}&size=10`);
-                    if (response.ok) {
-                        const data = await response.json();
-                        const transactions = data.data || [];
+                    // For other transactions or as fallback, check recent transactions
+                    if (address) {
+                        const response = await fetch(`${network.apiAddress}/transactions?sender=${address}&size=10`);
+                        if (response.ok) {
+                            const data = await response.json();
+                            const transactions = data.data || [];
 
-                        // Look for recent successful transactions
-                        for (const tx of transactions) {
-                            if (tx.status === 'success') {
-                                const txTime = new Date(tx.timestamp * 1000);
-                                const now = new Date();
-                                const timeDiff = now.getTime() - txTime.getTime();
+                            // Look for recent successful transactions
+                            for (const tx of transactions) {
+                                if (tx.status === 'success') {
+                                    const txTime = new Date(tx.timestamp * 1000);
+                                    const now = new Date();
+                                    const timeDiff = now.getTime() - txTime.getTime();
 
-                                // If transaction is within the last 2 minutes, consider it confirmed
-                                if (timeDiff < 2 * 60 * 1000) {
-                                    return {
-                                        isConfirmed: true,
-                                        txHash: tx.txHash
-                                    };
+                                    // If transaction is within the last 2 minutes, consider it confirmed
+                                    if (timeDiff < 2 * 60 * 1000) {
+                                        console.log('Transaction confirmed via blockchain API:', tx.txHash);
+                                        return {
+                                            isConfirmed: true,
+                                            txHash: tx.txHash
+                                        };
+                                    }
                                 }
                             }
                         }
