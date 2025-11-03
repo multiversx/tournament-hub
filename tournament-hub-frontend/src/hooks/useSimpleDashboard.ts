@@ -9,7 +9,6 @@ const CONTRACT_ADDRESS = getContractAddress();
 
 interface SimpleUserStats {
     gamesPlayed: number;
-    wins: number;
     losses: number;
     winRate: number;
     tokensWon: number;
@@ -19,6 +18,7 @@ interface SimpleUserStats {
     tournamentsWon: number;
     currentStreak: number;
     bestStreak: number;
+    teloRating: number;
     loading: boolean;
     error: string | null;
 }
@@ -247,7 +247,6 @@ export function useSimpleUserStats() {
     console.log('useSimpleUserStats hook called with address:', address);
     const [stats, setStats] = useState<SimpleUserStats>({
         gamesPlayed: 0,
-        wins: 0,
         losses: 0,
         winRate: 0,
         tokensWon: 0,
@@ -257,9 +256,16 @@ export function useSimpleUserStats() {
         tournamentsWon: 0,
         currentStreak: 0,
         bestStreak: 0,
+        teloRating: 1500,
         loading: true,
         error: null,
     });
+
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+    const refreshStats = () => {
+        setRefreshTrigger(prev => prev + 1);
+    };
 
     useEffect(() => {
         console.log('useEffect triggered for user stats, address:', address);
@@ -279,20 +285,25 @@ export function useSimpleUserStats() {
                 console.log('Real user stats from contract:', realUserStats);
 
                 if (realUserStats) {
-                    // Use real data from smart contract
+                    // Calculate correct values from smart contract data
+                    const losses = realUserStats.losses || 0;
+                    const tournamentsWon = realUserStats.tournaments_won || 0;
+                    const gamesPlayed = losses + tournamentsWon; // Calculate correct games played
+                    const winRate = gamesPlayed > 0 ? (tournamentsWon / gamesPlayed) * 100 : 0; // Calculate correct win rate
+
                     setStats(prev => ({
                         ...prev,
-                        gamesPlayed: realUserStats.games_played,
-                        wins: realUserStats.wins,
-                        losses: realUserStats.losses,
-                        winRate: realUserStats.win_rate,
+                        gamesPlayed,
+                        losses,
+                        winRate,
                         tokensWon: realUserStats.tokens_won,
                         tokensSpent: realUserStats.tokens_spent,
                         netProfit: realUserStats.net_profit,
                         tournamentsCreated: realUserStats.tournaments_created,
-                        tournamentsWon: realUserStats.tournaments_won,
+                        tournamentsWon,
                         currentStreak: realUserStats.current_streak,
                         bestStreak: realUserStats.best_streak,
+                        teloRating: realUserStats.telo_rating || 1500,
                         loading: false,
                         error: null,
                     }));
@@ -302,7 +313,6 @@ export function useSimpleUserStats() {
                     setStats(prev => ({
                         ...prev,
                         gamesPlayed: 0,
-                        wins: 0,
                         losses: 0,
                         winRate: 0,
                         tokensWon: 0,
@@ -312,6 +322,7 @@ export function useSimpleUserStats() {
                         tournamentsWon: 0,
                         currentStreak: 0,
                         bestStreak: 0,
+                        teloRating: 1500,
                         loading: false,
                         error: null,
                     }));
@@ -327,9 +338,37 @@ export function useSimpleUserStats() {
         };
 
         fetchUserStats();
+    }, [address, refreshTrigger]);
+
+    // Auto-refresh every 10 seconds to keep TELO updated
+    useEffect(() => {
+        if (!address) return;
+
+        const interval = setInterval(() => {
+            console.log('Auto-refreshing user stats...');
+            setRefreshTrigger(prev => prev + 1);
+        }, 10000); // 10 seconds
+
+        return () => clearInterval(interval);
     }, [address]);
 
-    return stats;
+    // Listen for transaction completion events to refresh stats
+    useEffect(() => {
+        const handleTransactionComplete = () => {
+            console.log('Transaction completed, refreshing user stats...');
+            setRefreshTrigger(prev => prev + 1);
+        };
+
+        window.addEventListener('transactionComplete', handleTransactionComplete);
+        window.addEventListener('refreshUserStats', handleTransactionComplete);
+
+        return () => {
+            window.removeEventListener('transactionComplete', handleTransactionComplete);
+            window.removeEventListener('refreshUserStats', handleTransactionComplete);
+        };
+    }, []);
+
+    return { ...stats, refreshStats };
 }
 
 export function useSimpleTournamentStats() {

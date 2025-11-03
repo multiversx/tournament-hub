@@ -73,6 +73,45 @@ pub struct UserStats<M: ManagedTypeApi> {
     pub best_streak: u32,
     pub last_activity: u64, // timestamp
     pub member_since: u64,  // timestamp
+    pub telo_rating: u32,   // Tournament ELO rating (starts at 1500)
+}
+
+// Old UserStats struct for migration (without telo_rating)
+#[derive(TopEncode, TopDecode, Clone, Debug, PartialEq)]
+pub struct OldUserStats<M: ManagedTypeApi> {
+    pub games_played: u32,
+    pub wins: u32,
+    pub losses: u32,
+    pub win_rate: u32,
+    pub tokens_won: BigUint<M>,
+    pub tokens_spent: BigUint<M>,
+    pub tournaments_created: u32,
+    pub tournaments_won: u32,
+    pub current_streak: u32,
+    pub best_streak: u32,
+    pub last_activity: u64, // timestamp
+    pub member_since: u64,  // timestamp
+}
+
+impl<M: ManagedTypeApi> UserStats<M> {
+    // Migration function to convert old stats to new format
+    pub fn from_old_format(old_stats: OldUserStats<M>) -> Self {
+        UserStats {
+            games_played: old_stats.games_played,
+            wins: old_stats.wins,
+            losses: old_stats.losses,
+            win_rate: old_stats.win_rate,
+            tokens_won: old_stats.tokens_won,
+            tokens_spent: old_stats.tokens_spent,
+            tournaments_created: old_stats.tournaments_created,
+            tournaments_won: old_stats.tournaments_won,
+            current_streak: old_stats.current_streak,
+            best_streak: old_stats.best_streak,
+            last_activity: old_stats.last_activity,
+            member_since: old_stats.member_since,
+            telo_rating: 1500, // Default TELO rating for migrated users
+        }
+    }
 }
 
 #[type_abi]

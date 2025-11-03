@@ -33,11 +33,10 @@ import {
   Gamepad2,
   Clock,
   Star,
-  Target,
-  RefreshCw
+  Target
 } from 'lucide-react';
 import { useGetAccountInfo, useGetIsLoggedIn } from 'lib';
-import { useSimpleTournamentStats, useSimpleUserStats, testApiConnectivity } from '../../hooks/useSimpleDashboard';
+import { useSimpleTournamentStats, useSimpleUserStats } from '../../hooks/useSimpleDashboard';
 import { useEnhancedTournamentStats } from '../../hooks/useEnhancedTournamentStats';
 import { useNavigate } from 'react-router-dom';
 import { RouteNamesEnum } from 'localConstants';
@@ -72,7 +71,6 @@ export const Dashboard = () => {
 
   const {
     gamesPlayed,
-    wins: tournamentWins,
     losses,
     winRate,
     tokensWon,
@@ -82,6 +80,7 @@ export const Dashboard = () => {
     tournamentsWon,
     currentStreak,
     bestStreak,
+    teloRating,
     loading: userStatsLoading,
     error: userStatsError
   } = useSimpleUserStats();
@@ -90,15 +89,6 @@ export const Dashboard = () => {
   const cardBg = useColorModeValue('gray.700', 'gray.800');
   const borderColor = useColorModeValue('gray.600', 'gray.700');
 
-  const handleTestApi = async () => {
-    console.log('Test API button clicked!');
-    try {
-      const result = await testApiConnectivity();
-      console.log('Test API result:', result);
-    } catch (error) {
-      console.error('Test API error:', error);
-    }
-  };
 
   // Handle create tournament button click
   const handleCreateTournament = () => {
@@ -151,34 +141,14 @@ export const Dashboard = () => {
     <Container maxW="7xl" py={10}>
       <VStack spacing={8} align="stretch">
         {/* Header */}
-        <HStack justify="space-between" align="start">
-          <VStack spacing={4} align="start">
-            <Heading size="2xl" bgGradient="linear(to-r, blue.400, purple.400)" bgClip="text">
-              Dashboard
-            </Heading>
-            <Text color="gray.400" fontSize="lg">
-              Welcome back! Here's your tournament overview and statistics.
-            </Text>
-          </VStack>
-          <VStack spacing={2} align="end">
-            <Button
-              onClick={refreshStats}
-              isLoading={statsRefreshing}
-              loadingText="Refreshing..."
-              colorScheme="blue"
-              variant="outline"
-              leftIcon={<RefreshCw size={16} />}
-              size="sm"
-            >
-              Refresh Stats
-            </Button>
-            {lastUpdated && (
-              <Text fontSize="xs" color="gray.500">
-                {hasCachedData && statsRefreshing ? 'Using cached data, refreshing...' : `Updated ${lastUpdated.toLocaleTimeString()}`}
-              </Text>
-            )}
-          </VStack>
-        </HStack>
+        <VStack spacing={4} align="start">
+          <Heading size="2xl" bgGradient="linear(to-r, blue.400, purple.400)" bgClip="text">
+            Dashboard
+          </Heading>
+          <Text color="gray.400" fontSize="lg">
+            Welcome back! Here's your tournament overview and statistics.
+          </Text>
+        </VStack>
 
         {/* Quick Stats */}
         {statsError ? (
@@ -207,6 +177,7 @@ export const Dashboard = () => {
                       color="blue.400"
                       fontSize="2xl"
                       fontWeight="bold"
+                      isInteger={true}
                     />
                     <StatHelpText color="gray.500" fontSize="xs">
                       All time
@@ -230,6 +201,7 @@ export const Dashboard = () => {
                       color="green.400"
                       fontSize="2xl"
                       fontWeight="bold"
+                      isInteger={true}
                     />
                     <StatHelpText color="gray.500" fontSize="xs">
                       Active games
@@ -253,6 +225,7 @@ export const Dashboard = () => {
                       color="blue.400"
                       fontSize="2xl"
                       fontWeight="bold"
+                      isInteger={true}
                     />
                     <StatHelpText color="gray.500" fontSize="xs">
                       Waiting for players
@@ -276,6 +249,7 @@ export const Dashboard = () => {
                       color="purple.400"
                       fontSize="2xl"
                       fontWeight="bold"
+                      isInteger={true}
                     />
                     <StatHelpText color="gray.500" fontSize="xs">
                       Finished games
@@ -324,51 +298,54 @@ export const Dashboard = () => {
                       color="blue.400"
                       fontSize="2xl"
                       fontWeight="bold"
+                      isInteger={true}
                     />
                     <Text color="gray.500" fontSize="xs">Total matches</Text>
                   </VStack>
                 </ProgressiveLoader>
                 <ProgressiveLoader isLoading={false} delay={100} animation="fade">
                   <VStack spacing={2}>
-                    <Text color="gray.400" fontSize="sm" fontWeight="medium">Wins</Text>
-                    <StatLoader
-                      value={tournamentWins}
-                      isLoading={userStatsLoading}
-                      delay={100}
-                      color="green.400"
-                      fontSize="2xl"
-                      fontWeight="bold"
-                    />
-                    <Text color="gray.500" fontSize="xs">Tournament Victories</Text>
-                  </VStack>
-                </ProgressiveLoader>
-                <ProgressiveLoader isLoading={false} delay={200} animation="fade">
-                  <VStack spacing={2}>
                     <Text color="gray.400" fontSize="sm" fontWeight="medium">Losses</Text>
                     <StatLoader
                       value={losses}
                       isLoading={userStatsLoading}
-                      delay={200}
+                      delay={100}
                       color="red.400"
                       fontSize="2xl"
                       fontWeight="bold"
+                      isInteger={true}
                     />
                     <Text color="gray.500" fontSize="xs">Defeats</Text>
                   </VStack>
                 </ProgressiveLoader>
-                <ProgressiveLoader isLoading={false} delay={300} animation="fade">
+                <ProgressiveLoader isLoading={false} delay={200} animation="fade">
                   <VStack spacing={2}>
                     <Text color="gray.400" fontSize="sm" fontWeight="medium">Win Rate</Text>
                     <StatLoader
                       value={winRate}
                       isLoading={userStatsLoading}
-                      delay={300}
+                      delay={200}
                       suffix="%"
                       color="purple.400"
                       fontSize="2xl"
                       fontWeight="bold"
                     />
                     <Text color="gray.500" fontSize="xs">Success rate</Text>
+                  </VStack>
+                </ProgressiveLoader>
+                <ProgressiveLoader isLoading={false} delay={300} animation="fade">
+                  <VStack spacing={2}>
+                    <Text color="gray.400" fontSize="sm" fontWeight="medium">TELO Rating</Text>
+                    <StatLoader
+                      value={teloRating}
+                      isLoading={userStatsLoading}
+                      delay={300}
+                      color="yellow.400"
+                      fontSize="2xl"
+                      fontWeight="bold"
+                      isInteger={true}
+                    />
+                    <Text color="gray.500" fontSize="xs">Skill rating</Text>
                   </VStack>
                 </ProgressiveLoader>
                 <ProgressiveLoader isLoading={false} delay={400} animation="fade">
@@ -387,16 +364,31 @@ export const Dashboard = () => {
                 </ProgressiveLoader>
                 <ProgressiveLoader isLoading={false} delay={500} animation="fade">
                   <VStack spacing={2}>
-                    <Text color="gray.400" fontSize="sm" fontWeight="medium">Tokens Spent</Text>
+                    <Text color="gray.400" fontSize="sm" fontWeight="medium">Victories</Text>
+                    <StatLoader
+                      value={tournamentsWon}
+                      isLoading={userStatsLoading}
+                      delay={500}
+                      color="yellow.400"
+                      fontSize="2xl"
+                      fontWeight="bold"
+                      isInteger={true}
+                    />
+                    <Text color="gray.500" fontSize="xs">Tournaments won</Text>
+                  </VStack>
+                </ProgressiveLoader>
+                <ProgressiveLoader isLoading={false} delay={600} animation="fade">
+                  <VStack spacing={2}>
+                    <Text color="gray.400" fontSize="sm" fontWeight="medium">Tokens Lost</Text>
                     <StatLoader
                       value={tokensSpent}
                       isLoading={userStatsLoading}
-                      delay={500}
+                      delay={600}
                       color="red.400"
                       fontSize="2xl"
                       fontWeight="bold"
                     />
-                    <Text color="gray.500" fontSize="xs">EGLD invested</Text>
+                    <Text color="gray.500" fontSize="xs">EGLD lost</Text>
                   </VStack>
                 </ProgressiveLoader>
               </SimpleGrid>
@@ -502,19 +494,9 @@ export const Dashboard = () => {
                   variant="outline"
                   justifyContent="start"
                   _hover={{ bg: "purple.600", color: "white" }}
-                  onClick={() => navigate('/tournaments')}
+                  onClick={() => navigate('/leaderboard')}
                 >
                   View Leaderboard
-                </Button>
-                <Button
-                  leftIcon={<Target size={16} />}
-                  colorScheme="orange"
-                  variant="outline"
-                  justifyContent="start"
-                  _hover={{ bg: "orange.600", color: "white" }}
-                  onClick={handleTestApi}
-                >
-                  Test API Connection
                 </Button>
               </VStack>
             </CardBody>
@@ -603,7 +585,7 @@ export const Dashboard = () => {
               <VStack spacing={3} align="stretch">
                 <HStack justify="space-between">
                   <Text color="gray.400" fontSize="sm">Total Wins:</Text>
-                  <Text color="green.400" fontWeight="bold">{tournamentWins}</Text>
+                  <Text color="green.400" fontWeight="bold">{tournamentsWon}</Text>
                 </HStack>
                 <HStack justify="space-between">
                   <Text color="gray.400" fontSize="sm">Total Losses:</Text>

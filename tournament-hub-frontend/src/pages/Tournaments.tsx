@@ -81,14 +81,14 @@ const tournamentCache = new Map<string, { data: any; timestamp: number; ttl: num
 const ITEMS_PER_PAGE = 6;
 const MAX_FETCH = 50; // Reduced from 200 to reduce API load and rate limiting
 const MAX_CONCURRENT_QUERIES = 3; // Limit concurrent contract queries to prevent rate limiting
-const CACHE_TTL = 300 * 1000; // 5 minutes cache
+const CACHE_TTL = 150 * 1000; // 2.5 minutes cache
 
 // Request deduplication
 const pendingRequests = new Map<string, Promise<any>>();
 
 // Persistent cache with shorter TTL for better responsiveness
 const PERSISTENT_CACHE_KEY = 'tournament_cache_v3';
-const PERSISTENT_CACHE_TTL = 30 * 1000; // 30 seconds
+const PERSISTENT_CACHE_TTL = 15 * 1000; // 15 seconds
 
 function getPersistentCache() {
     try {
@@ -567,6 +567,18 @@ export const Tournaments = () => {
                     if (details) {
                         const participantsCount = (details.participants || []).length;
                         const computedPrizePool = BigInt(details.entry_fee ?? 0) * BigInt(participantsCount);
+                        
+                        // Fetch transaction hash for completed tournaments
+                        let resultTxHash = details.result_tx_hash || null;
+                        if (!resultTxHash && details.status === 4) { // Completed status
+                            try {
+                                resultTxHash = await getSubmitResultsTransactionHash(id);
+                            } catch (e) {
+                                console.error(`Error fetching transaction hash for tournament ${id}:`, e);
+                                resultTxHash = null;
+                            }
+                        }
+                        
                         const basicData = {
                             id,
                             name: details.name || `Tournament #${id}`,
@@ -580,7 +592,7 @@ export const Tournaments = () => {
                             prizePoolLoaded: true,
                             gameConfig: null,
                             gameConfigLoaded: false,
-                            resultTxHash: details.result_tx_hash || null,
+                            resultTxHash,
                             resultTxLoaded: true,
                             loadingDetails: false
                         };
@@ -800,7 +812,18 @@ export const Tournaments = () => {
                 );
             }
 
-            // Result transaction hash is now loaded directly from tournament data
+            // Fetch result transaction hash for completed tournaments if missing
+            if (!tournament.resultTxHash && tournament.status === 4) { // Completed status
+                promises.push(
+                    getSubmitResultsTransactionHash(id).then(txHash => {
+                        if (txHash) {
+                            tournament.resultTxHash = txHash;
+                        }
+                    }).catch(() => {
+                        // Silently fail - keep resultTxHash as null
+                    })
+                );
+            }
 
             await Promise.all(promises);
             tournamentCache.set(cacheKey, {

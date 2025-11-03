@@ -547,6 +547,17 @@ export async function forceRefreshTournaments(): Promise<any[]> {
                 const participantsCount = (details.participants || []).length;
                 const computedPrizePool = BigInt(details.entry_fee ?? 0) * BigInt(participantsCount);
 
+                // Fetch transaction hash for completed tournaments
+                let resultTxHash = details.result_tx_hash || null;
+                if (!resultTxHash && details.status === 4) { // Completed status
+                    try {
+                        resultTxHash = await getSubmitResultsTransactionHash(id);
+                    } catch (e) {
+                        console.error(`Error fetching transaction hash for tournament ${id}:`, e);
+                        resultTxHash = null;
+                    }
+                }
+
                 const basicData = {
                     id,
                     name: details.name, // No fallback - show actual name or empty
@@ -560,7 +571,7 @@ export async function forceRefreshTournaments(): Promise<any[]> {
                     prizePoolLoaded: true,
                     gameConfig: null,
                     gameConfigLoaded: false,
-                    resultTxHash: details.result_tx_hash || null,
+                    resultTxHash,
                     resultTxLoaded: true,
                     loadingDetails: false
                 };
@@ -2322,6 +2333,64 @@ export async function getRegisteredGameConfig(gameIndex: number): Promise<any> {
 
 
 // User statistics functions
+// Function to get all players and their stats for leaderboard
+export async function getAllPlayersStats(): Promise<any[]> {
+    const cacheKey = 'all_players_stats';
+    return deduplicateApiRequest(cacheKey, async () => {
+        try {
+            debugLog('Fetching all players stats for leaderboard...');
+
+            const requestBody = {
+                scAddress: getContractAddress(),
+                funcName: 'getAllUsersStats',
+                args: [],
+            };
+
+            debugLog('getAllPlayersStats - Request body:', requestBody);
+            debugLog('getAllPlayersStats - API URL:', `${getApiUrl()}/vm-values/query`);
+
+            const response = await fetchWithTimeout(`${getApiUrl()}/vm-values/query`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestBody),
+            }, 20000, 2); // 20s timeout, 2 retries
+
+            if (!response.ok) {
+                if (response.status === 429) {
+                    console.warn('Rate limited when fetching all users stats');
+                    return [];
+                }
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            console.log('getAllPlayersStats - FULL Response data:', JSON.stringify(data, null, 2));
+            debugLog('getAllPlayersStats - Response data:', data);
+
+            if (data?.data?.data?.returnData && data.data.data.returnData.length > 0) {
+                const encodedData = data.data.data.returnData[0];
+                console.log('getAllPlayersStats - Encoded data (first 200 chars):', encodedData?.substring(0, 200));
+                console.log('getAllPlayersStats - Encoded data (length):', encodedData?.length);
+
+                // Parse the encoded data
+                const parsedData = parseAllUsersStatsHex(encodedData);
+                console.log('getAllPlayersStats - Parsed data:', parsedData);
+                debugLog('getAllPlayersStats - Parsed', parsedData?.length, 'players');
+                return parsedData || [];
+            }
+
+            debugLog('getAllPlayersStats - No return data found');
+            return [];
+
+        } catch (error) {
+            console.error('Error fetching all players stats:', error);
+            return [];
+        }
+    });
+}
+
 export async function getUserStatsFromContract(userAddress: string) {
     const cacheKey = `user_stats_${userAddress}`;
     return deduplicateApiRequest(cacheKey, async () => {
@@ -2622,6 +2691,7 @@ function parseUserStatsHex(hex: string) {
         const best_streak = readU32();
         const last_activity = readU64();
         const member_since = readU64();
+        const telo_rating = readU32(); // TELO rating
 
         const result = {
             games_played,
@@ -2636,7 +2706,8 @@ function parseUserStatsHex(hex: string) {
             current_streak,
             best_streak,
             last_activity: Number(last_activity),
-            member_since: Number(member_since)
+            member_since: Number(member_since),
+            telo_rating // TELO rating
         };
 
         console.log('parseUserStatsHex - Final result:', result);
@@ -2646,6 +2717,128 @@ function parseUserStatsHex(hex: string) {
         console.error('Hex data that failed to parse:', hex);
         console.error('Current offset when error occurred:', offset);
         return null;
+    }
+}
+
+// Debug flag - set to false in production
+const DEBUG_LEADERBOARD = process.env.NODE_ENV === 'development' && true; // Set to true only when debugging
+const debugLog = DEBUG_LEADERBOARD ? console.log.bind(console) : () => { };
+
+// Parse all users stats from hex data
+function parseAllUsersStatsHex(encodedData: string): any[] {
+    try {
+        debugLog('parseAllUsersStatsHex - Input encoded data:', encodedData);
+
+        // Convert base64 to hex if needed
+        let hex: string;
+        if (encodedData.includes('=') || /^[A-Za-z0-9+/]+$/.test(encodedData)) {
+            // It's base64 encoded, convert to hex
+            try {
+                const decoded = atob(encodedData);
+                const hexChars: string[] = new Array(decoded.length * 2);
+                for (let i = 0; i < decoded.length; i++) {
+                    const byte = decoded.charCodeAt(i);
+                    hexChars[i * 2] = (byte >> 4).toString(16);
+                    hexChars[i * 2 + 1] = (byte & 0x0F).toString(16);
+                }
+                hex = hexChars.join('');
+                debugLog('parseAllUsersStatsHex - Converted base64 to hex (length):', hex.length);
+            } catch (error) {
+                console.error('Error decoding base64:', error);
+                return [];
+            }
+        } else {
+            // It's already hex
+            hex = encodedData.startsWith('0x') ? encodedData.slice(2) : encodedData;
+        }
+
+        debugLog('parseAllUsersStatsHex - Final hex data:', hex);
+
+        // Flat parsing: data starts with first user's address directly (32 bytes)
+        let offset = 0;
+
+        function readHex(len: number): string {
+            if (!len || len <= 0 || !isFinite(len)) {
+                return '';
+            }
+            const endOffset = offset + len;
+            if (endOffset > hex.length) {
+                return '';
+            }
+            const result = hex.slice(offset, endOffset);
+            offset = endOffset;
+            return result;
+        }
+
+        function readU32() {
+            const h = readHex(8);
+            return h ? parseInt(h, 16) : 0;
+        }
+
+        function readU64() {
+            const h = readHex(16);
+            return h ? BigInt('0x' + h) : BigInt(0);
+        }
+
+        function readBigUint() {
+            const len = readU32();
+            if (len === 0) return BigInt(0);
+            if (len > 1000) return BigInt(0);
+            const h = readHex(len * 2);
+            return h ? BigInt('0x' + h) : BigInt(0);
+        }
+
+        const allUsersStats = [] as any[];
+        const MAX_USERS = 10000;
+
+        while (offset + 64 <= hex.length && allUsersStats.length < MAX_USERS) {
+            const addressHex = readHex(64);
+            if (!addressHex) break;
+            let address = '';
+            try {
+                address = hexToBech32(addressHex);
+            } catch {
+                address = '0x' + addressHex;
+            }
+
+            const games_played = readU32();
+            const wins = readU32();
+            const losses = readU32();
+            const win_rate = readU32();
+            const tokens_won = readBigUint();
+            const tokens_spent = readBigUint();
+            const tournaments_created = readU32();
+            const tournaments_won = readU32();
+            const current_streak = readU32();
+            const best_streak = readU32();
+            const last_activity = readU64();
+            const member_since = readU64();
+            const telo_rating = readU32();
+
+            allUsersStats.push({
+                address,
+                games_played,
+                wins,
+                losses,
+                win_rate,
+                tokens_won: tokens_won.toString(),
+                tokens_spent: tokens_spent.toString(),
+                tournaments_created,
+                tournaments_won,
+                current_streak,
+                best_streak,
+                last_activity: Number(last_activity),
+                member_since: Number(member_since),
+                telo_rating
+            });
+        }
+
+        debugLog(`parseAllUsersStatsHex - Successfully parsed ${allUsersStats.length} users`);
+        return allUsersStats;
+
+    } catch (error) {
+        console.error('Error parsing all users stats hex:', error);
+        return [];
     }
 }
 

@@ -81,6 +81,37 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
+    pub fn fix_user_stats<
+        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
+    >(
+        self,
+        user: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("fixUserStats")
+            .argument(&user)
+            .original_result()
+    }
+
+    pub fn fix_all_user_stats(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("fixAllUserStats")
+            .original_result()
+    }
+
+    pub fn clear_all_data(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("clearAllData")
+            .original_result()
+    }
+
     pub fn register_game<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
         Arg1: ProxyArg<u32>,
@@ -551,6 +582,24 @@ where
             .argument(&user_address)
             .original_result()
     }
+
+    pub fn get_all_users_stats(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, UserStatsInfo<Env::Api>>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getAllUsersStats")
+            .original_result()
+    }
+
+    pub fn get_all_users_addresses(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, ManagedAddress<Env::Api>>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getAllUsersAddresses")
+            .original_result()
+    }
 }
 
 #[type_abi]
@@ -623,6 +672,7 @@ where
     pub best_streak: u32,
     pub last_activity: u64,
     pub member_since: u64,
+    pub telo_rating: u32,
 }
 
 #[type_abi]
@@ -641,4 +691,14 @@ where
     pub entry_fee: BigUint<Api>,
     pub name: ManagedBuffer<Api>,
     pub created_at: u64,
+}
+
+#[type_abi]
+#[derive(TopEncode, TopDecode, ManagedVecItem, NestedEncode, NestedDecode, Clone, Debug, PartialEq)]
+pub struct UserStatsInfo<Api>
+where
+    Api: ManagedTypeApi,
+{
+    pub address: ManagedAddress<Api>,
+    pub stats: UserStats<Api>,
 }

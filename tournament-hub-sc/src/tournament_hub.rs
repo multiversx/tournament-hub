@@ -10,6 +10,7 @@ pub mod tournament_hub_proxy;
 mod views;
 mod tournament_logic {
     pub mod game_registration;
+    pub mod ranking_system;
     pub mod results_management;
     pub mod spectator_betting;
     pub mod tournament_management;
@@ -20,6 +21,7 @@ pub trait TournamentHub:
     storage::StorageModule
     + helpers::HelperModule
     + tournament_logic::game_registration::GameRegistrationModule
+    + tournament_logic::ranking_system::RankingSystemModule
     + tournament_logic::results_management::ResultsManagementModule
     + tournament_logic::spectator_betting::SpectatorBettingModule
     + tournament_logic::tournament_management::TournamentManagementModule

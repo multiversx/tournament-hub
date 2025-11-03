@@ -5,7 +5,10 @@ multiversx_sc::derive_imports!();
 
 #[multiversx_sc::module]
 pub trait ResultsManagementModule:
-    crate::storage::StorageModule + crate::helpers::HelperModule + crate::events::EventsModule
+    crate::storage::StorageModule
+    + crate::helpers::HelperModule
+    + crate::events::EventsModule
+    + crate::tournament_logic::ranking_system::RankingSystemModule
 {
     #[endpoint(submitResults)]
     fn submit_results(
@@ -62,6 +65,9 @@ pub trait ResultsManagementModule:
 
         tournament.status = TournamentStatus::ProcessingResults;
         tournament.final_podium = winner_podium.clone();
+
+        // Update TELO ratings for all participants based on tournament results
+        self.update_tournament_ratings(&tournament.participants, &tournament.final_podium);
 
         // Calculate and distribute prizes
         self.distribute_player_prizes(&tournament, &game_config);

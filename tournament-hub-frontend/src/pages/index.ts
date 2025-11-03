@@ -1,6 +1,7 @@
 export * from './Dashboard';
 export * from './Disclaimer';
 export * from './Home';
+export * from './Leaderboard';
 export * from './PageNotFound';
 export * from './Unlock';
 export * from './Tournaments';

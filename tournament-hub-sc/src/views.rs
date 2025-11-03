@@ -1,5 +1,6 @@
 use crate::models::{
     GameConfig, SpectatorBet, Tournament, TournamentBasicInfo, TournamentStatus, UserStats,
+    UserStatsInfo,
 };
 
 multiversx_sc::imports!();
@@ -154,6 +155,11 @@ pub trait ViewsModule: crate::storage::StorageModule {
     // User statistics views
     #[view(getUserStats)]
     fn get_user_stats(&self, user: &ManagedAddress) -> UserStats<Self::Api> {
+        self.get_user_stats_safe(user)
+    }
+
+    // Safe helper function to get user stats without causing decode errors
+    fn get_user_stats_safe(&self, user: &ManagedAddress) -> UserStats<Self::Api> {
         if self.user_stats(user).is_empty() {
             // Return default stats for new user
             UserStats {
@@ -169,8 +175,10 @@ pub trait ViewsModule: crate::storage::StorageModule {
                 best_streak: 0,
                 last_activity: 0,
                 member_since: 0,
+                telo_rating: 1500,
             }
         } else {
+            // Read the actual stored stats
             self.user_stats(user).get()
         }
     }
@@ -446,24 +454,31 @@ pub trait ViewsModule: crate::storage::StorageModule {
         &self,
         user_address: &ManagedAddress<Self::Api>,
     ) -> UserStats<Self::Api> {
-        if self.user_stats(user_address).is_empty() {
-            // Return default stats for new user
-            UserStats {
-                games_played: 0,
-                wins: 0,
-                losses: 0,
-                win_rate: 0,
-                tokens_won: BigUint::zero(),
-                tokens_spent: BigUint::zero(),
-                tournaments_created: 0,
-                tournaments_won: 0,
-                current_streak: 0,
-                best_streak: 0,
-                last_activity: 0,
-                member_since: 0,
-            }
-        } else {
-            self.user_stats(user_address).get()
+        self.get_user_stats_safe(user_address)
+    }
+
+    #[view(getAllUsersStats)]
+    fn get_all_users_stats(&self) -> ManagedVec<Self::Api, UserStatsInfo<Self::Api>> {
+        let mut all_users_stats = ManagedVec::new();
+
+        for user_address in self.all_users().iter() {
+            let stats = self.get_user_stats(&user_address);
+            let user_stats_info = UserStatsInfo {
+                address: user_address,
+                stats,
+            };
+            all_users_stats.push(user_stats_info);
         }
+
+        all_users_stats
+    }
+
+    #[view(getAllUsersAddresses)]
+    fn get_all_users_addresses(&self) -> ManagedVec<Self::Api, ManagedAddress<Self::Api>> {
+        let mut addresses = ManagedVec::new();
+        for user_address in self.all_users().iter() {
+            addresses.push(user_address);
+        }
+        addresses
     }
 }

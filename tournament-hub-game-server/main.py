@@ -799,6 +799,10 @@ async def start_session(request: StartSessionRequest):
             existing_session_id = str(request.tournamentId) if str(request.tournamentId) in sessions else None
             
             if existing_session_id:
+                # Update the existing session with tournament_id if missing
+                if existing_session_id in sessions:
+                    sessions[existing_session_id]["tournament_id"] = str(request.tournamentId)
+                
                 # Ensure engine exists and includes provided players
                 try:
                     if game_type == 'tictactoe':
@@ -882,6 +886,7 @@ async def start_session(request: StartSessionRequest):
             
             session = {
                 "id": session_id,
+                "tournament_id": str(request.tournamentId),
                 "players": players,
                 "game_type": game_type,
                 "status": "waiting",
@@ -1002,8 +1007,11 @@ async def join_session(session_id: str, request: JoinSessionRequest):
 async def get_tournament_session(tournamentId: str):
     """Get existing session for a tournament"""
     try:
+        logger.info(f"Looking for tournament session for tournamentId: {tournamentId}")
+        logger.info(f"Available sessions: {list(sessions.keys())}")
         # Look for existing session with this tournament ID
         for session_id, session in sessions.items():
+            logger.info(f"Checking session {session_id}: tournament_id={session.get('tournament_id')}")
             if session.get("tournament_id") == tournamentId:
                 # Check if game is still active (not over)
                 game_type = session.get("game_type", "cryptobubbles")
@@ -1808,6 +1816,7 @@ async def submit_game_results_async(session_id: str, winner: str):
 # Game update loop for CryptoBubbles
 def update_cryptobubbles_games():
     """Background task to update all active CryptoBubbles games"""
+    global main_event_loop
     while True:
         try:
             from cryptobubbles_game_engine import active_games
@@ -1817,21 +1826,22 @@ def update_cryptobubbles_games():
                     game.update_game_state()
                     
                     # Check if game finished and submit results
-                    # Only submit results if there were originally multiple players
-                    if (game.state.game_over and game.state.winner and 
-                        len(game.players) > 1 and 
+                    # Submit results whenever a valid winner exists (even if only one human joined)
+                    if (game.state.game_over and game.state.winner and \
                         not getattr(game, 'results_submitted', False)):
                         logger.info(f"CryptoBubbles game {session_id} finished! Winner: {game.state.winner}")
-                        
-                        # Mark as submitted to prevent repeated processing
                         game.results_submitted = True
-                        
-                        # Submit results asynchronously to avoid blocking game updates
-                        import asyncio
-                        asyncio.create_task(submit_game_results_async(session_id, game.state.winner))
+                        # Submit results via main event loop (threadsafe)
+                        if main_event_loop is not None:
+                            asyncio.run_coroutine_threadsafe(
+                                submit_game_results_async(session_id, game.state.winner),
+                                main_event_loop
+                            )
+                        else:
+                            logger.error("No main_event_loop set for result submission!")
             
             time.sleep(0.05)  # Update every 50ms for more responsive collision detection
-            
+        
         except Exception as e:
             logger.error(f"Error updating CryptoBubbles games: {e}")
             time.sleep(5)  # Wait longer on error
@@ -2172,6 +2182,8 @@ results_thread.start()
 # Start notifier subscriber on startup
 @app.on_event("startup")
 async def startup_event():
+    global main_event_loop
+    main_event_loop = asyncio.get_running_loop()
     logger.info("Starting Tournament Hub Game Server...")
     
     # Clean up any existing corrupted DodgeDash games
