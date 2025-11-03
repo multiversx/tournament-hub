@@ -4,7 +4,6 @@ import { getUserStatsFromContract } from '../helpers';
 
 export interface UserStats {
     gamesPlayed: number;
-    wins: number;
     losses: number;
     winRate: number;
     tokensWon: number;
@@ -14,6 +13,7 @@ export interface UserStats {
     tournamentsWon: number;
     currentStreak: number;
     bestStreak: number;
+    teloRating: number;
     lastLogin: string;
     memberSince: string;
     loading: boolean;
@@ -24,7 +24,6 @@ export const useUserStats = (): UserStats => {
     const { address } = useGetAccountInfo();
     const [stats, setStats] = useState<UserStats>({
         gamesPlayed: 0,
-        wins: 0,
         losses: 0,
         winRate: 0,
         tokensWon: 0,
@@ -34,6 +33,7 @@ export const useUserStats = (): UserStats => {
         tournamentsWon: 0,
         currentStreak: 0,
         bestStreak: 0,
+        teloRating: 1500,
         lastLogin: '',
         memberSince: '',
         loading: true,
@@ -76,18 +76,24 @@ export const useUserStats = (): UserStats => {
                         return 'Just now';
                     };
 
+                    // Calculate correct values from smart contract data
+                    const losses = contractStats.losses || 0;
+                    const tournamentsWon = contractStats.tournaments_won || 0;
+                    const gamesPlayed = losses + tournamentsWon; // Calculate correct games played
+                    const winRate = gamesPlayed > 0 ? (tournamentsWon / gamesPlayed) * 100 : 0; // Calculate correct win rate
+
                     setStats({
-                        gamesPlayed: contractStats.games_played,
-                        wins: contractStats.wins,
-                        losses: contractStats.losses,
-                        winRate: Math.round(contractStats.win_rate),
+                        gamesPlayed,
+                        losses,
+                        winRate: Math.round(winRate),
                         tokensWon: Math.round(contractStats.tokens_won * 100) / 100,
                         tokensSpent: Math.round(contractStats.tokens_spent * 100) / 100,
                         netProfit: Math.round(contractStats.net_profit * 100) / 100,
                         tournamentsCreated: contractStats.tournaments_created,
-                        tournamentsWon: contractStats.tournaments_won,
+                        tournamentsWon,
                         currentStreak: contractStats.current_streak,
                         bestStreak: contractStats.best_streak,
+                        teloRating: contractStats.telo_rating || 1500,
                         lastLogin: formatLastActivity(contractStats.last_activity),
                         memberSince: formatTimestamp(contractStats.member_since),
                         loading: false,
@@ -97,7 +103,6 @@ export const useUserStats = (): UserStats => {
                     // No stats found, user is new or API unavailable
                     setStats({
                         gamesPlayed: 0,
-                        wins: 0,
                         losses: 0,
                         winRate: 0,
                         tokensWon: 0,
@@ -107,6 +112,7 @@ export const useUserStats = (): UserStats => {
                         tournamentsWon: 0,
                         currentStreak: 0,
                         bestStreak: 0,
+                        teloRating: 1500,
                         lastLogin: 'Recently',
                         memberSince: 'Recently',
                         loading: false,
@@ -121,7 +127,6 @@ export const useUserStats = (): UserStats => {
                 setStats(prev => ({
                     ...prev,
                     gamesPlayed: 0,
-                    wins: 0,
                     losses: 0,
                     winRate: 0,
                     tokensWon: 0,
@@ -131,6 +136,7 @@ export const useUserStats = (): UserStats => {
                     tournamentsWon: 0,
                     currentStreak: 0,
                     bestStreak: 0,
+                    teloRating: 1500,
                     lastLogin: 'Recently',
                     memberSince: 'Recently',
                     loading: false,

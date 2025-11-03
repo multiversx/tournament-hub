@@ -155,6 +155,7 @@ export interface StatLoaderProps {
     fontSize?: string;
     fontWeight?: string;
     formatValue?: (value: number) => string;
+    isInteger?: boolean; // New prop to indicate if value should be displayed as integer
 }
 
 export const StatLoader: React.FC<StatLoaderProps> = ({
@@ -167,6 +168,7 @@ export const StatLoader: React.FC<StatLoaderProps> = ({
     fontSize = '2xl',
     fontWeight = 'bold',
     formatValue,
+    isInteger = false,
 }) => {
     const [displayValue, setDisplayValue] = useState(0.0);
     const [isAnimating, setIsAnimating] = useState(false);
@@ -229,7 +231,7 @@ export const StatLoader: React.FC<StatLoaderProps> = ({
                 transform={isAnimating ? 'scale(1.05)' : 'scale(1)'}
                 transition="transform 0.2s ease"
                 dangerouslySetInnerHTML={{
-                    __html: prefix + (formatValue ? formatValue(displayValue) : displayValue.toLocaleString()) + suffix
+                    __html: prefix + (formatValue ? formatValue(displayValue) : (isInteger ? Math.round(displayValue).toLocaleString() : displayValue.toLocaleString())) + suffix
                 }}
             />
         </ProgressiveLoader>

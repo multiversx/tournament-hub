@@ -1,5 +1,5 @@
 import { RouteNamesEnum } from 'localConstants';
-import { Dashboard, Disclaimer, Home, Unlock, Tournaments, TournamentDetails, CreateTournament, GameSession, ColorRushDemoPage } from 'pages';
+import { Dashboard, Disclaimer, Home, Leaderboard, Unlock, Tournaments, TournamentDetails, CreateTournament, GameSession, ColorRushDemoPage } from 'pages';
 import BattleshipGame from 'pages/Battleship/BattleshipGame';
 import BattleshipTest from 'pages/Battleship/BattleshipTest';
 import { NotificationDemo } from 'components/NotificationDemo';
@@ -43,6 +43,11 @@ export const routes: RouteWithTitleType[] = [
     path: '/dashboard',
     title: 'Dashboard',
     component: Dashboard
+  },
+  {
+    path: '/leaderboard',
+    title: 'Leaderboard',
+    component: Leaderboard
   },
   {
     path: RouteNamesEnum.gameSession,

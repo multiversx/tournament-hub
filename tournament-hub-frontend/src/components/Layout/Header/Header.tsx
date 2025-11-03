@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Box, Text, HStack, VStack } from '@chakra-ui/react';
+import { Box, Text, HStack, VStack, useToast } from '@chakra-ui/react';
 import { Button, MxLink } from 'components';
 import { useEffect } from 'react';
 
@@ -7,6 +7,7 @@ import { getAccountProvider, useGetIsLoggedIn, useGetNetworkConfig, DECIMALS, DI
 import { RouteNamesEnum } from 'localConstants';
 import { NotificationsButton } from './components/NotificationsButton';
 import { useRefreshAccountInfo } from '../../../hooks/useRefreshAccountInfo';
+import { useSimpleUserStats } from '../../../hooks/useSimpleDashboard';
 
 export const Header = () => {
   const isLoggedIn = useGetIsLoggedIn();
@@ -14,6 +15,23 @@ export const Header = () => {
   const { network } = useGetNetworkConfig();
   const navigate = useNavigate();
   const provider = getAccountProvider();
+  const toast = useToast();
+
+  // Get user stats including TELO rating
+  const { teloRating, loading: userStatsLoading } = useSimpleUserStats();
+
+  const handleCopyAddress = () => {
+    if (address) {
+      navigator.clipboard.writeText(address);
+      toast({
+        title: 'Address copied!',
+        description: address,
+        status: 'success',
+        duration: 2000,
+        isClosable: true,
+      });
+    }
+  };
 
   // Refresh account info periodically to update balance
   useEffect(() => {
@@ -113,7 +131,7 @@ export const Header = () => {
 
           {isLoggedIn && (
             <>
-              <VStack spacing={1} align="end">
+              <HStack spacing={2} align="center">
                 <Text
                   fontFamily="mono"
                   fontSize="xs"
@@ -125,8 +143,28 @@ export const Header = () => {
                   border="1px solid"
                   borderColor="gray.700"
                   fontWeight="medium"
+                  cursor="pointer"
+                  onClick={handleCopyAddress}
+                  _hover={{
+                    bg: "gray.700",
+                    borderColor: "gray.600"
+                  }}
                 >
                   {address?.slice(0, 8)}...{address?.slice(-6)}
+                </Text>
+                <Text
+                  fontFamily="mono"
+                  fontSize="xs"
+                  bg="yellow.900"
+                  color="yellow.300"
+                  borderRadius="lg"
+                  px={3}
+                  py={1}
+                  border="1px solid"
+                  borderColor="yellow.700"
+                  fontWeight="semibold"
+                >
+                  {userStatsLoading ? '...' : `TELO: ${teloRating}`}
                 </Text>
                 <Text
                   fontFamily="mono"
@@ -140,9 +178,9 @@ export const Header = () => {
                   borderColor="blue.700"
                   fontWeight="semibold"
                 >
-                  {isValid ? `${valueInteger}.${valueDecimal} ${label}` : '...'}
+                  {isValid ? `${(Number(account.balance) / 1e18).toFixed(3)} ${label}` : '...'}
                 </Text>
-              </VStack>
+              </HStack>
               <NotificationsButton />
               <Button
                 onClick={handleLogout}

@@ -7,9 +7,9 @@ import { TicTacToeGame } from '../components/TicTacToeGame';
 import { ConnectFourGame } from '../components/ConnectFourGame';
 import BattleshipGame from './Battleship/BattleshipGame';
 import DodgeDash from '../components/DodgeDash';
-import { Box, Text, VStack, Spinner, useToast, Button } from '@chakra-ui/react';
+import { Box, Text, VStack, HStack, Spinner, useToast, Button } from '@chakra-ui/react';
 import { useGetAccount } from 'lib';
-import { getTournamentDetailsFromContract } from '../helpers';
+import { getTournamentDetailsFromContract, getTournamentDetailsFromContractFresh } from '../helpers';
 import { BACKEND_BASE_URL } from '../config/backend';
 
 export const GameSession: React.FC = () => {
@@ -18,6 +18,7 @@ export const GameSession: React.FC = () => {
     const [gameType, setGameType] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [actualSessionId, setActualSessionId] = useState<string | null>(null);
+    const [sessionCreationFailed, setSessionCreationFailed] = useState(false);
     const toast = useToast();
     const navigate = useNavigate();
 
@@ -26,8 +27,11 @@ export const GameSession: React.FC = () => {
             // If we have a tournamentId but no sessionId, we need to create a game session
             if (tournamentId && !sessionId) {
                 try {
-                    // Get tournament details using the existing helper function
-                    const tournamentDetails = await getTournamentDetailsFromContract(BigInt(tournamentId));
+                    // Prefer fresh/timeout-bounded fetch to avoid hanging on stale cache/network
+                    let tournamentDetails = await getTournamentDetailsFromContractFresh(BigInt(tournamentId));
+                    if (!tournamentDetails) {
+                        tournamentDetails = await getTournamentDetailsFromContract(BigInt(tournamentId));
+                    }
 
                     if (tournamentDetails) {
                         const gameId = Number(tournamentDetails.game_id);
@@ -74,15 +78,24 @@ export const GameSession: React.FC = () => {
                             return;
                         }
 
-                        // Check if session already exists for this tournament
-                        const existingSessionResponse = await fetch(`${BACKEND_BASE_URL}/get_tournament_session?tournamentId=${tournamentId}`);
-                        let sessionId = null;
-
-                        if (existingSessionResponse.ok) {
-                            const existingSessionData = await existingSessionResponse.json();
-                            if (existingSessionData.session_id) {
-                                sessionId = existingSessionData.session_id;
-                                console.log('Using existing session:', sessionId);
+                        // Check if session already exists for this tournament with a short retry loop
+                        console.log('Checking for existing session for tournament:', tournamentId);
+                        let sessionId = null as string | null;
+                        const maxChecks = 5;
+                        for (let attempt = 0; attempt < maxChecks && !sessionId; attempt++) {
+                            const existingSessionResponse = await fetch(`${BACKEND_BASE_URL}/get_tournament_session?tournamentId=${tournamentId}`);
+                            if (existingSessionResponse.ok) {
+                                const existingSessionData = await existingSessionResponse.json();
+                                console.log('Existing session response:', existingSessionData);
+                                if (existingSessionData.session_id) {
+                                    sessionId = existingSessionData.session_id as string;
+                                    console.log('Using existing session:', sessionId);
+                                    break;
+                                }
+                            }
+                            if (!sessionId) {
+                                // Small delay before next check to handle race after transaction
+                                await new Promise(resolve => setTimeout(resolve, 500));
                             }
                         }
 
@@ -106,22 +119,36 @@ export const GameSession: React.FC = () => {
                                 const sessionData = await sessionResponse.json();
                                 sessionId = sessionData.session_id;
                                 console.log('Created new session:', sessionId);
+                            } else {
+                                console.error('Failed to create session:', sessionResponse.status, await sessionResponse.text());
                             }
                         }
 
                         if (sessionId) {
                             setActualSessionId(sessionId);
+                            setLoading(false);
+                        } else {
+                            console.error('Failed to create or retrieve session');
+                            setSessionCreationFailed(true);
+                            setLoading(false);
                         }
+                    } else {
+                        console.error('Failed to get tournament details');
+                        setSessionCreationFailed(true);
+                        setLoading(false);
                     }
                 } catch (error) {
                     console.error('Error creating game session:', error);
+                    setSessionCreationFailed(true);
+                    setLoading(false);
                 }
             } else if (sessionId) {
                 // Use existing sessionId
                 setActualSessionId(sessionId);
+                setLoading(false);
+            } else {
+                setLoading(false);
             }
-
-            setLoading(false);
         };
 
         initializeGameSession();
@@ -145,24 +172,104 @@ export const GameSession: React.FC = () => {
     }
 
     // If we have a tournamentId but no actualSessionId and no loading, show insufficient players message
-    if (tournamentId && !actualSessionId && !loading) {
+    // Only show this if we've actually tried to create a session and failed
+    if (tournamentId && !actualSessionId && !loading && sessionCreationFailed) {
         return (
             <Box textAlign="center" py={8}>
                 <Text fontSize="xl" mb={4}>Tournament Not Ready</Text>
                 <Text mb={4}>This tournament needs at least 2 participants to start a game.</Text>
-                <Button
-                    colorScheme="blue"
-                    onClick={() => navigate('/tournaments')}
-                    leftIcon={<span>←</span>}
-                >
-                    Back to Tournaments
-                </Button>
+                <HStack justify="center" spacing={4}>
+                    <Button
+                        colorScheme="blue"
+                        onClick={() => navigate('/tournaments')}
+                        leftIcon={<span>←</span>}
+                    >
+                        Back to Tournaments
+                    </Button>
+                    <Button
+                        colorScheme="green"
+                        onClick={() => {
+                            setSessionCreationFailed(false);
+                            setLoading(true);
+                            // Re-trigger the initialization
+                            const initializeGameSession = async () => {
+                                try {
+                                    const tournamentDetails = await getTournamentDetailsFromContract(BigInt(tournamentId!));
+                                    if (tournamentDetails) {
+                                        const gameId = Number(tournamentDetails.game_id);
+                                        const participants = tournamentDetails.participants;
+                                        const players = participants.slice(0, 2);
+
+                                        if (players.length < 2) {
+                                            setSessionCreationFailed(true);
+                                            setLoading(false);
+                                            return;
+                                        }
+
+                                        const gameTypeMap: { [key: number]: string } = {
+                                            1: 'tictactoe', 2: 'chess', 3: 'cryptobubbles', 5: 'cryptobubbles',
+                                            6: 'dodgedash', 7: 'connectfour', 8: 'battleship'
+                                        };
+                                        setGameType(gameTypeMap[gameId] || 'cryptobubbles');
+
+                                        const existingSessionResponse = await fetch(`${BACKEND_BASE_URL}/get_tournament_session?tournamentId=${tournamentId}`);
+                                        let sessionId = null;
+
+                                        if (existingSessionResponse.ok) {
+                                            const existingSessionData = await existingSessionResponse.json();
+                                            if (existingSessionData.session_id) {
+                                                sessionId = existingSessionData.session_id;
+                                            }
+                                        }
+
+                                        if (!sessionId) {
+                                            const sessionData = {
+                                                tournamentId: String(tournamentId),
+                                                game_type: gameId,
+                                                playerAddresses: players
+                                            };
+
+                                            const sessionResponse = await fetch(`${BACKEND_BASE_URL}/start_session`, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify(sessionData)
+                                            });
+
+                                            if (sessionResponse.ok) {
+                                                const sessionData = await sessionResponse.json();
+                                                sessionId = sessionData.session_id;
+                                            }
+                                        }
+
+                                        if (sessionId) {
+                                            setActualSessionId(sessionId);
+                                            setLoading(false);
+                                        } else {
+                                            setSessionCreationFailed(true);
+                                            setLoading(false);
+                                        }
+                                    } else {
+                                        setSessionCreationFailed(true);
+                                        setLoading(false);
+                                    }
+                                } catch (error) {
+                                    console.error('Error retrying game session creation:', error);
+                                    setSessionCreationFailed(true);
+                                    setLoading(false);
+                                }
+                            };
+                            initializeGameSession();
+                        }}
+                    >
+                        Retry
+                    </Button>
+                </HStack>
             </Box>
         );
     }
 
-    // If we have a tournamentId but no actualSessionId yet, show loading
-    if (tournamentId && !actualSessionId) {
+    // If we have a tournamentId but no actualSessionId yet, show loading only while initializing
+    if (tournamentId && !actualSessionId && loading) {
         return (
             <Box textAlign="center" py={8}>
                 <Spinner size="xl" color="blue.400" />
