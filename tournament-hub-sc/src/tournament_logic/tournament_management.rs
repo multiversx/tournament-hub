@@ -176,13 +176,8 @@ pub trait TournamentManagementModule:
         // VecMapper uses 1-based indexing for set as well
         self.active_tournaments().set(tournament_index, &tournament);
 
-        // Update games_played for all participants when tournament starts
-        for participant in tournament.participants.iter() {
-            self.update_user_stats(&participant, |stats| {
-                stats.games_played += 1;
-                stats.last_activity = self.blockchain().get_block_timestamp();
-            });
-        }
+        // Note: games_played is incremented when results are submitted, not when the game starts
+        // This prevents double-counting games
 
         self.game_started_event(&(tournament_index as u64), &caller);
     }

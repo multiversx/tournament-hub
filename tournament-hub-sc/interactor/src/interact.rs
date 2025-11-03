@@ -61,6 +61,12 @@ pub async fn tournament_hub_cli() {
         "getTournamentBasicInfoById" => interact.get_tournament_basic_info_by_id().await,
         "getPrizePoolById" => interact.get_prize_pool_by_id().await,
         "getPrizeStats" => interact.get_prize_stats().await,
+        "getAllUsersStats" => interact.get_all_users_stats().await,
+        "getAllUsersAddresses" => interact.get_all_users_addresses().await,
+        "fixUserStats" => interact.fix_user_stats().await,
+        "fixAllUserStats" => interact.fix_all_user_stats().await,
+        "clearAllData" => interact.clear_all_data().await,
+        "getAllUsersStatsBase64" => interact.get_all_users_stats_base64().await,
         _ => panic!("unknown command: {}", &cmd),
     }
 }
@@ -869,5 +875,128 @@ impl ContractInteract {
             .await;
 
         println!("Prize stats: {result_value:?}");
+    }
+
+    pub async fn get_all_users_stats(&mut self) {
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_all_users_stats()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("All users stats: {result_value:?}");
+    }
+
+    pub async fn get_all_users_addresses(&mut self) {
+        let result_value = self
+            .interactor
+            .query()
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .get_all_users_addresses()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("All users addresses: {result_value:?}");
+    }
+
+    pub async fn fix_user_stats(&mut self) {
+        let args = std::env::args().collect::<Vec<String>>();
+        if args.len() < 3 {
+            println!("Usage: fixUserStats <user_address>");
+            return;
+        }
+
+        let user_address = &args[2];
+        let address = Bech32Address::from_bech32_string(user_address.clone());
+
+        let result_value = self
+            .interactor
+            .tx()
+            .from(self.state.current_address())
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .fix_user_stats(&address)
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Fix user stats result: {result_value:?}");
+    }
+
+    pub async fn fix_all_user_stats(&mut self) {
+        let result_value = self
+            .interactor
+            .tx()
+            .from(self.state.current_address())
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .fix_all_user_stats()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Fix all user stats result: {result_value:?}");
+    }
+
+    pub async fn clear_all_data(&mut self) {
+        println!("WARNING: This will clear ALL data from the smart contract!");
+        println!("This includes all tournaments, user stats, and global statistics.");
+        println!("This action cannot be undone!");
+
+        let result_value = self
+            .interactor
+            .tx()
+            .gas(100_000_000u64)
+            .from(&self.wallet_address)
+            .to(self.state.current_address())
+            .typed(proxy::TournamentHubProxy)
+            .clear_all_data()
+            .returns(ReturnsResultUnmanaged)
+            .run()
+            .await;
+
+        println!("Clear all data result: {result_value:?}");
+    }
+
+    pub async fn get_all_users_stats_base64(&mut self) {
+        let api_url = "https://devnet-gateway.multiversx.com/vm-values/query";
+        let contract_address = self.state.current_address().to_string();
+        let request_body = serde_json::json!({
+            "scAddress": contract_address,
+            "funcName": "getAllUsersStats",
+            "args": []
+        });
+
+        println!("\n[INTERACTOR] QUERY BODY:");
+        println!("{}", request_body);
+
+        let client = reqwest::Client::new();
+        let response = client
+            .post(api_url)
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .unwrap();
+
+        let resp_json: serde_json::Value = response.json().await.unwrap();
+        println!("\n[INTERACTOR] FULL API RESPONSE:");
+        println!("{}", serde_json::to_string_pretty(&resp_json).unwrap());
+
+        if let Some(return_data) = resp_json["data"]["data"]["returnData"].as_array() {
+            for (idx, entry) in return_data.iter().enumerate() {
+                println!();
+                println!("[INTERACTOR] returnData[{}]: {}", idx, entry);
+            }
+        } else {
+            println!();
+            println!("[INTERACTOR] No returnData in smart contract VM query response.");
+        }
     }
 }

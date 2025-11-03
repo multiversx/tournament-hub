@@ -35,6 +35,10 @@ pub trait StorageModule {
     #[storage_mapper("user_stats")]
     fn user_stats(&self, user: &ManagedAddress) -> SingleValueMapper<UserStats<Self::Api>>;
 
+    // Raw user statistics storage for migration
+    #[storage_mapper("user_stats_raw")]
+    fn user_stats_raw(&self, user: &ManagedAddress) -> SingleValueMapper<ManagedBuffer>;
+
     // User tournament participation tracking
     #[storage_mapper("user_tournaments_created")]
     fn user_tournaments_created(&self, user: &ManagedAddress) -> UnorderedSetMapper<u64>;
@@ -51,6 +55,10 @@ pub trait StorageModule {
 
     #[storage_mapper("total_tournaments_completed")]
     fn total_tournaments_completed(&self) -> SingleValueMapper<u64>;
+
+    // All users tracking for leaderboard
+    #[storage_mapper("all_users")]
+    fn all_users(&self) -> UnorderedSetMapper<ManagedAddress<Self::Api>>;
 
     // Prize statistics
     #[storage_mapper("max_prize_won")]

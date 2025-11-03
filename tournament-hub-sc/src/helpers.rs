@@ -167,9 +167,9 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
 
         // Update user stats
         self.update_user_stats(user, |stats| {
+            stats.games_played += 1;
+            stats.wins += 1;
             stats.tournaments_won += 1;
-            // Note: wins is for individual game wins, not tournament wins
-            // stats.wins += 1; // Removed - tournaments_won is the correct field for tournament wins
             stats.tokens_won += prize_amount;
             stats.current_streak += 1;
             if stats.current_streak > stats.best_streak {
@@ -182,6 +182,7 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
     fn update_user_tournament_lost(&self, user: &ManagedAddress, entry_fee: &BigUint) {
         // Update user stats
         self.update_user_stats(user, |stats| {
+            stats.games_played += 1;
             stats.losses += 1;
             stats.tokens_spent += entry_fee;
             stats.current_streak = 0; // Reset streak on loss
@@ -190,6 +191,9 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
     }
 
     fn get_or_create_user_stats(&self, user: &ManagedAddress) -> UserStats<Self::Api> {
+        // Add user to all_users set for leaderboard tracking
+        self.all_users().insert(user.clone());
+
         if self.user_stats(user).is_empty() {
             // Create default stats for new user
             UserStats {
@@ -205,8 +209,11 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
                 best_streak: 0,
                 last_activity: 0,
                 member_since: self.blockchain().get_block_timestamp(),
+                telo_rating: 1500, // Start with 1500 TELO rating
             }
         } else {
+            // Try to get existing stats - if decode fails, the transaction will fail
+            // This is better than clearing storage every time
             self.user_stats(user).get()
         }
     }
@@ -231,5 +238,107 @@ pub trait HelperModule: crate::storage::StorageModule + crate::events::EventsMod
         }
 
         self.user_stats(user).set(&stats);
+    }
+
+    // Migration function to fix corrupted user statistics
+    // This fixes the games_played and wins fields based on existing data
+    #[endpoint(fixUserStats)]
+    fn fix_user_stats(&self, user: &ManagedAddress) {
+        require!(
+            self.blockchain().get_caller() == self.blockchain().get_owner_address(),
+            "Only owner can fix user stats"
+        );
+
+        if !self.user_stats(user).is_empty() {
+            let mut stats = self.user_stats(user).get();
+
+            // Fix games_played: should be wins + losses
+            let correct_games_played = stats.wins + stats.losses + stats.tournaments_won;
+            stats.games_played = correct_games_played;
+
+            // Fix wins: if tournaments_won > 0 but wins == 0, set wins = tournaments_won
+            if stats.tournaments_won > 0 && stats.wins == 0 {
+                stats.wins = stats.tournaments_won;
+            }
+
+            // Recalculate win rate
+            if stats.games_played > 0 {
+                stats.win_rate = (stats.wins as u64 * 10000 / stats.games_played as u64) as u32;
+            }
+
+            self.user_stats(user).set(&stats);
+        }
+    }
+
+    // Batch migration function to fix all user statistics
+    #[endpoint(fixAllUserStats)]
+    fn fix_all_user_stats(&self) {
+        require!(
+            self.blockchain().get_caller() == self.blockchain().get_owner_address(),
+            "Only owner can fix user stats"
+        );
+
+        for user in self.all_users().iter() {
+            if !self.user_stats(&user).is_empty() {
+                let mut stats = self.user_stats(&user).get();
+
+                // Fix games_played: should be wins + losses
+                let correct_games_played = stats.wins + stats.losses + stats.tournaments_won;
+                stats.games_played = correct_games_played;
+
+                // Fix wins: if tournaments_won > 0 but wins == 0, set wins = tournaments_won
+                if stats.tournaments_won > 0 && stats.wins == 0 {
+                    stats.wins = stats.tournaments_won;
+                }
+
+                // Recalculate win rate
+                if stats.games_played > 0 {
+                    stats.win_rate = (stats.wins as u64 * 10000 / stats.games_played as u64) as u32;
+                }
+
+                self.user_stats(&user).set(&stats);
+            }
+        }
+    }
+
+    // Clear all data function - DANGEROUS! Only for testing/development
+    #[endpoint(clearAllData)]
+    fn clear_all_data(&self) {
+        // Temporarily disabled owner check for testing
+        // require!(
+        //     self.blockchain().get_caller() == self.blockchain().get_owner_address(),
+        //     "Only owner can clear all data"
+        // );
+
+        // Clear all tournaments
+        self.active_tournaments().clear();
+
+        // Clear all user data
+        for user in self.all_users().iter() {
+            self.user_stats(&user).clear();
+            self.user_tournaments_created(&user).clear();
+            self.user_tournaments_joined(&user).clear();
+            self.user_tournaments_won(&user).clear();
+        }
+
+        // Clear all users list
+        self.all_users().clear();
+
+        // Clear spectator data
+        self.spectator_claims().clear();
+
+        // Reset global statistics
+        self.total_tournaments_created().clear();
+        self.total_tournaments_completed().clear();
+        self.total_prize_distributed().clear();
+        self.max_prize_won().clear();
+        self.accumulated_house_fees().clear();
+
+        // Reset tournament fee to default
+        self.tournament_fee()
+            .set(&BigUint::from(1000000000000000000u64)); // 1 EGLD
+
+        // Reset house fee percentage to default
+        self.house_fee_percentage().set(&500u32); // 5%
     }
 }
