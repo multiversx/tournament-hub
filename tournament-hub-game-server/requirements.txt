@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+requests
+cryptography 
+pynacl
+multiversx-sdk 
+websockets
+pika
+pydantic
+bech32

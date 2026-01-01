@@ -1,0 +1,12 @@
+export * from './Dashboard';
+export * from './Disclaimer';
+export * from './Home';
+export * from './Leaderboard';
+export * from './PageNotFound';
+export * from './Unlock';
+export * from './Tournaments';
+export { default as TournamentDetails } from './TournamentDetails';
+export { default as CreateTournament } from './CreateTournament';
+export { default as GameSession } from './GameSession';
+export { default as ColorRushDemoPage } from './ColorRushDemoPage';
+export * from './Battleship';

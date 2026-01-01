@@ -1,0 +1,107 @@
+import { RouteNamesEnum } from 'localConstants';
+import { Dashboard, Disclaimer, Home, Leaderboard, Unlock, Tournaments, TournamentDetails, CreateTournament, GameSession, ColorRushDemoPage } from 'pages';
+import BattleshipGame from 'pages/Battleship/BattleshipGame';
+import BattleshipTest from 'pages/Battleship/BattleshipTest';
+import { NotificationDemo } from 'components/NotificationDemo';
+import { RouteType } from 'types';
+
+interface RouteWithTitleType extends RouteType {
+  title: string;
+  authenticatedRoute?: boolean;
+  children?: RouteWithTitleType[];
+}
+
+export const routes: RouteWithTitleType[] = [
+  {
+    path: RouteNamesEnum.home,
+    title: 'Home',
+    component: Home,
+    children: [
+      {
+        path: RouteNamesEnum.unlock,
+        title: 'Unlock',
+        component: Unlock
+      }
+    ]
+  },
+  {
+    path: '/tournaments',
+    title: 'Tournaments',
+    component: Tournaments
+  },
+  {
+    path: '/tournaments/:id',
+    title: 'Tournament Details',
+    component: TournamentDetails
+  },
+  {
+    path: '/tournaments/create',
+    title: 'Create Tournament',
+    component: CreateTournament
+  },
+  {
+    path: '/dashboard',
+    title: 'Dashboard',
+    component: Dashboard
+  },
+  {
+    path: '/leaderboard',
+    title: 'Leaderboard',
+    component: Leaderboard
+  },
+  {
+    path: RouteNamesEnum.gameSession,
+    title: 'Game Session',
+    component: GameSession
+  },
+  {
+    path: '/game/chess/:tournamentId',
+    title: 'Chess Game',
+    component: GameSession
+  },
+  {
+    path: '/game/tictactoe/:tournamentId',
+    title: 'Tic Tac Toe Game',
+    component: GameSession
+  },
+  {
+    path: '/game/cryptobubbles/:tournamentId',
+    title: 'CryptoBubbles Game',
+    component: GameSession
+  },
+  {
+    path: '/game/connectfour/:tournamentId',
+    title: 'Connect Four Game',
+    component: GameSession
+  },
+  {
+    path: '/game/colorrush/:tournamentId',
+    title: 'Color Rush Game',
+    component: GameSession
+  },
+  {
+    path: '/game/battleship/:tournamentId',
+    title: 'Battleship Game',
+    component: GameSession
+  },
+  {
+    path: '/demo/colorrush',
+    title: 'Color Rush Demo',
+    component: ColorRushDemoPage
+  },
+  {
+    path: '/demo/battleship',
+    title: 'Battleship Test',
+    component: BattleshipTest
+  },
+  {
+    path: '/demo/notifications',
+    title: 'Notification Demo',
+    component: NotificationDemo
+  },
+  {
+    path: RouteNamesEnum.disclaimer,
+    title: 'Disclaimer',
+    component: Disclaimer
+  }
+];
