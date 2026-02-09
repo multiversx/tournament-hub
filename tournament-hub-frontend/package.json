@@ -1,7 +1,7 @@
 {
   "name": "@multiversx/mx-template-dapp",
   "description": "MultiversX Dapp Template",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "author": "MultiversX",
   "license": "GPL-3.0-or-later",
   "repository": "@multiversx/mx-template-dapp",
